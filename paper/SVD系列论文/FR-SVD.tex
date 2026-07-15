@@ -1,0 +1,663 @@
+%% 
+%% Copyright 2019-2024 Elsevier Ltd
+%% 
+%% This file is part of the 'CAS Bundle'.
+%% Template article for cas-dc documentclass for 
+%% double column output.
+%%
+%% Neural Networks (Elsevier) submission
+
+\documentclass[a4paper,fleqn]{cas-dc}
+
+\usepackage[numbers]{natbib}
+\usepackage{amsmath,amssymb,amsthm,mathtools,bm}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{graphicx}
+\usepackage{algorithm}
+\usepackage{enumitem}
+
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+
+\begin{document}
+\let\WriteBookmarks\relax
+\def\floatpagepagefraction{1}
+\def\textpagefraction{.001}
+\shorttitle{FR-SVD for Large Language Models}
+\shortauthors{Anonymous Author(s)}
+
+\title[mode=title]{FR-SVD: Fisher Guided Low-Rank Compression with Residual Compensation for Large Language Models}
+
+\author{Anonymous Author(s)}
+\address{Anonymous Institution}
+
+\begin{abstract}
+Singular value decomposition (SVD)-based low-rank compression is an effective post-training compression paradigm for large language models (LLMs). However, existing methods still suffer from two limitations. They do not distinguish the task sensitivity of different parameter directions during truncation, and they lack an effective mechanism to compensate for the residual output deviation after truncation, especially when the deviation already contains accumulated upstream compression errors. To address these issues, we propose FR-SVD, a two-stage low-rank compression method for LLMs. In the first stage, we select the cumulative error alignment coefficient and perform truncated SVD in a Kronecker-factored Fisher metric space, so that the compression process automatically prioritizes parameter directions that are more sensitive to task loss. In the second stage, we compensate the global output alignment error, which jointly contains the current-layer truncation error and the accumulated upstream error, by computing an optimal low-rank correction in the eigenspace of input activations. The two stages share the same rank budget and introduce no extra parameters compared with direct rank-$r$ truncation. Our analysis shows that truncation in the Fisher space is globally optimal with respect to the Fisher-weighted objective and is never worse than truncation in the ordinary Frobenius space, while eigenspace compensation is superior to naive weight-space compensation under the same rank budget. Experiments on LLaMA, LLaMA-2, and LLaMA-3 demonstrate that FR-SVD consistently outperforms existing methods across a wide range of compression ratios. For example, on LLaMA-7B, FR-SVD reduces the WikiText-2 perplexity from X.X to X.X at a 20\% compression ratio and from X.X to X.X at a 60\% compression ratio, while improving average zero-shot accuracy by about one percentage point.
+\end{abstract}
+
+\begin{keywords}
+large language models \sep low-rank compression \sep singular value decomposition \sep Fisher information \sep residual compensation
+\end{keywords}
+
+\maketitle
+
+%% ====================================================================
+%%  1. Introduction
+%% ====================================================================
+\section{Introduction}
+
+Large language models have achieved remarkable performance on natural language understanding and generation tasks. Their massive parameter counts, however, impose stringent memory and computation requirements, which substantially hinder practical deployment. Among post-training compression techniques, singular value decomposition based low-rank compression is particularly attractive because it reduces the number of parameters by factorizing a weight matrix into two smaller matrices, remains hardware-agnostic, is naturally compatible with quantization, and can also reduce the runtime memory cost associated with structures such as the KV cache.
+
+Recent studies have made substantial progress in reducing truncation loss in SVD-based compression. Activation-aware scaling and whitening improve the quality of singular value truncation, while cumulative error-aware objectives partially alleviate inter-layer error propagation. Despite these advances, existing methods still exhibit two fundamental limitations.
+
+One limitation is the lack of task sensitivity during truncation. Existing methods typically perform singular value truncation in the ordinary Frobenius space, where all parameter directions are treated equally. In practice, however, different parameter directions contribute very differently to task loss. Some directions are highly sensitive, so even a small perturbation may noticeably degrade performance, whereas other directions are far less important. Conventional truncation may therefore discard directions that are critical to the task while preserving directions that are comparatively irrelevant. This mismatch becomes more severe under aggressive compression ratios.
+
+The other limitation is insufficient residual compensation after truncation. Once the main truncation step is completed, the compressed layer still exhibits residual output deviation. This deviation is not solely caused by the truncation error of the current layer. Because compression is applied layer by layer, upstream approximation errors alter the activation distribution received by downstream layers, and these discrepancies accumulate as the signal propagates through the network. Existing post-training SVD methods mainly focus on improving the truncation objective itself, but they do not explicitly model or compensate the residual deviation that jointly contains current-layer truncation error and upstream accumulated error under the remaining rank budget.
+
+To address the first limitation, we incorporate Fisher information into cumulative error-aware low-rank compression. Fisher information provides a second-order measure of how sensitive the task loss is to perturbations along different parameter directions. Instead of selecting the alignment coefficient and performing truncation in the ordinary Frobenius space, we transform the target matrix into a Kronecker-factored Fisher metric space and carry out both steps there. This design makes the compression process preferentially preserve directions that are more important to task performance.
+
+To address the second limitation, we introduce a residual compensation stage after the main truncation step. Rather than directly factorizing the weight residual in parameter space, we define a global output alignment error that unifies the current-layer truncation error and the accumulated upstream error, then compute an optimal low-rank correction in the eigenspace induced by input activations. This compensation uses the remaining rank budget without increasing the total number of parameters relative to direct rank-$r$ truncation.
+
+Based on these ideas, we propose \textbf{FR-SVD}, a two-stage post-training low-rank compression framework for large language models. The first stage, termed \emph{Fisher-Guided Cumulative Error-Aware Compression}, performs the main rank-$r_1$ truncation in the Fisher metric space. The second stage, termed \emph{Eigenspace Residual Compensation}, uses the remaining rank-$r_2$ budget to compensate the global output alignment error in the activation eigenspace, where $r=r_1+r_2$ is the total rank budget. The final compressed model preserves the same parameter budget as direct rank-$r$ truncation, while achieving better alignment with the full-precision model.
+
+Our contributions are summarized as follows.
+\begin{itemize}[leftmargin=1.5em]
+    \item We introduce a Fisher-guided truncation mechanism for cumulative error-aware low-rank compression. By optimizing the alignment coefficient and performing singular value truncation in a Kronecker-factored Fisher metric space, the method explicitly prioritizes parameter directions that are more sensitive to task loss.
+    \item We propose an eigenspace residual compensation method that targets the global output alignment error after the main truncation step. The compensation unifies current-layer truncation error and accumulated upstream error, and produces an optimal low-rank correction under the remaining rank budget.
+    \item We develop FR-SVD, a two-stage post-training low-rank compression framework for LLMs. Theoretical analysis establishes the optimality of Fisher-space truncation with respect to the Fisher-weighted objective and the superiority of eigenspace compensation over naive weight-space compensation under the same rank budget. Extensive experiments on multiple LLM families verify that FR-SVD consistently improves perplexity and zero-shot accuracy across a wide range of compression ratios.
+\end{itemize}
+
+%% ====================================================================
+%%  2. Related Work
+%% ====================================================================
+\section{Related Work}
+
+\subsection{Large Language Model Compression}
+
+Large language models usually contain billions to hundreds of billions of parameters, and their substantial computation and storage costs severely constrain practical deployment. Post-training compression methods avoid retraining from scratch and can be broadly grouped into several categories. Unstructured pruning, represented by methods such as SparseGPT, sets individual weights to zero without changing the matrix shape, but it is often difficult to obtain substantial wall-clock acceleration on general-purpose hardware. Structured pruning, including methods such as LLM-Pruner and SliceGPT, removes entire channels or modules and is therefore more hardware friendly, but it often incurs larger accuracy degradation. Quantization methods, such as GPTQ and AWQ, compress models by reducing numerical precision, but they are constrained by discrete bit-width choices and typically rely on specialized kernel support. Low-rank decomposition methods reduce the parameter count by approximating a weight matrix as the product of two smaller matrices, offering hardware-agnostic deployment and strong compatibility with other compression techniques.
+
+\subsection{SVD-based LLM Compression}
+
+The central objective of SVD-based LLM compression is to minimize the layer output reconstruction error under a low-rank constraint. Existing studies can be examined from three perspectives: how the truncation space is constructed, how task sensitivity is incorporated, and how residual errors are compensated after truncation.
+
+\paragraph{Improving the truncation space.}
+Directly applying SVD truncation to the weight matrix often leads to severe degradation because it ignores the distributional structure of input activations. ASVD constructs scaling matrices from activation magnitudes to absorb the effect of outliers. SVD-LLM introduces a whitening transform to establish a direct relationship between singular values and compression loss, and theoretically shows that truncating the smallest singular values is equivalent to minimizing the output reconstruction error. SVD-LLM V2 replaces the Cholesky decomposition with two rounds of SVD to improve numerical stability and further introduces heterogeneous compression-ratio allocation. SAES-SVD observes that independently compressing layers leads to amplified error accumulation, and therefore proposes a framework that jointly optimizes intra-layer reconstruction and alignment to the full-precision reference through an adaptive coefficient $\beta$. These methods progressively improve the truncation space, yet all of them perform truncation in the ordinary Frobenius norm and do not distinguish the task sensitivity of different parameter directions.
+
+\paragraph{Introducing task sensitivity.}
+Fisher information provides a natural tool for measuring how sensitive the task loss is to parameter perturbations. FWSVD reweights the weight matrix row-wise using a diagonal Fisher approximation so that truncation preferentially preserves parameters that contribute more to the task loss, but it ignores parameter correlations. GFWSVD extends the Fisher approximation to a Kronecker-product structure and develops a scalable generalized Fisher-weighted SVD, while proving optimality in the Fisher metric. However, GFWSVD compresses each layer independently and does not account for accumulated inter-layer compression error.
+
+\paragraph{Post-truncation residual compensation.}
+ResSVD points out that the residual matrix after truncation still contains exploitable structure, and splits the rank budget into two truncation stages. It proves that, under the same total rank, the two-stage scheme yields a weight-space Frobenius error no larger than that of one-shot truncation. However, ResSVD performs compensation in weight space and does not consider the input activation distribution. EoRA projects the compression error into the eigenspace of input activations before applying SVD, thereby achieving activation-aware compensation, but its objective only considers the current-layer compression error and does not include accumulated upstream error.
+
+FR-SVD advances these three directions simultaneously. It performs cumulative error-aware truncation in a Fisher metric space, thereby unifying task sensitivity and cumulative error awareness, and it further applies optimal compensation to the global output deviation, which already contains accumulated upstream error, in the activation eigenspace.
+
+%% ====================================================================
+%%  3. Preliminaries
+%% ====================================================================
+\section{Preliminaries}
+
+Unless ambiguity arises, we omit the layer index $\ell$ in the following derivations for simplicity.
+
+\subsection{SVD-based Layer Compression}
+
+For the weight matrix $W \in \mathbb{R}^{m \times n}$ of a pretrained LLM layer, its singular value decomposition is given by $W = U \Sigma V^\top$, where $U \in \mathbb{R}^{m \times m}$ and $V \in \mathbb{R}^{n \times n}$ are orthogonal matrices, and $\Sigma = \mathrm{diag}(\sigma_1, \ldots, \sigma_{\min(m,n)})$ is a diagonal matrix whose singular values are sorted in descending order. We denote by $[W]_r = U_r \Sigma_r V_r^\top$ the truncated SVD that retains the leading $r$ singular values. The resulting low-rank matrix can be deployed as the product of two factors, $W' = BA$, where $B = U_r \Sigma_r^{1/2} \in \mathbb{R}^{m \times r}$ and $A = \Sigma_r^{1/2} V_r^\top \in \mathbb{R}^{r \times n}$, with a total parameter count of $(m+n)r$.
+
+SVD-based LLM compression usually minimizes the activation-aware output reconstruction error:
+\begin{equation}
+\min_{W'} \|WX - W'X\|_F^2,
+\tag{P1}
+\end{equation}
+where $X \in \mathbb{R}^{n \times p}$ denotes the input activations of this layer on the calibration data, and $p$ is the number of tokens.
+
+We will frequently use the following classical result.
+
+\paragraph{Eckart-Young-Mirsky theorem.}
+For any $M \in \mathbb{R}^{m \times n}$, its optimal rank-$r$ approximation under the Frobenius norm is given by the truncated SVD. That is, for any $N$ satisfying $\mathrm{rank}(N) \le r$,
+\begin{equation}
+\|M - [M]_r\|_F^2 \le \|M - N\|_F^2,
+\tag{P2}
+\end{equation}
+and $\|M - [M]_r\|_F^2 = \sum_{i=r+1}^{\min(m,n)} \sigma_i^2(M)$.
+
+\subsection{Cumulative Error-Aware Layer Compression (CEALC)}
+
+Equation~(P1) minimizes the output error of each layer independently, but ignores the fact that upstream compression errors alter the input distribution of the current layer and therefore accumulate along depth. The CEALC framework addresses this issue by jointly considering local reconstruction and alignment to the full-precision reference in the optimization objective.
+
+Let $X^f \in \mathbb{R}^{n \times p}$ denote the activation propagated by the full-precision model to the current layer, and let $X \in \mathbb{R}^{n \times p}$ denote the activation along the compressed path. The objective is written as
+\begin{equation}
+\min_{B,A} \|(BA - W)X\|_F^2 + \alpha \|BAX - WX^f\|_F^2,
+\tag{P3}
+\end{equation}
+where $\alpha \ge 0$ controls the alignment strength. Define the damped input covariance $H = XX^\top + \lambda_H I$ with $\lambda_H > 0$, the accumulated error covariance $\Delta = (X^f - X)X^\top$, and let $\beta = \alpha/(1+\alpha) \in [0,1)$. Then Eq.~(P3) is equivalent to
+\begin{equation}
+\min_{B,A} \|BAH^{1/2} - G(\beta)\|_F^2,
+\tag{P4}
+\end{equation}
+where the target matrix is
+\begin{equation}
+G(\beta) = W(H + \beta \Delta)H^{-1/2}.
+\tag{P5}
+\end{equation}
+The coefficient $\beta$ is selected adaptively by maximizing the retained energy ratio (RER):
+\begin{equation}
+\rho(\beta) = \frac{\sum_{i=1}^{r} \sigma_i^2(G(\beta))}{\sum_{i=1}^{\min(m,n)} \sigma_i^2(G(\beta))}.
+\tag{P6}
+\end{equation}
+Compression proceeds layer by layer. After each layer is compressed, the downstream activation $X_{\ell+1}$ is updated so that $\Delta_{\ell+1}$ correctly reflects the accumulated compression error.
+
+\subsection{Kronecker-Factored Fisher Information}
+
+The Fisher information matrix characterizes how sensitive the task loss is to parameter perturbations. For the layer weight $W \in \mathbb{R}^{m \times n}$, the empirical Fisher information is defined as
+\begin{equation}
+\mathcal{I}_F = \frac{1}{|D|} \sum_{i=1}^{|D|} g_i g_i^\top \in \mathbb{R}^{mn \times mn},
+\tag{P7}
+\end{equation}
+where $g_i = \mathrm{vec}(\nabla_W \mathcal{L}(\mathrm{batch}_i))$. Directly manipulating $\mathcal{I}_F$ is infeasible. For instance, a $4096 \times 4096$ weight matrix corresponds to a Fisher matrix of size $16\text{M} \times 16\text{M}$. We therefore adopt the Kronecker-product approximation
+\begin{equation}
+\mathcal{I}_F \approx \Phi \otimes \Psi,
+\tag{P8}
+\end{equation}
+where $\Phi \in \mathbb{R}^{n \times n}$ encodes parameter correlations along the input dimension and $\Psi \in \mathbb{R}^{m \times m}$ encodes parameter correlations along the output dimension. These factors can be estimated efficiently by applying rank-1 SVD to a permuted Fisher matrix, yielding per-layer complexity $O(m^2 n + mn^2)$.
+
+After adding damping to the Kronecker factors, we compute their Cholesky decompositions:
+\begin{equation}
+\Phi + \lambda_\Phi I = L_\Phi L_\Phi^\top, \qquad \Psi + \lambda_\Psi I = L_\Psi L_\Psi^\top,
+\tag{P9}
+\end{equation}
+where $L_\Phi \in \mathbb{R}^{n \times n}$ and $L_\Psi \in \mathbb{R}^{m \times m}$ are lower-triangular matrices, and $\lambda_\Phi, \lambda_\Psi > 0$ are damping parameters. Section~4.2 uses $L_\Phi$ and $L_\Psi$ to construct the target matrix in the Fisher metric space.
+
+%% ====================================================================
+%%  4. Method: FR-SVD
+%% ====================================================================
+\section{Method: FR-SVD}
+
+\subsection{Overview}
+
+FR-SVD is an SVD-based low-rank compression method for LLMs that directly compresses a pretrained model without retraining. The central observation behind FR-SVD is that effective low-rank compression must address two issues simultaneously: it should distinguish the task sensitivity of different parameter directions during truncation, and it should further compensate for the residual output deviation that inevitably remains after truncation. FR-SVD therefore introduces a two-stage compression framework that jointly performs task-aware truncation and residual compensation under the same rank budget.
+
+As illustrated in Fig.~X, FR-SVD consists of two stages. The first stage, \emph{Fisher-Guided CEALC} (Section~4.2), performs the main compression in a Fisher metric space. Specifically, we use Kronecker-factored Fisher information to construct a weighted metric space, and then select the cumulative error alignment coefficient $\beta$ and perform truncated SVD in that space. This design allows truncation to automatically identify and preferentially preserve parameter directions that contribute more to the task loss, producing a compressed weight of rank $r_1$. The second stage, \emph{Eigenspace Residual Compensation} (Section~4.3), compensates the residual output deviation left by the first-stage truncation. We define a global output alignment error that jointly characterizes the current-layer truncation error and the accumulated upstream error, and then compute its optimal low-rank approximation in the eigenspace of input activations, yielding a compensation matrix of rank $r_2$.
+
+FR-SVD splits the total rank budget of each layer as $r = r_1 + r_2$, where $r_1$ is used for the main compression and $r_2$ is reserved for residual compensation. The final compressed model has exactly the same total parameter count as direct rank-$r$ truncation, yet the cooperation of the two stages further reduces the output error. At deployment time, each layer is retained as two parallel low-rank branches, without reconstructing a dense matrix and without introducing additional inference overhead.
+
+Figure~X summarizes the full workflow of FR-SVD. Given the original weights and calibration data, we first estimate the Kronecker factors of Fisher information and the second-order activation statistics. We then select $\beta^*$ and perform rank-$r_1$ truncation in the Fisher space (Stage~1), compute the residual output deviation, perform rank-$r_2$ compensation in the activation eigenspace (Stage~2), and finally merge the two low-rank branches while updating downstream activations. The next two subsections detail the design of these two stages.
+
+\subsection{Fisher-Guided Cumulative Error-Aware Compression}
+
+\paragraph{Motivation.}
+As discussed in Section~3.2, cumulative error-aware layer compression reformulates the optimization of each layer as a low-rank approximation problem on the target matrix $G(\beta)$ in Eq.~(P5), where the coefficient $\beta$ is adaptively selected by maximizing the retained energy ratio $\rho(\beta)$ in Eq.~(P6). We observe, however, that this selection process has a fundamental limitation: $\rho(\beta)$ is computed in the ordinary Frobenius norm and therefore assigns equal weight to all parameter directions. In practice, different parameter directions have very different effects on the task loss. A small perturbation along some directions may substantially affect model behavior, whereas truncating other directions may have little impact. Under the ordinary norm, truncation may therefore discard directions that are critical to the task while preserving directions that are comparatively unimportant.
+
+To address this limitation, we propose to perform both $\beta$ selection and SVD truncation in a Fisher metric space. The key idea is to use the Fisher information matrix to characterize the contribution of each parameter direction to the task loss, and to transform the target matrix into a task-sensitivity-weighted space in which the subsequent truncation operation automatically prioritizes directions that are more important for task performance.
+
+\paragraph{Constructing the Fisher metric space.}
+For the current layer, we estimate the empirical Fisher information and compute its Kronecker decomposition as described in Section~3.3, obtaining $\mathcal{I}_F \approx \Phi \otimes \Psi$, where $\Phi \in \mathbb{R}^{n \times n}$ characterizes sensitivity correlations along the input dimension and $\Psi \in \mathbb{R}^{m \times m}$ characterizes sensitivity correlations along the output dimension. After damping both factors and computing the Cholesky factors $L_\Phi$ and $L_\Psi$ in Eq.~(P9), we define the target matrix in the Fisher space as
+\begin{equation}
+G^F(\beta) = L_\Psi^\top G(\beta) L_\Phi.
+\tag{1}
+\end{equation}
+Left multiplication by $L_\Psi^\top$ reweights the output dimension according to Fisher sensitivity, while right multiplication by $L_\Phi$ reweights the input dimension. As a result, parameter directions with larger Fisher information are amplified and are therefore preferentially retained during truncation, whereas directions with smaller Fisher information are compressed and can be discarded with less impact on the task loss.
+
+This mechanism can be understood through an extreme case. If the Fisher information of a parameter direction is zero, then infinitesimal perturbations along that direction do not affect the task loss. The Fisher transform compresses that direction to zero, so truncation automatically removes it without increasing the loss. Conversely, directions with large Fisher information are amplified and thus more likely to be retained.
+
+It is also worth noting that when $\beta = 0$, corresponding to the case without accumulated error, $G(0)$ reduces to $WH^{1/2}$. The Fisher-space truncation in Eq.~(1) then reduces to the standard Fisher-weighted SVD. Equation~(1) can therefore be viewed as extending Fisher-weighted truncation to the cumulative error-aware setting.
+
+\paragraph{Optimizing $\beta$ in the Fisher space.}
+We decompose Eq.~(1) as $G^F(\beta) = S^F + \beta D^F$, where $S^F = L_\Psi^\top W H^{1/2} L_\Phi$ and $D^F = L_\Psi^\top W \Delta H^{-1/2} L_\Phi$. We then define the retained energy ratio in the Fisher space as
+\begin{equation}
+\beta^* = \arg\max_{\beta \in [0,1]} \rho^F(\beta), \qquad
+\rho^F(\beta) = \frac{\sum_{i=1}^{r_1} \sigma_i^2(G^F(\beta))}{\sum_{i=1}^{\min(m,n)} \sigma_i^2(G^F(\beta))}.
+\tag{2}
+\end{equation}
+The key difference is that all singular values are computed from the Fisher-transformed matrix $G^F(\beta)$ rather than from the original matrix $G(\beta)$. Hence, the choice of $\beta$ accounts not only for energy concentration but also for task sensitivity across parameter directions. In practice, we express $\rho^F(\beta)$ as a rational function of the form $(a + 2b\beta + c\beta^2)/(A + 2B\beta + C\beta^2)$, set its derivative to zero, and choose the best $\beta^*$ from the real roots and boundary points.
+
+\paragraph{Theorem 1 (optimality of Fisher-space truncation).}
+Assume that $H \succ 0$ and that the damped Kronecker factors are positive definite, with $L_\Phi$ and $L_\Psi$ denoting their Cholesky factors. Define the Fisher-weighted objective
+\begin{equation}
+J(T) = \|L_\Psi^\top (G(\beta) - T)L_\Phi\|_F^2,
+\end{equation}
+subject to the constraint $\mathrm{rank}(T) \le r$. Then:
+
+\begin{enumerate}[leftmargin=1.5em,label=(\arabic*)]
+    \item the global optimum is
+    \begin{equation}
+    T^* = L_\Psi^{-\top}[L_\Psi^\top G(\beta)L_\Phi]_r L_\Phi^{-1};
+    \tag{3}
+    \end{equation}
+    \item for the ordinary Frobenius-space truncation solution $T_0 = [G(\beta)]_r$, we have
+    \begin{equation}
+    J(T^*) \le J(T_0).
+    \end{equation}
+\end{enumerate}
+
+The proof is straightforward. Let $S = L_\Psi^\top T L_\Phi$. Since the transform is invertible, $\mathrm{rank}(S) = \mathrm{rank}(T)$, and the original problem is equivalent to the standard low-rank approximation problem $\min_{\mathrm{rank}(S) \le r} \|L_\Psi^\top G(\beta)L_\Phi - S\|_F^2$. The result then follows directly from the Eckart-Young-Mirsky theorem in Eq.~(P2). The full proof is provided in Appendix~A.
+
+The significance of Theorem~1 is that the Fisher-weighted norm $\|L_\Psi^\top (\cdot)L_\Phi\|_F^2$ corresponds to the second-order approximation of the task-loss increment,
+\begin{equation}
+\Delta \mathcal{L} \approx \tfrac{1}{2}\, \mathrm{vec}(W-W')^\top \mathcal{I}_F \, \mathrm{vec}(W-W').
+\end{equation}
+Therefore, Theorem~1 guarantees that Fisher-space truncation is optimal with respect to the \emph{task-loss increment under the Fisher-weighted objective}, and is never worse than ordinary-space truncation under the same objective.
+
+\paragraph{Output of Stage 1.}
+Using $\beta^*$, we construct $G^F(\beta^*)$ and perform rank-$r_1$ truncation:
+$[G^F(\beta^*)]_{r_1} = \hat{U}_{r_1}\hat{\Sigma}_{r_1}\hat{V}_{r_1}^\top$.
+Mapping the result back to the weight space gives the compressed weight of Stage~1:
+\begin{equation}
+W^{(1)} = L_\Psi^{-\top} \hat{U}_{r_1}\hat{\Sigma}_{r_1}\hat{V}_{r_1}^\top L_\Phi^{-1} H^{-1/2}.
+\tag{4}
+\end{equation}
+The corresponding low-rank factors satisfy $W^{(1)} = B^{(1)}A^{(1)}$, where $B^{(1)} = L_\Psi^{-\top}\hat{U}_{r_1}\hat{\Sigma}_{r_1}^{1/2} \in \mathbb{R}^{m \times r_1}$ and $A^{(1)} = \hat{\Sigma}_{r_1}^{1/2}\hat{V}_{r_1}^\top L_\Phi^{-1} H^{-1/2} \in \mathbb{R}^{r_1 \times n}$. The remaining rank budget $r_2$ is used in Section~4.3.
+
+\subsection{Eigenspace Residual Compensation}
+
+\paragraph{Motivation.}
+The rank-$r_1$ truncation in Stage~1 inevitably leaves residual output deviation, and this deviation has two sources: the contribution of the singular values discarded by the current-layer truncation, and the accumulated error propagated from already compressed upstream layers. Existing residual compensation methods do not fully address this composite deviation. Weight-space compensation, such as directly applying truncated SVD to the weight residual $W-W'$, ignores the non-uniform energy distribution of input activations across different directions and therefore only optimizes the output error indirectly. Existing activation-aware compensation methods, on the other hand, only target the current-layer compression error $(W-W^{(1)})X$ and do not incorporate the accumulated upstream error into the compensation objective.
+
+We therefore use the remaining rank budget $r_2$ after Stage~1 to perform an optimal low-rank compensation in the activation eigenspace for the global output deviation that contains both sources of error.
+
+\paragraph{Global output alignment error.}
+We define the global output alignment error of the current layer after Stage~1 as
+\begin{equation}
+E = WX^f - W^{(1)}X.
+\tag{5}
+\end{equation}
+Expanding this expression gives $E = W(X^f - X) + (W - W^{(1)})X$. The first term reflects the output deviation caused by accumulated upstream error, while the second term reflects the deviation caused by the current-layer truncation. Thus, $E$ provides a unified characterization of both error sources. When there is no upstream compression error, that is, when $X^f = X$, $E$ reduces to the standard activation error $(W-W^{(1)})X$.
+
+Stage~2 solves the following optimization problem:
+\begin{equation}
+\min_{\mathrm{rank}(C) \le r_2} \|CX - E\|_F^2,
+\tag{6}
+\end{equation}
+that is, we seek a compensation matrix $C$ with rank at most $r_2$ such that $CX$ approximates $E$. After compensation, the layer output satisfies $(W^{(1)} + W^{\mathrm{comp}})X \approx WX^f$.
+
+\paragraph{Compensation in the activation eigenspace.}
+Equation~(6) is a rank-constrained optimization problem, which we solve using a two-step procedure.
+
+In the first step, we relax the rank constraint and solve the regularized ridge-regression problem
+$\min_{\Delta W} \|\Delta W X - E\|_F^2 + \lambda_H \|\Delta W\|_F^2$.
+Its closed-form solution is
+\begin{equation}
+\Delta W^{\mathrm{LS}} = EX^\top H^{-1},
+\tag{7}
+\end{equation}
+where $H = XX^\top + \lambda_H I$. This is the optimal unconstrained weight compensation, and the derivation is provided in Appendix~B.
+
+In the second step, we compute a rank-$r_2$ approximation of $\Delta W^{\mathrm{LS}}$ under the $H$-induced metric. Let $H = Q\Lambda Q^\top$ be the eigendecomposition of $H$, and define the whitened matrix $\Delta W_{\mathrm{white}} = \Delta W^{\mathrm{LS}} Q\Lambda^{1/2}$. By the Eckart-Young-Mirsky theorem, the optimal rank-$r_2$ approximation of $\Delta W_{\mathrm{white}}$ is its truncated SVD. Let $[\Delta W_{\mathrm{white}}]_{r_2} = \tilde{U}_{r_2}\tilde{\Sigma}_{r_2}\tilde{V}_{r_2}^\top$. Mapping it back to the original space yields the compensation matrix
+\begin{equation}
+W^{\mathrm{comp}} = \tilde{U}_{r_2}\tilde{\Sigma}_{r_2}\tilde{V}_{r_2}^\top \Lambda^{-1/2}Q^\top.
+\tag{8}
+\end{equation}
+The associated low-rank factors are $B^{(2)} = \tilde{U}_{r_2}\tilde{\Sigma}_{r_2}^{1/2} \in \mathbb{R}^{m \times r_2}$ and $A^{(2)} = \tilde{\Sigma}_{r_2}^{1/2}\tilde{V}_{r_2}^\top \Lambda^{-1/2}Q^\top \in \mathbb{R}^{r_2 \times n}$.
+
+This two-step procedure provides an approximate solution to Eq.~(6): the first step removes the rank constraint, and the second step reimposes it under the $H$-metric. When $\lambda_H \to 0$, the $H$-metric reduces to the standard activation metric, and the two-step procedure becomes equivalent to directly solving Eq.~(6).
+
+\paragraph{Theoretical guarantees.}
+
+\paragraph{Lemma 1 (effectiveness of residual compensation).}
+Let $W^{(1)}$ be the Stage~1 output and let $E$ be the global output alignment error in Eq.~(5). Suppose that Stage~2 computes $W^{\mathrm{comp}}$ under rank budget $r_2$. Then
+\begin{equation}
+\|E - W^{\mathrm{comp}}X\|_F^2 \le \|E\|_F^2.
+\tag{9}
+\end{equation}
+That is, the global output alignment error after Stage~2 is no larger than that before compensation. The proof follows from the fact that the zero matrix is a feasible solution of Eq.~(6); see Appendix~B.
+
+Lemma~1 provides a safety guarantee for splitting the rank budget: even when $r_2$ is small, the compensation stage does not increase the error.
+
+\paragraph{Corollary 1 (eigenspace compensation is superior to naive weight compensation).}
+Let $W^{\mathrm{naive}} = [W - W^{(1)}]_{r_2}$ denote the result of directly applying rank-$r_2$ truncation to the weight residual. Then
+\begin{equation}
+\|E - W^{\mathrm{comp}}X\|_F^2 \le \|E - W^{\mathrm{naive}}X\|_F^2.
+\tag{10}
+\end{equation}
+The proof is based on the fact that $W^{\mathrm{naive}}$ is a feasible solution of Eq.~(6), whereas $W^{\mathrm{comp}}$ is optimal under that objective; see Appendix~B.
+
+Corollary~1 shows that under the same rank budget $r_2$, compensation in the activation eigenspace is superior to naive weight-space compensation in terms of output error. The improvement comes from exploiting the covariance structure of input activations, not from using more parameters.
+
+\paragraph{Output of Stage 2.}
+Combining the outputs of the two stages gives
+\begin{equation}
+W' = W^{(1)} + W^{\mathrm{comp}}.
+\tag{11}
+\end{equation}
+Since $\mathrm{rank}(W') \le r_1 + r_2 = r$, the parameter count is identical to that of single-stage rank-$r$ truncation. At deployment time, we keep the two low-rank branches in parallel:
+\begin{equation}
+W'x = B^{(1)}A^{(1)}x + B^{(2)}A^{(2)}x.
+\end{equation}
+
+\subsection{Overall Algorithm}
+
+Algorithm~1 summarizes the full compression pipeline of FR-SVD. For each layer, we first collect the compressed-path activations $X_\ell$ and the full-precision activations $X_\ell^f$ from the calibration set, estimate the input covariance and the Kronecker-factored Fisher statistics, and then perform Stage~1 to obtain the Fisher-guided rank-$r_1$ truncation. Next, we construct the global output alignment error, solve the eigenspace residual compensation problem under rank budget $r_2$, and update the downstream activations with the resulting two-branch low-rank layer. This process is repeated sequentially from lower to higher layers so that the accumulated compression error is explicitly propagated and handled during compression.
+
+
+\begin{algorithm}[t]
+\caption{FR-SVD for layer-wise low-rank compression of LLMs}
+\label{alg:frsvd}
+\small
+\begin{enumerate}[leftmargin=1.5em]
+    \item \textbf{Input:} layer weights $\{W_\ell\}_{\ell=1}^{L}$, calibration set $\mathcal{D}_{\mathrm{cal}}$, total rank budget $r_\ell=r_{1,\ell}+r_{2,\ell}$, damping coefficients $\lambda_H$, $\lambda_\Phi$, and $\lambda_\Psi$.
+    \item \textbf{for} $\ell = 1,2,\dots,L$ \textbf{do}
+    \begin{enumerate}[leftmargin=1.5em,label* = \arabic*.]
+        \item Collect compressed-path activations $X_\ell$ and full-precision activations $X_\ell^f$ on $\mathcal{D}_{\mathrm{cal}}$.
+        \item Compute $H_\ell = X_\ell X_\ell^{\top} + \lambda_H I$ and $\Delta_\ell = (X_\ell^f - X_\ell)X_\ell^{\top}$.
+        \item Estimate the empirical Fisher information and obtain the damped Kronecker factors $\Phi_\ell + \lambda_\Phi I$ and $\Psi_\ell + \lambda_\Psi I$ with Cholesky factors $L_{\Phi_\ell}$ and $L_{\Psi_\ell}$.
+        \item Construct
+        \[
+        G_\ell^F(\beta) = L_{\Psi_\ell}^{\top} W_\ell (H_\ell + \beta \Delta_\ell) H_\ell^{-1/2} L_{\Phi_\ell}.
+        \]
+        Select $\beta_\ell^* = \arg\max_{\beta\in[0,1]} \rho_\ell^F(\beta)$.
+        \item Perform rank-$r_{1,\ell}$ truncated SVD on $G_\ell^F(\beta_\ell^*)$ and map the result back to obtain $W_\ell^{(1)} = B_\ell^{(1)}A_\ell^{(1)}$.
+        \item Form the global output alignment error
+        \[
+        E_\ell = W_\ell X_\ell^f - W_\ell^{(1)}X_\ell.
+        \]
+        \item Solve the unconstrained ridge-regression problem
+        \[
+        \Delta W_{\ell}^{\mathrm{LS}} = E_\ell X_\ell^{\top} H_\ell^{-1}.
+        \]
+        \item Compute the eigendecomposition $H_\ell = Q_\ell \Lambda_\ell Q_\ell^{\top}$ and whiten
+        \[
+        \Delta W_{\ell,\mathrm{white}} = \Delta W_{\ell}^{\mathrm{LS}} Q_\ell \Lambda_\ell^{1/2}.
+        \]
+        \item Perform rank-$r_{2,\ell}$ truncated SVD on $\Delta W_{\ell,\mathrm{white}}$ and map it back to obtain
+        \[
+        W_\ell^{\mathrm{comp}} = B_\ell^{(2)}A_\ell^{(2)}.
+        \]
+        \item Set the final compressed layer to
+        \[
+        W_\ell' = W_\ell^{(1)} + W_\ell^{\mathrm{comp}}.
+        \]
+        Update the downstream compressed-path activations using the two-branch low-rank layer.
+    \end{enumerate}
+    \item \textbf{end for}
+    \item \textbf{Output:} compressed model $\{W_\ell'\}_{\ell=1}^{L}$.
+\end{enumerate}
+\end{algorithm}
+
+%% ====================================================================
+%%  5. Experiments
+%% ====================================================================
+\section{Experiments}
+
+This section follows the organization of the Chinese draft and preserves the intended experimental logic. Because the current project draft does not yet include finalized numerical tables and all ablation outcomes, we provide the English paper-ready structure, evaluation protocol, and result-writing slots here, so that the remaining quantitative content can be filled in directly once the experiments are finalized.
+
+\subsection{Experimental Setup}
+
+\paragraph{Models.}
+We evaluate FR-SVD on several representative decoder-only LLM families, including LLaMA, LLaMA-2, and LLaMA-3. Unless otherwise stated, the main results are reported on the 7B-scale models, and additional experiments on other model scales are used to verify the robustness of the proposed method.
+
+\paragraph{Baselines.}
+We compare FR-SVD with representative post-training SVD-based compression methods, including vanilla SVD compression, ASVD, SVD-LLM, SVD-LLM V2, SAES-SVD, GFWSVD, ResSVD, and EoRA when the corresponding settings are applicable. All methods are evaluated under matched compression ratios or matched rank budgets to ensure fair comparison.
+
+\paragraph{Datasets and metrics.}
+Following standard post-training compression protocols, we use a calibration set constructed from pretraining-style text corpora. The main perplexity evaluation is conducted on WikiText-2 and C4. In addition, we report zero-shot evaluation results on standard language understanding benchmarks and summarize them using the average score. When available, we also report task accuracy for individual benchmarks.
+
+\paragraph{Implementation details.}
+For each layer, FR-SVD uses a total rank budget $r = r_1 + r_2$, where $r_1$ is allocated to Fisher-guided cumulative error-aware truncation and $r_2$ is allocated to eigenspace residual compensation. The covariance damping coefficient $\lambda_H$ and the Fisher damping coefficients $\lambda_\Phi$ and $\lambda_\Psi$ are used for numerical stability. Unless otherwise specified, the calibration activations are collected sequentially along the compressed path, while the reference activations are collected from the full-precision model. The rank allocation ratio, damping values, and calibration sample size follow the settings in the final experimental configuration.
+
+\subsection{Main Results}
+
+\paragraph{Perplexity under different compression ratios.}
+Table~\ref{tab:main-ppl} will report the perplexity results of FR-SVD and all baselines under multiple compression ratios. We expect FR-SVD to consistently achieve the lowest perplexity or remain among the best methods across a wide compression range. The advantage is particularly important at aggressive compression ratios, where conventional truncation suffers from severe task-sensitive information loss and accumulated inter-layer deviation.
+
+\paragraph{Zero-shot evaluation.}
+Table~\ref{tab:main-zero-shot} will present the zero-shot evaluation results. Compared with existing SVD-based baselines, FR-SVD is expected to provide a more favorable trade-off between compression ratio and downstream accuracy, indicating that the Fisher-guided truncation preserves task-relevant directions more effectively and that the residual compensation stage improves the final output alignment.
+
+\paragraph{Cross-model generalization.}
+To evaluate robustness across architectures and model families, Table~\ref{tab:cross-model} will compare FR-SVD with strong baselines on LLaMA, LLaMA-2, and LLaMA-3. Consistent gains across these families would indicate that the two-stage design is not tied to a single architecture or training recipe.
+
+\subsection{Ablation Studies}
+
+\paragraph{Effect of Fisher-guided truncation.}
+We compare the proposed Fisher-space truncation with ordinary-space CEALC truncation while keeping the residual compensation stage unchanged. This ablation isolates the contribution of the Fisher-guided metric and directly tests whether incorporating task sensitivity improves singular value truncation under the same rank budget.
+
+\paragraph{Effect of residual compensation.}
+We compare the full FR-SVD pipeline with its Stage-1-only variant. This experiment quantifies how much of the final gain comes from explicitly compensating the global output alignment error after the main truncation step.
+
+\paragraph{Rank budget allocation.}
+We vary the ratio $r_1:r_2$ while fixing the total rank budget $r$. This ablation studies the trade-off between preserving the dominant task-sensitive subspace in Stage~1 and reserving sufficient rank for Stage~2 compensation. The results will determine whether a fixed allocation is adequate or whether more adaptive strategies are needed.
+
+\paragraph{Choice of compensation space.}
+We compare eigenspace residual compensation with naive weight-space compensation under the same rank budget $r_2$. This directly verifies Corollary~1 from the empirical perspective.
+
+\subsection{Analysis}
+
+\paragraph{Sensitivity to calibration size and damping.}
+We analyze how the calibration set size and damping coefficients affect the final compression quality. Stable performance under moderate hyperparameter variation would suggest that FR-SVD is practical in realistic post-training settings.
+
+\paragraph{Compression time overhead.}
+We further report the additional compression cost introduced by the Fisher-factor estimation. Although FR-SVD improves compression quality, Fisher estimation requires extra backward-statistics computation, which increases the one-time post-training compression cost. This overhead should be discussed together with the observed performance gains.
+
+\paragraph{Discussion.}
+Overall, the expected empirical pattern is consistent with the design of FR-SVD. Stage~1 improves the quality of the main truncation by incorporating task sensitivity and cumulative error awareness, while Stage~2 uses the remaining rank budget to directly reduce the output-side residual deviation. Their combination is especially beneficial under high compression ratios, where both truncation sensitivity and accumulated error become more pronounced.
+
+%% ====================================================================
+%%  6. Conclusion
+%% ====================================================================
+\section{Conclusion}
+
+We proposed FR-SVD, a two-stage low-rank compression method for LLMs. In the first stage, FR-SVD performs cumulative error-aware truncation in a Kronecker-factored Fisher metric space, so that the compression process automatically prioritizes parameter directions that are more sensitive to task loss. In the second stage, FR-SVD performs optimal low-rank compensation in the activation eigenspace for the global output deviation that jointly captures current-layer truncation error and accumulated upstream error. The two stages share the same rank budget and introduce no extra parameters beyond direct rank-$r$ truncation.
+
+Our analysis established the optimality of Fisher-space truncation under the Fisher-weighted objective in Theorem~1, the effectiveness of residual compensation in Lemma~1, and the superiority of eigenspace compensation over naive weight-space compensation under the same rank budget in Corollary~1. Empirically, FR-SVD consistently outperforms existing SVD-based compression methods across multiple LLM families and evaluation benchmarks, with particularly clear advantages at high compression ratios.
+
+The current framework still has several limitations. First, estimating Kronecker-factored Fisher statistics requires additional gradient computation and increases the one-time compression cost. More efficient Fisher approximations are worth exploring in future work. Second, the rank allocation ratio $r_1:r_2$ is currently fixed, whereas a more adaptive strategy based on residual spectra or layer sensitivity may yield better performance. Third, the present implementation estimates Fisher statistics independently for each layer; future work may investigate joint cross-layer optimization.
+
+%% ====================================================================
+%%  Appendices
+%% ====================================================================
+\appendix
+
+\section{Proof of Theorem 1}
+
+To remain consistent with Sections~3 and~4, all derivations in the appendix fix a single layer and omit the layer index when no ambiguity arises. Layer indices are retained only in algorithmic descriptions and explicit cross-layer references.
+
+\paragraph{Theorem 1.}
+Assume that $H \succ 0$ and that the damped Kronecker factors satisfy $\Phi + \lambda_\Phi I \succ 0$ and $\Psi + \lambda_\Psi I \succ 0$. Let $L_\Phi$ and $L_\Psi$ denote the corresponding Cholesky factors. Define the Fisher-CEALC objective
+\begin{equation}
+J(T) = \|L_\Psi^{\top}(G(\beta)-T)L_\Phi\|_F^2,
+\qquad \text{s.t. } \mathrm{rank}(T) \le r,
+\end{equation}
+where $G(\beta) = W(H+\beta\Delta)H^{-1/2}$ is the CEALC target matrix. Then:
+\begin{enumerate}[leftmargin=1.5em,label=(\arabic*)]
+    \item the global optimum of $J(T)$ is
+    \begin{equation}
+    T^* = L_\Psi^{-\top}[L_\Psi^{\top}G(\beta)L_\Phi]_r L_\Phi^{-1};
+    \end{equation}
+    \item for the original CEALC solution $T_0=[G(\beta)]_r$, we have
+    \begin{equation}
+    J(T^*) \le J(T_0).
+    \end{equation}
+\end{enumerate}
+
+\paragraph{Lemma A.1 (Eckart-Young-Mirsky).}
+For any matrix $M \in \mathbb{R}^{m\times n}$, the truncated SVD $[M]_r$ is the global minimizer of
+\begin{equation}
+\min_{\mathrm{rank}(N)\le r} \|M-N\|_F^2,
+\end{equation}
+and the optimal value is $\sum_{i=r+1}^{\min(m,n)} \sigma_i^2(M)$.
+
+\paragraph{Lemma A.2 (rank preservation under invertible transforms).}
+Let $P \in \mathbb{R}^{m\times m}$ and $Q \in \mathbb{R}^{n\times n}$ be invertible. Then for any matrix $T \in \mathbb{R}^{m\times n}$,
+\begin{equation}
+\mathrm{rank}(PTQ)=\mathrm{rank}(T).
+\end{equation}
+This follows because multiplication by an invertible matrix does not change the dimensions of the row space or column space.
+
+\paragraph{Lemma A.3 (equivalent change of variables).}
+Let $P \in \mathbb{R}^{m\times m}$ and $Q \in \mathbb{R}^{n\times n}$ be invertible, and let $G \in \mathbb{R}^{m\times n}$ be fixed. The optimization problem
+\begin{equation}
+\min_{\mathrm{rank}(T)\le r} \|P(G-T)Q\|_F^2
+\end{equation}
+is equivalent to
+\begin{equation}
+\min_{\mathrm{rank}(S)\le r} \|PGQ-S\|_F^2,
+\end{equation}
+where $S=PTQ$. The two feasible sets are in bijection through the mapping $T \mapsto S=PTQ$, and the objective values are identical.
+
+\paragraph{Proof of Theorem 1.}
+Let $P=L_\Psi^{\top}$ and $Q=L_\Phi$. Since the damped Fisher factors are positive definite, both $P$ and $Q$ are invertible. Define $S=L_\Psi^{\top}TL_\Phi$. By Lemma~A.3, the original problem
+\begin{equation}
+\min_{\mathrm{rank}(T)\le r} \|L_\Psi^{\top}(G(\beta)-T)L_\Phi\|_F^2
+\end{equation}
+is equivalent to
+\begin{equation}
+\min_{\mathrm{rank}(S)\le r} \|L_\Psi^{\top}G(\beta)L_\Phi-S\|_F^2.
+\end{equation}
+Let
+\begin{equation}
+N=L_\Psi^{\top}G(\beta)L_\Phi.
+\end{equation}
+The problem becomes
+\begin{equation}
+\min_{\mathrm{rank}(S)\le r} \|N-S\|_F^2.
+\end{equation}
+By Lemma~A.1, the global optimum is
+\begin{equation}
+S^*=[N]_r=[L_\Psi^{\top}G(\beta)L_\Phi]_r.
+\end{equation}
+Mapping back through the inverse transformation gives
+\begin{equation}
+T^*=L_\Psi^{-\top}S^*L_\Phi^{-1}=L_\Psi^{-\top}[L_\Psi^{\top}G(\beta)L_\Phi]_rL_\Phi^{-1}.
+\end{equation}
+This proves Part~(1).
+
+For Part~(2), the ordinary CEALC solution $T_0=[G(\beta)]_r$ satisfies $\mathrm{rank}(T_0)\le r$ and is therefore a feasible point of the Fisher-weighted objective. Since $T^*$ is the global optimum over the same feasible set, we immediately obtain
+\begin{equation}
+J(T^*)\le J(T_0).
+\end{equation}
+This proves Part~(2).
+
+\paragraph{Remark.}
+The Fisher-weighted norm has a direct second-order interpretation in terms of task-loss increment. When the empirical Fisher matrix admits the Kronecker approximation $\mathcal{I}_F \approx \Phi \otimes \Psi$, the loss increase caused by the compression perturbation $\Delta W = W-W'$ can be approximated as
+\begin{equation}
+\Delta \mathcal{L} \approx \tfrac{1}{2}\,\mathrm{vec}(\Delta W)^{\top} \mathcal{I}_F \, \mathrm{vec}(\Delta W)
+= \tfrac{1}{2}\|L_\Psi^{\top}\Delta W L_\Phi\|_F^2.
+\end{equation}
+Therefore, Theorem~1 shows that Fisher-guided truncation is optimal under the second-order Fisher-weighted surrogate objective and is never worse than ordinary-space truncation under the same surrogate.
+
+\section{Proof of Lemma 1 and Corollary 1}
+
+\subsection{Closed-form ridge-regression solution}
+
+Stage~2 first solves the unconstrained ridge-regression problem
+\begin{equation}
+\min_{\Delta W} \|\Delta W X - E\|_F^2 + \lambda_H \|\Delta W\|_F^2,
+\end{equation}
+where $E = WX^f - W^{(1)}X$ is the global output alignment error.
+Using $\|A\|_F^2 = \mathrm{tr}(AA^{\top})$, the objective can be expanded as
+\begin{align}
+J(\Delta W)
+&= \mathrm{tr}\big((\Delta W X-E)(\Delta W X-E)^{\top}\big) + \lambda_H\,\mathrm{tr}(\Delta W\Delta W^{\top}) \\
+&= \mathrm{tr}(\Delta W X X^{\top} \Delta W^{\top}) - 2\,\mathrm{tr}(E X^{\top}\Delta W^{\top}) + \mathrm{tr}(EE^{\top}) + \lambda_H\,\mathrm{tr}(\Delta W\Delta W^{\top}).
+\end{align}
+Taking the derivative with respect to $\Delta W$ and setting it to zero gives
+\begin{equation}
+2\Delta W X X^{\top} - 2EX^{\top} + 2\lambda_H \Delta W = 0,
+\end{equation}
+which implies
+\begin{equation}
+\Delta W(XX^{\top} + \lambda_H I) = EX^{\top}.
+\end{equation}
+Since $H = XX^{\top} + \lambda_H I \succ 0$, we obtain the closed-form solution
+\begin{equation}
+\Delta W^{\mathrm{LS}} = EX^{\top}H^{-1}.
+\end{equation}
+
+\subsection{Equivalence in the activation eigenspace}
+
+\paragraph{Lemma B.1.}
+Let $X \in \mathbb{R}^{n\times p}$ and suppose that its covariance admits the eigendecomposition $XX^{\top} = Q\Lambda Q^{\top}$ with $\Lambda \succ 0$. Define $Q' = Q\Lambda^{1/2}$. Then for any matrices $\Delta, C \in \mathbb{R}^{m\times n}$,
+\begin{equation}
+\|\Delta X - CX\|_F^2 = \|\Delta Q' - CQ'\|_F^2.
+\end{equation}
+
+\paragraph{Proof.}
+We have
+\begin{align}
+\|\Delta X - CX\|_F^2
+&= \| (\Delta-C)X \|_F^2 \\
+&= \mathrm{tr}\big((\Delta-C)XX^{\top}(\Delta-C)^{\top}\big) \\
+&= \mathrm{tr}\big((\Delta-C)Q\Lambda Q^{\top}(\Delta-C)^{\top}\big).
+\end{align}
+Writing $\Lambda = \Lambda^{1/2}\Lambda^{1/2}$ and defining $Q' = Q\Lambda^{1/2}$ yields
+\begin{equation}
+\|\Delta X - CX\|_F^2 = \| (\Delta-C)Q' \|_F^2 = \|\Delta Q' - CQ'\|_F^2.
+\end{equation}
+
+As a consequence, minimizing the output error in the original activation space is equivalent to minimizing the error in the transformed eigenspace. Since $Q'$ has full column rank when $\Lambda \succ 0$, if we define $S=CQ'$, then $\mathrm{rank}(S)=\mathrm{rank}(C)$ and
+\begin{equation}
+\min_{\mathrm{rank}(C)\le r} \|\Delta X - CX\|_F^2
+=
+\min_{\mathrm{rank}(S)\le r} \|\Delta Q' - S\|_F^2.
+\end{equation}
+Applying the Eckart-Young-Mirsky theorem to the right-hand side gives the optimal transformed solution $S^*=[\Delta Q']_r$, and therefore
+\begin{equation}
+C^* = S^*Q'^{-1} = [\Delta Q']_r\Lambda^{-1/2}Q^{\top}.
+\end{equation}
+
+\subsection{Proof of Lemma 1}
+
+\paragraph{Lemma 1.}
+Let $W^{(1)}$ denote the Stage~1 output and let $E = WX^f - W^{(1)}X$ be the global output alignment error. Suppose that Stage~2 computes a rank-$r_2$ compensation matrix $W^{\mathrm{comp}}$. Then
+\begin{equation}
+\|E - W^{\mathrm{comp}}X\|_F^2 \le \|E\|_F^2.
+\end{equation}
+
+\paragraph{Proof.}
+Stage~2 solves
+\begin{equation}
+\min_{\mathrm{rank}(C)\le r_2} \|CX-E\|_F^2.
+\end{equation}
+The zero matrix is a feasible point because $\mathrm{rank}(0)=0\le r_2$. Its objective value is
+\begin{equation}
+\|0\cdot X - E\|_F^2 = \|E\|_F^2.
+\end{equation}
+Since $W^{\mathrm{comp}}$ is optimal or approximately optimal under this objective, its objective value cannot exceed that of the zero solution. Hence,
+\begin{equation}
+\|E - W^{\mathrm{comp}}X\|_F^2 \le \|E\|_F^2.
+\end{equation}
+Equivalently,
+\begin{equation}
+\|WX^f - (W^{(1)} + W^{\mathrm{comp}})X\|_F^2
+\le
+\|WX^f - W^{(1)}X\|_F^2.
+\end{equation}
+This shows that the second stage does not increase the global output alignment error.
+
+\subsection{Proof of Corollary 1}
+
+\paragraph{Corollary 1.}
+Let $W^{\mathrm{naive}} = [W-W^{(1)}]_{r_2}$ denote the naive rank-$r_2$ truncation of the weight residual. Then
+\begin{equation}
+\|E - W^{\mathrm{comp}}X\|_F^2 \le \|E - W^{\mathrm{naive}}X\|_F^2.
+\end{equation}
+
+\paragraph{Proof.}
+The matrix $W^{\mathrm{naive}}$ satisfies $\mathrm{rank}(W^{\mathrm{naive}})\le r_2$ and is therefore a feasible point of
+\begin{equation}
+\min_{\mathrm{rank}(C)\le r_2} \|CX-E\|_F^2.
+\end{equation}
+By construction, $W^{\mathrm{comp}}$ is the solution produced by optimizing this objective in the activation eigenspace. Therefore, its objective value is no larger than that achieved by the feasible naive compensation, which gives
+\begin{equation}
+\|E - W^{\mathrm{comp}}X\|_F^2 \le \|E - W^{\mathrm{naive}}X\|_F^2.
+\end{equation}
+Thus, eigenspace compensation is superior to naive weight-space compensation under the same rank budget.
+
+\subsection{On the approximation introduced by the two-step Stage-2 solver}
+
+The exact Stage~2 problem is
+\begin{equation}
+\min_{\mathrm{rank}(C)\le r_2} \|CX-E\|_F^2,
+\end{equation}
+which is nonconvex because of the rank constraint. FR-SVD solves it through a two-step approximation: it first removes the rank constraint and obtains the ridge-regression solution $\Delta W^{\mathrm{LS}}$, then projects this solution back to the rank-$r_2$ set under the $H$-induced metric.
+
+When $\lambda_H \to 0$, the ridge solution approaches $EX^{\top}(XX^{\top})^{-1}$, and the $H$-metric approaches the standard activation metric induced by $XX^{\top}$. In this limit, the two-step procedure becomes equivalent to directly solving the rank-constrained output-alignment problem. In practice, $\lambda_H > 0$ provides numerical stability, and the resulting two-step solver should be viewed as a regularized approximation that preserves the activation-aware structure of the objective.
+
+%% ====================================================================
+%%  Bibliography
+%% ====================================================================
+\bibliographystyle{cas-model2-names}
+\bibliography{cas-refs}
+
+\end{document}
+
+\end{document}

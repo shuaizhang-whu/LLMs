@@ -1,0 +1,23 @@
+\section{Related Works}
+\label{sec:related-works}
+\textbf{LLM Agents.}
+Large language models (LLMs) have demonstrated strong reasoning capabilities through multi-step reasoning paradigms such as Chain-of-Thought (CoT)~\cite{wei2022chain}, enabling them to solve increasingly complex tasks.
+Building on this, existing works~\cite{yao2022react, sarukkai2025react2, rawat2025pre, zhang2024codeagent} have considered LLMs as sequential decision-making policies, referred to as agents, that interact with external environments.
+These approaches formalize agent execution as an iterative reason–act–observe loop, where the agent reasons about the next action, invokes external tools, and conditions on the resulting observations to guide subsequent steps.
+Several studies~\cite{schick2023toolformer, qu2025toollearning, zhang2024codeagent} have further shown that LLMs can be augmented to invoke external tools such as web search, code execution, and databases, thereby extending their capabilities beyond training knowledge. More recently, the definition of tools has been generalized to include other agents, enabling task decomposition~\cite{fourney2024magentic, zhang2025agentorchestra}, and intermediate result verification~\cite{lifshitz2025multi}.
+For example, recent works~\cite{zhang2025agentastool, jiang2025agentadaptation} treat agents themselves as callable tools, allowing LLM agents to coordinate with specialized sub-agents on a per-task basis.
+Despite these advances in tool usage within agentic workflows, most existing approaches treat the time spent waiting for observations as an unavoidable delay.
+In this work, we view this waiting period as an opportunity for additional computation to improve performance and propose a novel inference-time method called \mname.
+
+
+\textbf{Idle Time in LLM Agents.}
+As LLM agents interact with tools and external environments, execution time is often dominated not by LLM inference itself, but by tool execution and environment response delays.
+To leverage this delay, most existing works~\cite{gim2024async1, li2025continuum, biswas2026sutradhara} focus on improving system efficiency by overlapping independent computations or through system-level execution management.
+For instance, \citet{gim2024async1} and \citet{biswas2026sutradhara} explore asynchronous and non-blocking function-calling mechanisms that allow LLM inference to proceed without waiting for tool execution to complete, while \citet{li2025continuum} observes that frequent tool invocations incur significant overhead due to cache eviction and rescheduling between turns, and proposes cache-aware scheduling.
+A parallel line of work targets latency reduction through speculation: \citet{ye2026speculative} and \citet{nichols2025optimizing} introduce predict-and-verify paradigms in which a fast speculator executes likely-correct actions or tool calls that a slower target model verifies, while \citet{hua2025interactive} applies the same two-model speculation pattern to multi-step planning.
+These methods can be viewed as single-mode speculation: they assume the current trajectory will succeed and commit to a single speculative continuation along that path.
+In contrast, \mname{} models the inherent uncertainty of future observations through complementary progressive and recovery drafts, and exploits idle time to improve task performance rather than to amortize already-required computation.
+Recent work on \textit{Sleep-Time Compute}~\cite{lin2025sleeptime} partially addresses this performance gap by treating idle periods as opportunities for pre-computation that generates auxiliary context. However, it does not explicitly account for the highly variable idle-time budgets in agent executions and relies on the restrictive assumption that future query patterns are predictable, which rarely holds in agentic scenarios where tool-call observations are inherently uncertain.
+In this paper, we propose a robust solution that effectively exploits idle time to improve agent performance and can be seamlessly applied across diverse, realistic agentic scenarios.
+
+

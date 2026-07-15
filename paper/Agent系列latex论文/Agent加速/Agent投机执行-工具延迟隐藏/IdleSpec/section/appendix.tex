@@ -1,0 +1,463 @@
+\newpage
+\appendix
+\onecolumn
+\section{Additional Experimental Details} 
+\label{sec:appendix_details}
+
+\subsection{Datasets}
+\label{sec:appendix_datasets}
+We use three benchmarks that span complementary types of agentic execution: tool-using question answering (GAIA), multi-hop search (FRAMES), and machine-learning engineering (MLE-Bench). Below we describe the protocol for each.
+
+\paragraph{GAIA and FRAMES.}
+For GAIA, we evaluate on the full validation split across Levels 1--3, comprising 53, 86, and 26 tasks for Level~1, Level~2, and Level~3, respectively (165 tasks in total). For FRAMES~\cite{krishna2024frames}, a multi-hop question answering benchmark in which agents are repeatedly invoked as tools to perform sequential search-based reasoning, we use the first 50 samples for evaluation; this setup induces non-trivial idle periods on the orchestrator side. We use the same agent stack and tool budgets across all methods. For open-source models (Qwen3.5-4B and Gemma4-E4B), inference is served through 16 vLLM replicas on NVIDIA A6000 GPUs behind a load-balancing proxy; for Gemini-2.5-Flash, we use the official Vertex AI API.
+
+\paragraph{MLE-Bench.}
+We evaluate on MLE-Bench Lite~\cite{chan2024mle-bench}, i.e., the benchmark's Low-complexity split, which consists of 22 competitions. We follow the standard MLE-Bench Lite protocol with a 24-hour wall-clock budget per task for all methods. Each run starts from the same initial task state and follows the benchmark's standard interaction protocol. For every task, we report (i) whether the agent produces a submission (\emph{Made Submission}), (ii) whether the submission is accepted as valid by the benchmark (\emph{Valid Submission}), and (iii) the achieved leaderboard tier (\emph{Above Median}, \emph{Bronze}, \emph{Silver}, \emph{Gold}, and \emph{Any Medal}), computed using MLE-Bench's evaluation rules. All methods use Gemini-2.5-Flash as the agent backbone (via the Vertex AI API), the same budget and stopping criteria, and an identical software stack: a single GPU (NVIDIA RTX 3090) and 4 CPUs are provisioned to the agent for code execution and local tool use, with dependency versions held fixed across methods.
+
+\subsection{Architectures}
+\label{sec:appendix_model_settings}
+Across all experiments, we consider Gemini-2.5-Flash\footnote{\url{https://docs.cloud.google.com/vertex-ai/generative-ai/docs/models/gemini/2-5-flash}}, Qwen3.5-4B\footnote{\url{https://huggingface.co/Qwen/Qwen3.5-4B}}, or Gemma4-E4B\footnote{\url{https://huggingface.co/google/gemma-4-E4B}}.
+For agent frameworks, we use OAgents~\citep{zhu2025oagents} for GAIA 
+and FRAMES, which provides a standard tool suite including text and 
+audio processing, web browsing, and specialized sub-agents such as a 
+dedicated web agent. For MLE-Bench, we use OpenHands~\citep{wang2025openhands},
+which supports code generation and execution in interactive environments.
+
+
+\subsection{Evaluation Protocol} By default, we use standard decoding with temperature $0.6$ and top-$p$ $1.0$. For Gemma4-E4B, we instead follow the recommended configuration on its official model card: temperature $1.0$, top-$p$ $0.95$, and top-$k$ $64$.
+For GAIA and FRAMES, we report the mean across three random seeds for every (method, model) configuration. For MLE-Bench, we report results from a single seed since each run already spans the standard 24-hour budget per task, which provides sufficient stability.
+
+\subsection{Implementation Details}
+\label{sec:appendix_implementation_details}
+\label{sec:appendix_prompts}
+\label{sec:appendix_idlespec}
+
+\paragraph{\methodname.}
+We cap the number of candidate plans retained per idle window at $K{=}5$ across all experiments to prevent context-window overflow and keep the aggregation cost bounded; When a tool call returns before a draft finishes generating, 
+the in-flight generation is interrupted and the partial draft is discarded. 
+\methodname uses four prompts: a progressive drafting prompt (Figure~\ref{fig:prompt_progressive}); a recovery drafting prompt (Figure~\ref{fig:prompt_recovery}); a forecast prompt (Figure~\ref{fig:prompt_forecast}); an aggregation prompt (Figure~\ref{fig:prompt_aggregation}). All prompt templates are collected in Appendix~\ref{sec:appendix_prompt_templates}.
+
+\paragraph{Baselines.}
+\label{sec:appendix_baselines}
+We compare \methodname against two baselines: \emph{Sequential Revision} (Figure~\ref{fig:prompt_seqrev}), which reflects on the latest observation to propose the next step, and \emph{Sleep-Time Compute} (Figure~\ref{fig:prompt_sleep_time}), which performs free-form inference over
+a partially revealed problem during idle periods. We use the prompt released in the original Sleep-Time Compute repository\footnote{\url{https://github.com/letta-ai/sleep-time-compute}}, adapted from its original math-oriented template via a minimal modification: we apply the instruction
+\textit{``The original prompt is designed for mathematical problem solving. Please minimally adapt it to better support \{task\}.''}, where \texttt{\{task\}} is replaced with \emph{``general agent problem''} for GAIA and \emph{``machine learning engineering''} for MLE-Bench. This adaptation introduces only small wording changes (e.g., replacing math-specific terms such as ``calculations'' with task-relevant terms like ``commands'' in MLE-Bench), while preserving the overall structure of the original prompt. A sensitivity analysis confirming that this baseline is robust to such phrasing variations is provided in Appendix~\ref{sec:appendix_prompt_sensitivity}.
+
+
+\subsection{Algorithm Pseudocode}
+\label{sec:appendix_algorithm}
+\input{tables/algorithm}
+
+\subsection{Broader Impact}
+\label{sec:appendix_broader_impact}
+\methodname{} reframes idle time during tool execution as a usable computational 
+resource. On the positive side, it improves the achievable accuracy of agent 
+systems within a fixed wall-clock budget without modifying the underlying model, 
+which can lower the latency cost of capable agent execution and improve 
+accessibility for latency-sensitive deployments.
+
+On the negative side, the accuracy gains come from additional compute spent 
+during the idle window (Appendix~\ref{sec:appendix_limitations}). Although 
+end-to-end latency is unchanged, the underlying hardware is not free during 
+idle periods, so this overhead translates into higher aggregate energy 
+consumption and carbon footprint per task at scale.
+
+\subsection{Limitations}
+\label{sec:appendix_limitations}
+While \methodname{} demonstrates consistent gains across diverse agentic scenarios, 
+its effectiveness depends on the presence of sufficient idle time during tool 
+execution. When tool calls return faster than a single LLM reasoning step, 
+\methodname{} falls back to the vanilla baseline. In addition, although 
+\methodname{} adds only minimal end-to-end latency overhead, the speculative 
+drafting consumes additional LLM tokens during the idle window, which translates 
+into higher per-task compute and monetary cost when running on metered APIs. 
+For deployments where token cost rather than latency is the binding constraint, 
+this trade-off should be considered explicitly.
+
+\subsection{Future Work}
+\label{sec:appendix_future_work}
+We identify several promising directions for future work. A particularly 
+compelling avenue is to decouple idle-time computation from the primary 
+proprietary model by leveraging a small, specialized local model during 
+idle periods. This setup may substantially reduce API inference cost and 
+energy consumption while preserving the performance gains of the proprietary 
+model on the critical path. More elaborate scheduling policies for idle time 
+are also an interesting direction, including dynamically allocating speculative 
+budgets based on task uncertainty or difficulty. Furthermore, extending 
+\methodname{} beyond ReAct-style frameworks remains an open direction, 
+including complex multi-agent paradigms and asynchronous or parallel 
+tool-calling settings. Even when multiple tool calls are issued concurrently, 
+the agent typically remains idle until the slowest call returns, and reasoning 
+chains with sequential dependencies---such as multi-hop retrieval in GAIA or 
+iterative code-debugging in MLE-Bench---can rarely be fully parallelized.
+
+
+
+
+
+
+
+
+\section{Additional Analysis}
+\label{sec:appendix_additional_analysis}
+
+\subsection{Idle-Time Utilization vs.\ Accuracy}
+\label{sec:appendix_idle_utilization}
+
+\paragraph{Definition.}
+For a task (episode) with $K$ tool-call steps, let $t^{(k)}_{\text{idle}}$ denote the tool execution duration of step $k$ (during which the agent is otherwise idle), and let $t^{(k)}_{\text{LLM-on-idle}} \le t^{(k)}_{\text{idle}}$ denote the portion of that interval actually spent on LLM computation (e.g., issuing requests, waiting on responses, and consuming generated drafts). We define the per-task \emph{idle-time utilization} as
+\begin{equation}
+\mathrm{ITU}_{\text{task}} = \frac{\sum_{k=1}^{K} t^{(k)}_{\text{LLM-on-idle}}}{\sum_{k=1}^{K} t^{(k)}_{\text{idle}}} \in [0, 1],
+\label{eq:itu}
+\end{equation}
+so that a method that performs no idle-time computation has $\mathrm{ITU}_{\text{task}} = 0$, while perfect overlap of LLM work with the idle interval yields $\mathrm{ITU}_{\text{task}} = 1$. We report the average of $\mathrm{ITU}_{\text{task}}$ over all tasks (and seeds, when applicable) for each (method, benchmark) configuration.
+
+\begin{figure}[t]
+\centering
+\begin{minipage}[c]{0.59\linewidth}
+\centering
+\includegraphics[width=0.75\linewidth]{figures/gaia_scatter.pdf}
+\captionof{figure}{\textbf{Idle-Time Utilization (ITU) vs.\ Accuracy Gain ($\Delta$).} GAIA with Qwen3.5-4B, one point per difficulty level.}
+\label{fig:gaia-scatter}
+\end{minipage}\hfill
+\begin{minipage}[c]{0.4\linewidth}
+\centering
+\captionof{table}{\textbf{Ultra-Short Idle-Time Ratio.} Average fraction of tool calls per task whose execution time is shorter than a single LLM reasoning step on GAIA. The reasoning-step duration used as the threshold is measured from Gemini-2.5-Flash.}
+\label{tab:ultra-short-ratio}
+\vspace{0.6em}
+\begin{tabular}{cc}
+\toprule
+Level & Ultra-short ratio \\
+\midrule
+1 & 0.25 \\
+2 & 0.26 \\
+3 & 0.27 \\
+\bottomrule
+\end{tabular}
+\end{minipage}
+\end{figure}
+
+Figure~\ref{fig:gaia-scatter} illustrates the relationship between idle-time utilization and the resulting accuracy gain over the vanilla baseline on GAIA with Qwen3.5-4B. \methodname{} reaches 34.6\% idle-time utilization on average and turns it into consistent positive gains across all three difficulty levels (up to +10.3 points on Level~3), whereas Sleep-Time Compute utilizes only 13.2\% of the available idle time and even degrades accuracy at every level. This indicates that performance improvements are not solely driven by how much idle time is used but also by how it is exploited, and reflects the fact that Sleep-Time Compute does not account for variation in tool-call durations.
+
+\subsection{Ultra-Short Idle-Time Ratio}
+\label{sec:appendix_idle_length}
+The body's analysis of idle-time length (Section~\ref{sec:ablation}) bins
+GAIA samples by their \emph{ultra-short ratio}: the fraction of a
+sample's tool calls whose execution time is shorter than a single LLM
+reasoning step. Table~\ref{tab:ultra-short-ratio} reports the average
+ultra-short ratio per GAIA difficulty level (25--27\% across Levels 1--3),
+confirming that most tool calls leave usable idle time for speculative
+drafting. The accuracy impact of binning by this ratio is reported in
+the body as Table~\ref{tab:ultra-short-impact}.
+
+\subsection{Extended Efficiency Analysis}
+\label{sec:appendix_extended_cost}
+We conduct an extended cost analysis on the full GAIA dataset with Gemini-2.5-Flash to characterize the wall-clock and token cost of \methodname relative to the vanilla baseline. To obtain stable per-task latency measurements, all numbers in this table come from a single fixed seed run in an isolated environment (no co-located workloads, fixed concurrency, identical tool stack across methods). Table~\ref{tab:extended_efficiency} reports the results across the three GAIA difficulty levels: \methodname matches the vanilla baseline in end-to-end latency at every level, while delivering consistent accuracy gains (up to +7.7 points on Level~3).
+
+Like other test-time scaling approaches, \methodname spends additional computation to improve task performance. The key distinction is \emph{where} this computation is placed: by scheduling drafting onto otherwise wasted idle periods rather than serializing it on the critical path, \methodname turns idle time into accuracy gains with only minimal end-to-end latency overhead, attaining accuracy comparable to test-time scaling methods while substantially shortening wall-clock time (Table~\ref{tab:token-analysis}).
+
+\begin{table}[h]
+\centering
+\small
+\caption{\textbf{Extended Efficiency Analysis on the Full GAIA Dataset with Gemini-2.5-Flash} (single fixed seed, isolated environment). Per-task wall-clock latency in seconds. \methodname matches the vanilla baseline in latency while consistently improving accuracy across all three difficulty levels.}
+\label{tab:extended_efficiency}
+\vspace{0.5em}
+\begin{tabular}{llcc}
+    \toprule
+    Level & Method & Accuracy (\%) & Latency (s) \\
+    \midrule
+    \multirow{2}{*}{Level 1} & Vanilla        & 64.2 & 107 \\
+                             & + \methodname  & 66.0 & 99 \\
+    \midrule
+    \multirow{2}{*}{Level 2} & Vanilla        & 41.9 & 191 \\
+                             & + \methodname  & 46.5 & 196 \\
+    \midrule
+    \multirow{2}{*}{Level 3} & Vanilla        & 26.9 & 374 \\
+                             & + \methodname  & 34.6 & 376 \\
+    \bottomrule
+\end{tabular}
+\end{table}
+
+
+\begin{table}[h]
+\centering
+\small
+\begin{minipage}[t]{0.5\linewidth}
+\centering
+\caption{\textbf{Generalization to Other Agent Frameworks.} Accuracy (\%) on the full GAIA dataset with Gemini-2.5-Flash, when integrating \methodname into SmolAgents.}
+\label{tab:framework_generalization}
+\vspace{0.8em}
+\begin{tabular}{lcccc}
+    \toprule
+    Method & Level 1 & Level 2 & Level 3 & Avg. \\
+    \midrule
+    SmolAgents             & 60.4 & 45.3 & 19.2 & 41.6 \\
+    \rowcolor{green!10}
+    + \textbf{\methodname}           & \textbf{68.0} & \textbf{47.8} & \textbf{30.8} & \textbf{48.9} \\
+    \bottomrule
+\end{tabular}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.45\linewidth}
+\centering
+\caption{\textbf{Sensitivity Analysis of Prompt Design} (single fixed seed). GAIA average accuracy (\%) of the Sleep-Time Compute under three prompt variants on Gemini-2.5-Flash.}
+\label{tab:prompt_sensitivity}
+\vspace{0.4em}
+\begin{tabular}{lc}
+    \toprule
+    Prompt Variant & Average. \\
+    \midrule
+    Version 1 (Original) & 44.5 \\
+    Version 2            & 44.0 \\
+    Version 3            & 44.0 \\
+    \bottomrule
+\end{tabular}
+\end{minipage}
+\end{table}
+
+\subsection{Generalization to Other Agent Frameworks}
+\label{sec:appendix_framework_generalization}
+To assess whether the benefits of \methodname extend beyond a single agent implementation, we employ it in another agent stack, SmolAgents\footnote{\url{https://github.com/huggingface/smolagents}}, a widely used framework designed for flexibility and minimalism. We re-implement the drafting, forecast, and aggregation modules within \texttt{smolagents}'s execution loop without changing any prompts or hyperparameters, and evaluate the resulting agent on the full GAIA dataset with Gemini-2.5-Flash. Table~\ref{tab:framework_generalization} shows that \methodname improves accuracy across all three difficulty levels in this stack, raising average accuracy from 41.6\% to 48.9\% (+7.3 points) and yielding the largest gain on Level~3 (+11.6 points). The pattern of improvement closely mirrors that observed on the OAgents stack, indicating that the gains arise from the general principle of overlapping speculative reasoning with idle time rather than from any framework-specific implementation choice.
+
+
+\subsection{Sensitivity Analysis of Prompt Design}
+\label{sec:appendix_prompt_sensitivity}
+Because the Sleep-Time Compute baseline relies on a prompt adapted from a math-oriented template (Appendix~\ref{sec:appendix_baselines}), we run a sensitivity analysis to confirm that our reported numbers do not hinge on the particular adaptation we use. We construct three prompt variants by re-running the same minimal-adaptation procedure with different model families (Claude and Gemini) as the rewriter, and re-evaluate the Sleep-Time Compute baseline under each. Table~\ref{tab:prompt_sensitivity} shows that the GAIA average stays within a 0.5-point band across the three variants (44.0--44.5\%), confirming that the comparison against Sleep-Time Compute reported in the main paper is robust to the choice of prompt adaptation.
+
+\subsection{Qualitative Analysis}
+\label{sec:appendix_qualitative}
+
+We present two FRAMES tasks (Qwen3.5-4B, seed~0) on which \emph{both} Vanilla and Sleep-Time Compute fail while \methodname{} succeeds. For each task we summarize the trajectory of every method in compact form (tool-call sketch, key observation, final answer) and highlight where Vanilla and Sleep-Time Compute diverge from the correct chain.
+
+\paragraph{Example 1: \texttt{frames\_3} (Compositional Sports--Temporal Reasoning).}
+\textit{``As of August~1, 2024, which country were holders of the FIFA World Cup the last time the UEFA Champions League was won by a club from London?''} \textbf{Gold answer:} \emph{France}. The required chain is: (i) most recent London-club Champions League winner $\rightarrow$ Chelsea, May~2021; (ii) FIFA World Cup holder \emph{on that date} $\rightarrow$ France, because France won the 2018 tournament and remained the reigning holder until Argentina won in December~2022 --- i.e., on Chelsea's May~2021 victory date, the trophy was still held by France.
+
+\begin{tcolorbox}[colback=red!4, colframe=red!60!black, title=\textsc{Vanilla} (Pred: Argentina / GT: France), fontupper=\small, breakable]
+\begin{enumerate}
+  \item \texttt{search\_agent("List of UEFA Champions League winners by London clubs, years won, most recent victory before 2024")} $\rightarrow$ ``Chelsea FC \dots {} most recent victory \textbf{2021}.''
+  \item \texttt{search\_agent("Which country won the FIFA World Cup in 2021?")} $\rightarrow$ ``No country won the FIFA World Cup in 2021 \dots{} the 2022 winner was Argentina.''
+  \item \texttt{final\_answer("Argentina")}.
+\end{enumerate}
+\textbf{Failure Mode.} Vanilla collapses ``World Cup holder \emph{at the time of} the 2021 Champions League final'' into ``World Cup winner \emph{of} 2021'' and is then misled by the search agent's correction (``\dots{} the 2022 winner was Argentina''), committing to that without re-deriving who actually held the trophy on the date of the Chelsea win.
+\end{tcolorbox}
+
+\begin{tcolorbox}[colback=orange!5, colframe=orange!70!black, title=\textsc{Sleep-Time Compute} (Pred: England / GT: France), fontupper=\small, breakable]
+\begin{enumerate}
+  \item[1-4.] Four interchangeable list-the-winners queries (\texttt{search\_agent}, \texttt{web\_search}, \texttt{wiki}); all return empty observations.
+  \item[5.] \texttt{search\_agent("Which London clubs have won the UEFA Champions League and in which years")} $\rightarrow$ ``Chelsea: 2012, 2021. Manchester United: 1968, 1999, 2008.''
+  \item[6.] \texttt{final\_answer("England")}.
+\end{enumerate}
+The pre-computed inference produced by the sleep-time worker before step~6 is itself the source of the wrong commit:
+\begin{quote}\small
+\textit{``Chelsea won the Champions League in 2012 and 2021 (specifically May 29, 2021). [\dots] Chelsea is a club located in London, England. Therefore, the country associated with the winning club is England (or United Kingdom). [\dots] \textbf{The country is England.}''}
+\end{quote}
+\textbf{Failure Mode.} The sleep-time pre-computation reframes the task from ``country that held the World Cup at the time of the 2021 Chelsea win'' into ``country in which the winning club is located,'' and concludes the wrong country in advance. The executor, anchored to that pre-computed answer, never fires the World Cup hop and submits ``England'' --- the failure is committed inside the sleep-time context, not in the executor's tool use.
+\end{tcolorbox}
+
+\begin{tcolorbox}[colback=blue!4, colframe=blue!60!black, title=\textsc{\methodname{}} (Pred: France / GT: France), fontupper=\small, breakable]
+\begin{enumerate}
+  \item \texttt{search\_agent("When did Chelsea FC last win the UEFA Champions League?")} $\rightarrow$ ``Chelsea FC last won the UEFA Champions League in \textbf{2021}.''
+  \item \texttt{search\_agent("Who won the FIFA World Cup in 2022?")} $\rightarrow$ ``Argentina won the 2022 FIFA World Cup\dots{} December~18, 2022.''
+\end{enumerate}
+At this idle window (after the 2022 observation), the sleep-time worker drafted two progressive and three recovery candidate plans in parallel. Two recovery plans flagged the exact failure that Vanilla and Sleep-Time Compute fall into:
+\begin{quote}\small
+\textbf{Recovery~\#0.} \textit{``Re-evaluate the question's intent: determine if `holders of the FIFA World Cup' refers to the winner of the World Cup \emph{in that specific year} (which would be none) or \textbf{the winner of the World Cup \emph{ending on or before that date} (i.e., the 2018 tournament)}. Search for the FIFA World Cup winner of the last World Cup prior to or on the date of the 2021 Champions League victory to see which interpretation yields a valid answer.''}\\[2pt]
+\textbf{Recovery~\#2.} \textit{``Search for the FIFA World Cup winner of the tournament that \textbf{concluded prior to August~1, 2024} [\dots] \textbf{specifically identifying the 2018 winner (France)} to confirm the correct `holder' status relative to the 2021 Champions League victory.''}
+\end{quote}
+The actual observation matches both recovery assumptions (the 2022 winner does not satisfy ``holder at the time of the 2021 Chelsea win''), so the executor adopts that gate in its next steps:
+\begin{enumerate}
+\setcounter{enumi}{2}
+  \item \texttt{search\_agent("Who is the current holder of the FIFA World Cup as of August~1, 2024?")} $\rightarrow$ ``Argentina is the reigning FIFA World Cup holder\dots'' (verifies that ``current'' holder $\ne$ holder \emph{at the time of} the 2021 Chelsea win).
+  \item \texttt{search\_agent("Who won the 2018 FIFA World Cup?")} $\rightarrow$ ``France'' (executes the recovery plan).
+  \item \texttt{final\_answer("France")}.
+\end{enumerate}
+\textbf{Why This Works.} The injected recovery plans encode the missing semantic gate --- ``holder \emph{at the time of} 2021, not winner \emph{of} 2021'' --- and the executor's next thought adopts the cross-check before committing. Vanilla collapses this gate (commits to Argentina from a 2022 hop), and Sleep-Time Compute never reaches the World Cup hop at all because its pre-computed inference already concluded the answer was the country of the club.
+\end{tcolorbox}
+
+\paragraph{Example 2: \texttt{frames\_25} (Date Arithmetic).}
+\textit{``What was the age difference between Mike Tyson and Tyson Fury on the respective days on which they lost their first ever fights? Represent the figure in years only.''} \textbf{Gold answer:} \emph{12 years}.
+
+\begin{tcolorbox}[colback=red!4, colframe=red!60!black, title=\textsc{Vanilla} (Pred: 12.74 / GT: 12), fontupper=\small, breakable]
+\begin{enumerate}
+\setcounter{enumi}{0}
+  \item[1-4.] Search for both fighters' first-loss dates and birthdates: Tyson ($1966$-$06$-$30$, lost $1990$-$02$-$11$), Fury ($1988$-$08$-$12$, lost $2024$-$05$-$18$).
+  \item[5-6.] Compute fractional ages: Tyson $23.619$~years, Fury $36.356$~years.
+  \item[7.] \texttt{final\_answer(round(12.736481861738536, 2))} $\rightarrow$ \texttt{12.74}.
+\end{enumerate}
+\textbf{Failure Mode.} Reasoning is correct but the answer is reported as a fractional year rather than an integer-year difference; the question explicitly says ``represent the figure in years only,'' which the judge interprets as integer years. Vanilla never re-checks the formatting requirement before committing.
+\end{tcolorbox}
+
+\begin{tcolorbox}[colback=orange!5, colframe=orange!70!black, title=\textsc{Sleep-Time Compute} (Pred: 11 / GT: 12), fontupper=\small, breakable]
+\begin{enumerate}
+  \item[1-8.] Tool calls retrieve Tyson's first-loss date (Feb 11, 1990) and various candidate Fury loss dates from search.
+\end{enumerate}
+The pre-computed inference produced by the sleep-time worker before the final action is the source of the wrong answer:
+\begin{quote}\small
+\textit{``\textbf{Mike Tyson's Birth Date:} March~6, 1966. \dots{} \textbf{Tyson Fury's First Loss Date:} Confirmed as \textbf{March~24, 2023} (vs.\ Dmitry Bivol). Note: The previous search results mentioned May~18, 2024 (vs.\ Usyk), but that was the rematch or a subsequent loss. \dots{} \textbf{Age:} 23 years \dots{} \textbf{Age:} 34 years \dots{} Age\_Fury (34) - Age\_Tyson (23) = \textbf{11 years}.''}
+\end{quote}
+\textbf{Failure Mode.} The sleep-time pre-computation hallucinates two facts. (i) Mike Tyson's birthdate is reported as March~6, 1966 --- the actual date is June~30, 1966; the correct value was returned by an earlier search but is silently overwritten in the sleep-time context. (ii) Tyson Fury never lost to Bivol; the May~18, 2024 Usyk fight was actually his first professional loss, but the sleep-time worker reasons it away as ``a rematch or subsequent loss'' to fit a fabricated 2023 Bivol date. The executor inherits both errors and the pre-computed final difference of 11 years, and submits 11 verbatim.
+\end{tcolorbox}
+
+\begin{tcolorbox}[colback=blue!4, colframe=blue!60!black, title=\textsc{\methodname{}} (Pred: 12 / GT: 12), fontupper=\small, breakable]
+\begin{enumerate}
+  \item[1-7.] Tool calls retrieve and verify both first-loss dates (Tyson Feb 11, 1990; Fury May 18, 2024) and both birthdates (Tyson June 30, 1966; Fury August 12, 1988).
+\end{enumerate}
+At this idle window, the sleep-time worker drafts plans that explicitly fix the arithmetic template and the formatting requirement:
+\begin{quote}\small
+\textbf{Progressive~\#0.} \textit{``Once the verification confirms May~18, 2024 as the first loss date, calculate the exact ages of both fighters on those respective dates using \textbf{their verified birth dates (June~30, 1966 for Tyson; August~12, 1988 for Fury)}. Compute the difference between the two ages and \textbf{provide the final answer in years only}, ensuring the calculation accounts [for whether the birthday has passed].''}
+\end{quote}
+The plan pins three things that the other two methods miss: (a) the correct Tyson birthdate (June~30, not the hallucinated March~6 used by Sleep-Time Compute), (b) a symmetric ``compute integer age on each loss date'' template, and (c) the explicit ``in years only'' formatting requirement.
+\begin{enumerate}
+\setcounter{enumi}{7}
+  \item Final code applies the template verbatim, prints integer ages 22 and 34, and submits \texttt{final\_answer(12)}.
+\end{enumerate}
+\textbf{Why This Works.} The injected plan turns the failure modes of the other two methods into pinned constraints in the executor's context: the pre-verified birthdates close the door on Sleep-Time Compute's hallucination, and the explicit ``years only'' instruction closes the door on Vanilla's float-precision formatting. Neither gate is created mid-step; both come from plans drafted in the prior idle window.
+\end{tcolorbox}
+
+\paragraph{Example 3: GAIA \texttt{56137764} (Pivoting to a Different Retrieval Strategy).}
+\textit{``Which contributor to the version of OpenCV where support was added for the Mask-RCNN model has the same name as a former Chinese head of government when the names are transliterated to the Latin alphabet?''} \textbf{Gold answer:} \emph{Li Peng} (Premier of the PRC, 1987--1998). The required chain is: (i) identify the OpenCV release that added Mask-RCNN $\rightarrow$ \emph{4.0.0}; (ii) retrieve the \emph{full contributor list} for that release; (iii) retrieve the list of former Chinese premiers/presidents in standard Pinyin; (iv) cross-reference the two lists. The trap is that a casual reading of the question pulls the agent toward ``find \emph{the} commit author of the Mask-RCNN PR,'' which is a strict subset of the contributor list and which does not contain the gold answer.
+
+\begin{tcolorbox}[colback=red!4, colframe=red!60!black, title={\textsc{Vanilla} (Pred: Vadim Pisarevsky / GT: Li Peng; 16 steps)}, fontupper=\small, breakable]
+\begin{enumerate}
+  \item[1-3.] \texttt{search\_agent} for ``OpenCV Mask-RCNN commit author'' returns ``Dmitry Lychak.'' The agent commits to the framing ``find the single PR/commit author whose name matches a Chinese premier.''
+  \item[4-13] Eleven further \texttt{search\_agent} calls, each a slight variant of ``OpenCV Mask-RCNN commit author / PR / release-notes,'' return mutually inconsistent names: ``Sunita Nayak,'' ``Alexander Mordvintsev,'' ``Tim M.,'' ``dkurt (Dmitry Kurtaev),'' ``Dmitry Khitrov.'' The Thought field repeatedly says ``\textit{conflicting information \dots{} let me try a different approach},'' but each ``different approach'' is another commit-author search.
+  \item[14-16.] The agent gives up on the search and falls back to prior knowledge, submitting \texttt{final\_answer("Vadim Pisarevsky")} --- a well-known OpenCV co-founder, but never a Chinese premier.
+\end{enumerate}
+\textbf{Failure Mode.} Vanilla locks in the wrong task framing on step~1 (``find the commit author'') and never widens the retrieval to the full contributor set. Each of the 11 follow-up searches reuses the same template; the conflicting answers are read as ``the search agent is unreliable'' rather than as a signal that the framing itself is wrong, so the agent stays inside the same approach until step exhaustion forces a hallucinated commit.
+\end{tcolorbox}
+
+\begin{tcolorbox}[colback=orange!5, colframe=orange!70!black, title={\textsc{Sleep-Time Compute} (Pred: Li Peng / GT: Li Peng; 9 steps)}, fontupper=\small, breakable]
+\begin{enumerate}
+  \item \texttt{search\_agent("OpenCV Mask-RCNN support added version contributor")} $\rightarrow$ partial release-note information.
+\end{enumerate}
+The pre-computed sleep-time inference at this point speculatively enumerates plausible Chinese premier names alongside OpenCV-related names, producing a long ``\textit{maybe the matching contributor is one of: \textbf{Li Peng}, Li Keqiang, Zhou Enlai, \dots}'' paragraph. The executor copies that enumeration directly into the next query:
+\begin{enumerate}
+\setcounter{enumi}{1}
+  \item[2-8.] \texttt{search\_agent("OpenCV Mask-RCNN contributor Li Keqiang Li Peng Zhou Enlai")} and several variants. After enough such queries, ``Li Peng'' is confirmed to appear in the OpenCV 4.0.0 contributor list.
+\setcounter{enumi}{8}
+  \item \texttt{final\_answer("Li Peng")}.
+\end{enumerate}
+\textbf{Mode.} Sleep-Time Compute happens to land on the gold answer in 2 of 3 seeds because its pre-inference dumps a list of candidate Chinese names into context and the executor gets to verify them by name-matching. The mechanism is search-by-guessing rather than a structured pivot: across seeds, the same prompt sometimes lists the right names, sometimes does not (seed~2 returns ``Unable to determine'' after 16 steps).
+\end{tcolorbox}
+
+\begin{tcolorbox}[colback=blue!4, colframe=blue!60!black, title={\textsc{\methodname{}} (Pred: Li Peng / GT: Li Peng; 5 steps)}, fontupper=\small, breakable]
+\begin{enumerate}
+  \item \texttt{search\_agent("OpenCV version added Mask-RCNN model support")} $\rightarrow$ ``Mask-RCNN was added in OpenCV \textbf{4.0.0}.''
+\end{enumerate}
+At the idle window during step~1's search execution, the sleep-time worker frames the next sub-goal as ``retrieve the contributor list of that release'' rather than ``find the Mask-RCNN commit author'' --- so the alternative framing that traps Vanilla is never even drafted. The selected plan reads:
+\begin{quote}\small
+\textbf{Progressive~\#0.} \textit{``Once the search agent returns the specific OpenCV version number, the next sub-goal is to \textbf{search for the list of contributors or authors specifically for that release version}. After obtaining the contributor list, verify that the data includes names in a standard transliterated format (e.g., Pinyin) to facilitate comparison with former Chinese heads of government before proceeding to the cross-referencing step.''}
+\end{quote}
+This is the single decisive intervention of the run: it flips the retrieval scope from ``the commit author'' (Vanilla's permanent trap) to ``the full contributor set,'' before the executor commits to its second action. The executor follows the plan exactly:
+\begin{enumerate}
+\setcounter{enumi}{1}
+  \item \texttt{search\_agent("OpenCV 4.0.0 contributors list")} $\rightarrow$ broad list including ``Alexander Alekhin, Dmitry Kurtaev, Hamdi Sahloul, Maksim Shabunin, \dots, \textbf{Li Peng}, \dots''
+\end{enumerate}
+\begin{enumerate}
+\setcounter{enumi}{2}
+  \item \texttt{search\_agent("list of former Chinese prime ministers premier names transliterated to Latin alphabet")} $\rightarrow$ Pinyin list.
+\end{enumerate}
+At the next idle window (during step~3's search), the selected plan closes the task with an explicit string-match-then-commit gate, and even pre-enumerates the right candidate name:
+\begin{quote}\small
+\textbf{Progressive~\#3.} \textit{``Perform a case-insensitive string match between these names and the OpenCV 4.0.0 contributor list, \textbf{specifically checking names like ``Li Peng''}, ``Wu Zhiwen,'' ``Kuang Fangjun.'' If a match is found, verify it against the original contributor list, then \textbf{use \texttt{final\_answer} to provide the matching name}.''}
+\end{quote}
+\begin{enumerate}
+\setcounter{enumi}{3}
+  \item Inline cross-reference between the two lists prints ``Li Peng'' as the unique match.
+  \item \texttt{final\_answer("Li Peng")}.
+\end{enumerate}
+\textbf{Why This Works.} The decisive contribution is the first idle window's plan, which widens retrieval scope before the second action is chosen --- once the executor's step~2 query is ``contributors list of 4.0.0'' instead of ``commit author of the Mask-RCNN PR,'' the cross-reference and commit steps follow on a short straight path. The next two idle windows then narrow the corridor (cross-reference axis, then commit gate) so no post-evidence loop is possible. Across all three seeds \methodname{} converges to ``Li Peng'' (3/3); Sleep-Time Compute converges by guessing and is correct only 2/3, while Vanilla never escapes the commit-author framing (0/3).
+\end{tcolorbox}
+
+\clearpage
+\section{Prompt Templates}
+\label{sec:appendix_prompt_templates}
+
+We provide here the full text of the prompts referenced in Appendix~\ref{sec:appendix_implementation_details}. Figures~\ref{fig:prompt_progressive}--\ref{fig:prompt_aggregation} list the four prompts used by \methodname (progressive drafting, recovery drafting, forecast, aggregation), and Figures~\ref{fig:prompt_seqrev}--\ref{fig:prompt_sleep_time} list the prompts used by the Sequential Revision and Sleep-Time Compute baselines.
+
+\begin{figure}[H]
+\begin{tcolorbox}[colback=gray!5, colframe=black!60, title=Progressive drafting prompt, fontupper=\small, width=\linewidth]
+You are an expert AI assistant tasked with generating the most effective and efficient NEXT ACTION STEP to take after the current action step completes and its observation becomes available.
+
+The current action step is running in parallel.
+You will not see the observation yet; assume it will arrive and will be used to decide the next step.
+
+If plan\_history is non-empty, target a different sub-goal from those already proposed. \\[2pt]
+\textbf{Plan history:} [\{prior draft 1\}, \ldots, \{prior draft K\}]
+\end{tcolorbox}
+\caption{Progressive drafting prompt used by \methodname to speculatively generate the next action while the current tool call is in flight.}
+\label{fig:prompt_progressive}
+\end{figure}
+
+\begin{figure}[H]
+\begin{tcolorbox}[colback=gray!5, colframe=black!60, title=Recovery drafting prompt, fontupper=\small, width=\linewidth]
+You are an expert AI assistant tasked with generating a RECOVERY strategy while the current action step is executing.
+
+Assume that the current action step fails to make progress or gets stuck.
+Propose EXACTLY one distinct recovery plan that takes a different approach from what has already been tried.
+
+If plan\_history is non-empty, choose a meaningfully different angle --- different evidence source, different verification strategy, or different decomposition. \\[2pt]
+\textbf{Plan history:} [\{prior draft 1\}, \ldots, \{prior draft K\}]
+\end{tcolorbox}
+\caption{Recovery drafting prompt used by \methodname to draft an alternative plan that diverges from the current trajectory in case the in-flight step fails.}
+\label{fig:prompt_recovery}
+\end{figure}
+
+\begin{figure}[H]
+\begin{tcolorbox}[colback=gray!5, colframe=black!60, title=Forecast prompt, fontupper=\small, width=\linewidth]
+You are a forecast module that evaluates whether the agent's current action step is making forward progress toward solving the Task, and decides which strategy the agent should take next.
+
+The goal is to assess the current progress state and output a single decision: whether the agent should continue with a PROGRESSIVE strategy or switch to a RECOVERY strategy.
+
+STRATEGY SEMANTICS:
+\begin{itemize}
+\item \textbf{PROGRESSIVE:} The agent is making meaningful forward progress. Assume the current trajectory is valid and focus on exploitation by continuing or refining the existing plan with minimal deviation.
+\item \textbf{RECOVERY:} The agent appears stalled, misguided, or unproductive. Assume the current trajectory may be flawed and encourage exploration by deviating from the existing plan, considering alternative approaches or corrective actions not previously explored.
+\end{itemize}
+\end{tcolorbox}
+\caption{Forecast prompt used by \methodname after the observation arrives to choose between the progressive and recovery candidates.}
+\label{fig:prompt_forecast}
+\end{figure}
+
+\begin{figure}[H]
+\begin{tcolorbox}[colback=gray!5, colframe=black!60, title=Aggregation prompt, fontupper=\small, width=\linewidth]
+The following are candidate plans generated for the next step:
+
+\textbf{Plan 1:} \textbf{\{candidate plan 1\}} \\[2pt]
+\textbf{Plan 2:} \textbf{\{candidate plan 2\}} \\[2pt]
+$\vdots$ \\[2pt]
+\textbf{Plan N:} \textbf{\{candidate plan N\}}
+
+Based on the observation, you may use these plans as starting points, but you are free to synthesize a different or improved next step if none of them fit well.
+\end{tcolorbox}
+\caption{Aggregation prompt that consumes the candidate plans together with the just-arrived observation and produces the final next step.}
+\label{fig:prompt_aggregation}
+\end{figure}
+
+\begin{figure}[H]
+\begin{tcolorbox}[colback=gray!5, colframe=black!60, title=Sequential Revision, fontupper=\small, width=\linewidth]
+You are an expert AI assistant tasked with reflecting on the latest action's Observation to propose the most effective NEXT STEP.
+
+You will be provided with:
+\begin{itemize}
+\item the user's instructions
+\item the current action and its Observation
+\item recent action/observation history
+\end{itemize}
+Your goal is to produce a concise, actionable reflection that helps the agent decide what to do next.
+\end{tcolorbox}
+\caption{Sequential Revision prompt. The model reflects on the executed action and its observation to propose the next step.}
+\label{fig:prompt_seqrev}
+\end{figure}
+
+\begin{figure}[H]
+\begin{tcolorbox}[colback=gray!5, colframe=black!60, title=Sleep-Time Compute, fontupper=\small, width=\linewidth]
+You will be given part of a complex problem or task scenario. You will receive the rest of the problem later.
+
+Make as many inferences as possible about the part of the problem you are given so as to help yourself resolve the full problem more quickly once it is given to you later.
+
+You should try to predict possible ways the rest of the scenario might go and generate insights, structural frameworks, or intermediate steps that could be helpful for reaching the final goal more quickly once the rest of the problem is given.
+\end{tcolorbox}
+\caption{Sleep-Time Compute prompt. The model is asked to pre-compute inferences and intermediate insights from a partially revealed problem during idle periods, which can later be reused once the full problem becomes available.}
+\label{fig:prompt_sleep_time}
+\end{figure}
+

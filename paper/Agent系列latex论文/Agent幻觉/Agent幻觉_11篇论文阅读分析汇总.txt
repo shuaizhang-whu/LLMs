@@ -1,0 +1,587 @@
+Agent幻觉方向 11 篇论文阅读分析汇总
+写入时间：2026-07-10
+目录：C:\Users\yh\Desktop\server\研究方向2调研\latex格式论文\Agent幻觉
+
+说明：
+本文件汇总该目录下 11 篇 Agent 幻觉 / 工具幻觉 / 轨迹级幻觉 / RAG 幻觉相关论文的阅读结果。
+每篇按“核心问题、任务与方法、数据实验、主要结论、复现价值、局限、对后续选题的启发”记录，方便后续继续筛选研究方向。
+
+
+==============================
+一、整体分类索引
+==============================
+
+1. 轨迹级 Agent 幻觉定位 / 审计 / 调试
+- AgentHallu
+- MIRAGE-Bench
+- Where LLM Agents Fail and How They can Learn From Failures / AgentDebug
+- Beyond Final Answers / Trajel
+
+这类工作把 Agent 运行过程看成 Thought-Action-Observation 多步轨迹，不只看最终答案对不对，而是关心“哪一步开始幻觉”“是哪类幻觉”“能不能在运行中提前发现或修复”。这类方向更贴近 Agent 幻觉本身，但通常需要轨迹数据、人工标注或强 LLM judge，复现实验成本中等偏高。
+
+2. 工具幻觉 / 工具使用可靠性
+- Evaluating Tool-Using Language Agents / AgentProp-Bench
+- The Reasoning Trap
+- ToolBeHonest / ToolBH
+- From Proof to Program / Tool-Induced Myopia
+- Reducing Tool Hallucination via Reliability Alignment / Relign
+
+这类工作关注 Agent 调工具时的错误：不该调却调、调错工具、参数编造、工具输出被错误解释、无工具时不承认无法完成等。它们通常更容易构造可控实验，也更容易和开源 baseline 结合，适合短期复现和改模块。
+
+3. RAG / 多 Agent 自检 / 小模型检测器
+- MARCH
+- Small Agent Can Also Rock! / HaluAgent
+
+这类工作把幻觉看成“生成内容是否被证据支撑”的问题，常用检索文档、claim 分解、checker 或小模型工具调用检测。它们更接近 RAG 幻觉治理，和工具轨迹 Agent 有交集，但不一定直接处理复杂 Agent 轨迹。
+
+
+==============================
+二、逐篇论文总结
+==============================
+
+--------------------------------
+1. AgentHallu: Benchmarking Automated Hallucination Attribution of LLM-based Agents
+--------------------------------
+
+核心问题：
+Agent 幻觉不是单轮问答中的一句假话，而是多步执行轨迹中某一步的错误会继续传播，最后形成错误答案。现有很多评测只判断最终答案是否错，缺少“哪一步导致幻觉”和“为什么导致幻觉”的自动归因能力。
+
+任务与方法：
+论文提出 automated hallucination attribution 任务，包括两个子任务：
+1. Where：定位 hallucination-responsible step，即轨迹中最早导致幻觉的步骤。
+2. Why：解释这一步为什么是根因，并归入具体幻觉类型。
+
+轨迹形式是 Thought / Action / Observation 三元组。论文提出 5 大类、14 小类幻觉 taxonomy：
+- Planning：事实推导错误、任务分解错误。
+- Retrieval：查询不匹配、上下文不匹配、总结不匹配。
+- Reasoning：事实、数学、科学、通用推理错误。
+- Human-Interaction：和用户交互中的错误。
+- Tool-Use：缺失工具、错误参数、并行冲突、不必要工具。
+
+数据与实验：
+构建 693 条高质量轨迹，其中 443 条有幻觉，250 条无幻觉。覆盖 7 类 Agent 框架：SmolAgents、OpenDeepSearch、OpenManus、OctoTools、Magentic-One、OWL、Function-calling Agents。覆盖 5 个领域：世界知识、科学、数学、通用助手、工具使用。平均轨迹长度约 7.6 步。
+
+标注流程包括强模型生成 oracle-guided reasoning path，再由 10 名研究生标注根因和传播链。实验评估 GPT-5、Gemini-2.5-Pro、Claude、DeepSeek、Qwen、Llama 等模型。
+
+主要结论：
+- 判断是否有幻觉相对容易，GPT-5 的 hallucination judgement F1 可到约 70.2。
+- 归因很难，最佳模型 Gemini-2.5-Pro 的 step localization overall 约 41.1。
+- 工具使用类尤其难，论文中报告 tool-use attribution 很低。
+- 开源模型在 attribution 上平均约 10.9，接近随机水平。
+- step-by-step prompting 能提升归因效果，但 token 成本明显增加。
+- 轨迹越长，定位越差，11 步以上的轨迹 attribution 明显下降。
+
+复现价值：
+适合作为“Agent 幻觉归因”方向的 benchmark 基础。如果数据和代码开放，后续可以在 step localization、root-cause explanation、低成本 judge、轨迹压缩归因上做改进。该工作本身主要是 benchmark，不是 mitigation 方法。
+
+局限：
+数据规模不大，只有 693 条；强依赖闭源模型和人工标注；文本轨迹为主；没有提出实际降低幻觉的运行时机制。
+
+对后续选题的启发：
+可以考虑从“归因”走向“干预”：不是只找错在哪，而是在检测到高风险步骤时触发回滚、重试、换工具、问用户或让另一个 verifier 检查。
+
+
+--------------------------------
+2. Evaluating Tool-Using Language Agents: Judge Reliability, Propagation Cascades, and Runtime Mitigation in AgentProp-Bench
+--------------------------------
+
+核心问题：
+工具型 Agent 的错误不只是最终答案错误，还包括中间工具参数错、工具返回被错误使用、错误沿轨迹传播。论文关心三个问题：
+1. 自动 judge 到底可靠不可靠？
+2. 一个错误工具参数会多大概率传播到最终错误？
+3. 能不能用运行时 interceptor 降低幻觉？
+
+任务与方法：
+论文提出 AgentProp-Bench，围绕工具调用中的错误传播做评估。核心设计是 P2 semantic-wrong parameter injection：把第一次工具调用前的关键参数替换成语义错误但 schema 合法的参数，然后观察：
+- S1：注入是否发生。
+- S2：错误参数是否在工具执行中产生可见影响。
+- S3：最终答案是否错误。
+
+同时提出 rejection / recovery 分解：
+- rejection：模型是否发现坏参数并拒绝执行。
+- recovery：模型接受坏参数后是否还能恢复正确答案。
+
+运行时缓解方法是一个 interceptor：
+- L1：schema validation / tool error response。
+- L2：thought keyword monitor，例如 error、invalid、unknown 等。
+- L3：output consistency，检查 unsupported numeric claims。
+
+数据与实验：
+AgentProp-Bench 包含约 2,000 任务、2,300 条 traces，覆盖 Calendar、Weather、Medical、Knowledge 四类域，以及 held-out Retail。评估 9 个生产 LLM，包括 GPT-4o、GPT-4o-mini、GPT-4.1-mini/nano、GPT-3.5-turbo、o3-mini、Gemini-2.0/2.5-Flash、DeepSeek-V3。
+
+主要结论：
+- 简单 substring heuristic judge 和人类一致性很差，kappa 约 0.049，接近随机。
+- 3-LLM ensemble 与人类一致性中等，kappa 约 0.432，但偏保守。
+- 错误参数传播到最终错误的概率约 0.62，不同模型在 0.46-0.73。
+- rejection 和 recovery 几乎独立，说明“会拒绝错误”和“能从错误中恢复”是两种不同能力。
+- 在 GPT-4o-mini 上，interceptor 将 hallucination 从 55.8% 降到 32.8%，降低 23 个百分点。
+- 对 Gemini-2.0-Flash 效果不明显，因为它本来就高比例拒绝注入错误。
+
+复现价值：
+这是很适合做 runtime mitigation baseline 的方向。它有明确的工具错误注入、传播测量和拦截器模块，可以在已有 interceptor 上做更强的风险估计、动态阈值、基于轨迹状态的自适应干预。
+
+局限：
+工具多为模拟或确定性工具；主要是单参数注入；人类标注规模有限；interceptor 规则较朴素，跨域泛化还需要检验。
+
+对后续选题的启发：
+如果目标是短期可复现并能讲清楚故事，可以考虑“工具调用错误传播的运行时风险控制”：在工具执行前、执行中、最终输出前分别插入轻量 detector，而不是训练大模型本身。
+
+
+--------------------------------
+3. MIRAGE-Bench: LLM Agent is Hallucinating and Where to Find Them
+--------------------------------
+
+核心问题：
+交互式 Agent 在网页、系统、工具环境中会做出 hallucinated actions，例如以为按钮存在、以为任务已完成、编造环境状态。现有 benchmark 往往只看任务成功率，不专门评估动作是否忠实于指令、历史和环境观察。
+
+任务与方法：
+论文将 hallucinated action 定义为不忠实于以下任一来源的动作：
+1. task instructions；
+2. interaction history；
+3. environment observations。
+
+它强调 hallucinated action 是 wrong action 的子集，不是所有错动作都是幻觉。论文提出 contextual snapshot strategy：在容易发生幻觉的决策点前冻结上下文，让模型在固定上下文中预测下一步动作，从而获得更可复现的评测。
+
+风险场景包括：
+- OSQ：out-of-scope queries，任务超出可操作范围。
+- UET：unexpected environmental transitions，环境出现意外变化。
+- UGS：unachievable goal state，目标不可达。
+- ISI：ill-specified instructions，指令不完整。
+- FIH-R / FIH-E：flawed interaction history，历史重复或错误。
+- PUD：pop-up distractions，弹窗干扰。
+
+数据与实验：
+论文从 WebArena、OSWorld、WorkArena、TheAgentCompany、SWE-Bench、tau-bench 等交互式 Agent benchmark 中审计并构造风险设置。用 LLM-as-judge 做细粒度动作评估，并在 160 个样本上与人工标注比较。
+
+指标包括：
+- Utility Score：0/1/2 动作效用分数。
+- Hallucination Rate：Utility=0 的比例。
+
+评估 12 个模型，包括 Qwen2.5、Llama、DeepSeek、Claude、Gemini、GPT 等。
+
+主要结论：
+- 所有模型在这些风险场景中都有较高 hallucination rate。
+- 闭源模型只比开源模型略好，不存在绝对优势。
+- Qwen2.5-32B 在一些指标上接近 GPT-4o。
+- 常见幻觉包括：编造按钮、假设任务成功、编造用户响应、忽略环境变化。
+
+复现价值：
+适合作为“动作级幻觉评测”方向的 benchmark。snapshot 策略让评测更稳定，不必完整跑复杂环境。但它主要是评测，不是修复。
+
+局限：
+静态 snapshot 不能完全代表真实动态 rollout；LLM judge 仍有偏差；多数环境是数字交互环境，不一定覆盖真实工具 API。
+
+对后续选题的启发：
+可以把 snapshot 风险检测扩展为运行时 guardrail：当 Agent 的下一步动作不被观察支持时，触发观察刷新、动作重采样或用户确认。
+
+
+--------------------------------
+4. Where LLM Agents Fail and How They can Learn From Failures / AgentDebug
+--------------------------------
+
+核心问题：
+Agent 失败往往来自某个早期 root-cause error，之后错误沿轨迹传播。只看最终失败无法知道该从哪一步修复。论文希望建立一套“失败轨迹诊断 + 从失败中学习/重跑”的框架。
+
+任务与方法：
+论文提出 Agent Error Taxonomy (AET) 和 AgentDebug。
+
+AET 包括：
+- Memory：摘要过度简化、虚假记忆、检索失败。
+- Reflection：进度误判、结果误解、因果归因错误、反思幻觉。
+- Planning：忽略约束、不可执行动作、低效计划。
+- Action：计划和动作不一致、格式错误、参数错误。
+- System：步数限制、工具执行错误、LLM 限制、环境错误。
+
+AgentDebug 三阶段：
+1. 细粒度分析 memory / reflection / planning / action 模块。
+2. 定位 critical/root-cause error。
+3. 给出针对性反馈，并从 critical step 重新 rollout。
+
+数据与实验：
+构建 200 条人工标注失败轨迹 benchmark：100 ALFWorld、50 WebShop、50 GAIA，由 10 名专家标注，Cohen kappa 约 0.55。
+
+实验包括 root-cause localization 和 downstream debugging。比较 Direct Prompting、Brute Force、Binary Search、Self-Refine、Vanilla Debugger、ToT、Best-of-N 等。
+
+主要结论：
+- AgentDebug 的 step localization 明显优于 Direct Prompting。
+- 在 AET-Bench 上，AgentDebug 的 All Correct 明显更高。
+- 下游重跑能显著提升成功率。例如 ALFWorld 上 GPT-4o-mini 从 21 提升到 55，Qwen3-8B 从 48 到 74，Qwen3-Next-80B 从 60 到 84。
+- 模块化 rollout 明显优于只从 action 或普通 ReAct 重新跑。
+
+复现价值：
+这是 Agent 失败调试方向很重要的 baseline。它不只检测幻觉，还能定位 critical step 并重跑修复，和“短期可做代码实验”有一定契合度，尤其适合在现有环境如 ALFWorld/WebShop/GAIA 上做模块替换。
+
+局限：
+依赖强 LLM 做 detector；标注数据只有 200 条；研究对象是 general failure，不全是 hallucination；从 critical step 重跑的成本较高。
+
+对后续选题的启发：
+可以做“轻量 root-cause detector + 局部回滚修复”，降低强 LLM 依赖和重跑成本。这个方向比纯 benchmark 更接近可发表的系统改进。
+
+
+--------------------------------
+5. The Reasoning Trap: How Enhancing LLM Reasoning Amplifies Tool Hallucination
+--------------------------------
+
+核心问题：
+直觉上，模型推理越强应该越可靠。但论文发现，增强推理能力反而可能加剧工具幻觉：模型更自信、更愿意把不存在或不合适的工具用起来。
+
+任务与方法：
+论文定义 tool hallucination 为模型编造不存在工具，或在可用工具不匹配时错误使用工具。构建 SimpleToolHalluBench，来自 AgentSafetyBench 的 296 个工具，设置两类场景：
+- NTA：No-Tool-Available，没有可用工具，但问题需要外部工具，正确行为是承认无法完成。
+- DT：Distractor-Tool，给一个干扰工具，但缺少真正需要的工具，正确行为仍是拒绝或说明无法完成。
+
+实验比较：
+- tool-specific ReCall GRPO；
+- math GRPO；
+- R1 distillation；
+- Qwen3 thinking on/off；
+- prompt mitigation 和 DPO mitigation。
+
+主要结论：
+- 工具特定 RL 会提高 reward，但幻觉也上升。
+- 非 agent 的数学 GRPO 也会增加工具幻觉，说明不是工具训练集过拟合那么简单，而是 reasoning enhancement 本身可能改变模型行为。
+- R1 distillation 显著提高 hallucination。例如 Qwen2.5-7B Instruct 在 NTA/DT 为 34.8/54.7，R1-Distill 后升到 74.3/78.7。
+- Qwen3 thinking mode 也会提高工具幻觉。
+- think-then-act RL 比 direct tool-use RL 更容易造成严重工具幻觉。
+- prompt engineering 缓解很弱；DPO 能降低幻觉但会牺牲 reward。
+
+复现价值：
+适合作为“推理能力与工具可靠性 trade-off”的 baseline。实验可控、任务较简单，容易复现和扩展。
+
+局限：
+主要是单步工具调用 / abstention 场景，不是完整多步 Agent；数据较合成；机制解释有启发但还不够因果；缓解方案有限。
+
+对后续选题的启发：
+可以研究“reasoning 强度自适应 + 工具 abstention”：模型不是越想越好，而是在工具不可用、不确定或证据不足时降低行动倾向，增强拒绝和询问能力。
+
+
+--------------------------------
+6. ToolBeHonest: A Multi-level Hallucination Diagnostic Benchmark for Tool-Augmented Large Language Models
+--------------------------------
+
+核心问题：
+工具增强 LLM 常被评测“会不会用工具完成任务”，但真实环境里经常出现工具缺失、工具功能不完整、潜在工具诱导等不可解情况。模型如果不承认不可解，就会出现工具幻觉。
+
+任务与方法：
+论文提出 ToolBH，一个多层级诊断 benchmark：
+1. Solvability Detection：判断任务是否可解。
+2. Solution Planning：规划工具调用序列。
+3. Missing-Tool Analysis：分析缺少哪个工具能力。
+
+三类场景：
+- MNT：Missing Necessary Tools，缺少必要工具。
+- PT：Potential Tools，外部环境里似乎有潜在工具但未明确可用，诱导误用。
+- LFT：Limited Functionality Tools，工具存在但功能不完整。
+
+数据与实验：
+覆盖 7 类任务，每类构造可解和不可解样本。总测试规模约 1,050。数据通过种子样本、LLM 合成、embedding 过滤和人工审核得到。
+
+评估 14 个模型，包括 Gemini、GPT 系列、Llama、Mistral、Mixtral 等。
+
+主要结论：
+- 最强模型 Gemini-1.5-Pro 总分也只有约 45.3/100，说明任务很难。
+- 所有模型在 L3 Missing-Tool Analysis 上都表现差，尤其 LFT 场景。
+- PT 会显著干扰模型，让模型误以为潜在工具可用。
+- LFT 会导致模型在 planning 和 missing-tool analysis 阶段大幅下降。
+- 常见错误包括不存在工具、错误工具、可解性幻觉、错误 UnsolvableQuery index、错误工具推理。
+
+复现价值：
+适合作为“工具不可用 / 工具不足时的 honesty”评测 baseline。数据和任务结构清晰，适合做模型拒绝、clarification、tool capability reasoning 的改进。
+
+局限：
+工具描述较简化，不是完整 API；模型版本偏旧；主要是诊断 benchmark，不是 mitigation 方法。
+
+对后续选题的启发：
+可结合 Relign 的 indecisive actions：当工具缺失或功能不足时，不是硬调工具，而是让 Agent 识别不可解、请求补充工具或询问用户。
+
+
+--------------------------------
+7. From Proof to Program: Characterizing Tool-Induced Reasoning Hallucinations in Large Language Models
+--------------------------------
+
+核心问题：
+工具并不总是让模型更可靠。即便工具选择和执行本身是正确的，模型也可能因为依赖工具输出而放弃必要推理，形成 tool-induced reasoning hallucination。论文把这种现象称为 Tool-Induced Myopia (TIM)。
+
+任务与方法：
+TIM 指任务需要超出工具执行结果的推理，但模型使用 Code Interpreter / Python 后，把推理窄化成枚举、计算或经验验证，跳过证明、接受看似合理的输出。
+
+论文构建 PyMath 数据集，包含 1,679 道竞赛级数学题，特点是 Python 有帮助但不充分。来源包括 AIME 2024-2025、OlympiadBench、OlympicArena、Omni-Math 等。
+
+评估包括：
+- 最终答案准确率。
+- Win Rate：比较工具增强模型和基础模型的解题过程质量。
+- Miss Rate：和参考推理相比遗漏关键推理的比例。
+- PRM Accuracy：过程奖励模型评价。
+
+主要结论：
+- 工具增强模型最终答案平均准确率更高，约 43.3 vs 37.8。
+- 但推理过程质量更差，Miss Rate 更高、Win Rate 更低、PRM Accuracy 更低。
+- 工具调用越多，推理质量差距越大。
+- 错误类型从算术错误转向全局推理错误，如逻辑、假设、创造性推理。
+- 人工审计显示高风险案例中约 55% 存在 TIM。
+- mitigation 通过 prompt + DPO 约束 Code Interpreter 作为辅助而非替代，能小幅改善最终准确率和推理质量。
+
+复现价值：
+适合做“工具增强是否掩盖过程幻觉”的方向，尤其是数学和代码解释器场景。但它不完全是 Agent 轨迹幻觉，更偏工具辅助推理的过程可靠性。
+
+局限：
+集中在数学和 Code Interpreter；许多实验依赖闭源工具接口；对通用多工具 Agent 的外推需要额外实验。
+
+对后续选题的启发：
+可以研究“工具输出后的 reasoning faithfulness check”：工具结果不能直接变成最终结论，需要验证推理链是否真的支撑答案。
+
+
+--------------------------------
+8. MARCH: Multi-Agent Reinforced Self-Check for LLM Hallucination
+--------------------------------
+
+核心问题：
+RAG 场景中，模型容易生成看似合理但不被检索文档支持的内容。传统 verifier 直接看完整生成答案，容易受原答案影响，产生 confirmation bias。论文希望用多 Agent 自检和强化学习降低 RAG 幻觉。
+
+任务与方法：
+MARCH 包含三个角色：
+- Solver：基于 query 和 documents 生成 RAG 答案。
+- Proposer：把 Solver 答案拆成 atomic verifiable QA propositions。
+- Checker：只看检索文档回答 Proposer 的问题，不看 Solver 原答案。
+
+关键思想是 information asymmetry：Checker 不接触 Solver 的完整叙事，降低照抄或被误导的风险。
+
+奖励设计：
+比较 Proposer 的自答和 Checker 的文档 grounded answer。如果出现不一致，就惩罚。用 PPO / MARL 训练共享 Llama3.1-8B policy。
+
+数据与实验：
+训练不需要 ground-truth answer，只需要 queries 和 retrieved docs。
+训练数据包括：
+- BioASQ 4,721；
+- 2WikiMultiHopQA 4,500；
+- MuSiQue 4,500。
+
+检索噪声较高，尤其 MuSiQue irrelevant docs 比例很大。
+
+评估在 RAGTruth、FaithBench、ContextualJudgeBench、Facts Grounding、多跳 QA 等任务上进行，judge 使用 Qwen3-235B-A22B 等。
+
+主要结论：
+- MARCH 显著提升 factual grounding。RAGTruth/FaithBench 平均从 Llama3.1-8B 的 55.20 提升到约 74.93/75.23。
+- Facts Grounding 从 57.09 提升到 80+。
+- ContextualJudgeBench 从 29.7 提升到 51+。
+- claim 级自检和信息隔离比直接让模型自我检查更稳。
+
+复现价值：
+如果代码开源，这是 RAG 幻觉 mitigation 的强 baseline。但训练流程较重，需要 PPO、多 Agent rollout、较大显存和较长训练时间。
+
+局限：
+训练成本高；评估强依赖 LLM judge；主要处理 RAG 文档证据，不是工具动作轨迹；对短期快速完成实验有一定压力。
+
+对后续选题的启发：
+可以借鉴“proposer-checker 信息隔离”，做轻量版工具轨迹 checker：让 verifier 只看工具 observation 和当前 action，不看最终答案，从而避免被最终叙事污染。
+
+
+--------------------------------
+9. Small Agent Can Also Rock! Empowering Small Language Models as Hallucination Detector / HaluAgent
+--------------------------------
+
+核心问题：
+幻觉检测常依赖 GPT-4 等闭源大模型，成本高、不可控。论文希望让小开源模型通过工具使用成为可用的 hallucination detector。
+
+任务与方法：
+HaluAgent 使用 Baichuan2-Chat 7B / 13B 作为小模型检测 Agent，支持中英文。它处理多类幻觉检测任务：
+- knowledge QA；
+- conditional text generation；
+- semantic consistency；
+- math problem solving；
+- code generation。
+
+工具箱包括：
+- Google search；
+- SymPy calculator；
+- code interpreter；
+- condition verifier；
+- semantic checker；
+- split_text / get_answer 等系统工具。
+
+检测流程三阶段：
+1. 将回答切分成语义单元。
+2. 逐句选择工具并验证，存储 sentence / hallucination label / evidence。
+3. 进行 local/global reflection，修正工具使用错误和跨句传播错误。
+
+训练方法：
+用 GPT-4 生成 ReAct-like 检测轨迹，只保留与 ground truth 一致的轨迹。训练时只对 thought/action 计算 loss，mask observation。
+
+数据与实验：
+训练轨迹约 2,017 条，来自 WebQA、Ape210K、HumanEval、WordCnt、HaluEval-QA 等。评估包括 in-domain、out-of-domain 和 sentence-level 检测。
+
+主要结论：
+- HaluAgent-7B/13B 相比原 Baichuan 检测能力大幅提升。
+- HaluAgent-13B 在 out-of-domain 上接近 GPT-4 pipeline，但成本更低。
+- 添加 translator、calendar 等新工具后，少量示例即可扩展工具使用。
+
+复现价值：
+适合做“小模型 + 工具 + 轨迹检测”的 baseline。相比 MARCH 训练更轻，且更接近工程可复现路线。但原始模型和部分工具可能较旧，需要换成 Qwen/Llama 等新开源模型。
+
+局限：
+主要是检测，不是缓解；训练数据来自 GPT-4 轨迹，存在蒸馏偏差；semantic checker 仍可能依赖强模型；不是复杂 Agent 轨迹级 benchmark。
+
+对后续选题的启发：
+可以做“轻量级 Agent 轨迹 verifier”：用小模型 + 工具检查其他 Agent 的中间步骤，而不是让大模型全程做 judge。
+
+
+--------------------------------
+10. Reducing Tool Hallucination via Reliability Alignment / Relign
+--------------------------------
+
+核心问题：
+工具调用中，模型经常在条件不足时仍然强行行动。例如缺少必要参数时编造参数，工具集合不匹配时仍调用错误工具，重复调用不必要工具。这会导致错误执行、成本增加和系统可靠性下降。
+
+任务与方法：
+论文系统定义 tool hallucination 两大类、四小类：
+
+1. Tool selection hallucination：
+- Tool type hallucination：调用与任务无关的工具，或编造不存在的工具。
+- Tool timing hallucination：错误调用时机，例如同样输入输出下重复调用同一工具。
+
+2. Tool usage hallucination：
+- Tool format hallucination：JSON 格式错误、参数名错误、缺少必需参数、参数类型错误。
+- Tool content hallucination：参数内容是模型编造的，不来自用户 query。
+
+评估方法结合 rule-based 检查和 GPT-4o evaluator。rule-based 负责格式、schema、缺参数等结构错误；LLM evaluator 负责工具-任务相关性、参数真实性等语义判断。人工评估显示自动检测准确率约 92.7%。
+
+指标：
+- Tool Hallucination Rate：工具调用中幻觉调用比例。
+- Reliable Pass Rate (RePR)：Pass Rate 减去 task hallucination rate，避免“任务看似成功但依赖幻觉工具调用”的假成功。
+- Benefit-Cost Utility：奖励任务成功，惩罚多余工具调用和幻觉。
+
+RelyToolBench：
+基于 StableToolBench 构造，增加两类子集：
+- Missing Parameter Subset：隐藏关键参数，测试模型是否会编造参数。
+- Unmatched Tools Subset：替换成无关工具，测试模型是否会错误选工具。
+
+Relign 方法：
+核心思想是扩展 action space，让模型在条件不足时可以“不直接调用工具”，而是采取 indecisive actions：
+- ChangeTools：当前工具不合适，请求更换工具。
+- TalkToUser：信息不足，向用户澄清或说明无法完成。
+
+训练包含两步：
+1. Reliable SFT：构造工具替换和参数缺失样本，训练模型在 tool type/content hallucination 风险下输出 ChangeTools 或 TalkToUser。
+2. Reliable DPO：采样多个工具使用响应，用 hallucination evaluator 分成 correct、indecisive、hallucinated 三类，构造 preference pairs：
+   - correct > indecisive
+   - indecisive > hallucinated
+   - correct > hallucinated
+
+数据与实验：
+使用 ToolBench、StableToolBench、RelyToolBench。训练从 ToolBench 抽取 10,000 样本构造 reliability alignment 数据。基础模型包括 ToolLLaMA 7B、Llama-3.1-8B-Instruct、Qwen-2.5-7B-Instruct。训练使用 DeepSpeed-Chat，max sequence length 8192，SFT/DPO 学习率均为 1e-5，2 epoch。DPO 每轮采样 10 条轨迹，temperature 0.7，使用 GPT-4o 做 hallucination evaluator。
+
+主要结论：
+- Relign 显著降低工具幻觉率，同时减少平均工具调用次数。
+- ToolLLaMA baseline overall tool hallucination rate 约 56.5，Relign 降到约 18.3。
+- Llama3.1-8B baseline overall tool hallucination rate 约 50.8，Relign 降到约 14.6，RePR 提升到约 77.2。
+- Qwen2.5-7B baseline overall tool hallucination rate 约 49.2，Relign 降到约 17.6。
+- StepTool 等工具学习方法能提升任务成功率，但不能明显降低工具幻觉和工具调用成本。
+- Relign 在 APIBench OOD 上也有提升，说明降低工具幻觉可能有跨工具任务泛化。
+- timing hallucination 改善相对较小，说明顺序依赖和重复调用问题更难。
+
+复现价值：
+该论文明确给出代码和数据地址：https://github.com/X-LANCE/ToolHallucination
+这是最符合“开源可复现 baseline + 在代码上添加模块”的论文之一。它有清晰 baseline、训练数据构造、评价指标和改进空间。
+
+局限：
+依赖 GPT-4o evaluator 构造偏好数据和评估；训练仍需要显卡资源；主要处理工具选择/参数层面的幻觉，对复杂多 Agent 轨迹中的事实、逻辑、引用幻觉覆盖不足；indecisive actions 比较简单。
+
+对后续选题的启发：
+可以在 Relign 上做更轻量或更智能的改进，例如：
+- 不只固定 ChangeTools/TalkToUser，而是根据风险类型选择 abstain、ask、retry、verify、rollback。
+- 引入不确定性感知，让模型在低置信工具参数上自动澄清。
+- 加入运行时 monitor，避免每次都训练模型。
+- 针对 timing hallucination 做轨迹级记忆和重复调用检测。
+
+
+--------------------------------
+11. Beyond Final Answers: Auditing Trajectory-Level Hallucinations in Multi-Agent Industrial Workflows / Trajel
+--------------------------------
+
+核心问题：
+多 Agent 工业工作流中，幻觉可能发生在中间 Thought、Action、Observation 或最终 Response 中。只检查最终答案会漏掉过程中的程序跳步、角色越界、引用不存在结果等轨迹级幻觉。
+
+任务与方法：
+论文提出 Trajel，一个面向多 Agent 工业工作流的 trajectory-level hallucination 审计数据集和框架。基于 AssetOpsBench，Agent 包括 IoT、FSMR、TSFM、WO 等工业域模块。
+
+轨迹定义为多步 Thought-Action-Observation 序列。幻觉被定义为当前 step 的 thought 或 action 不被以下内容支撑：
+- 之前 observation/evidence；
+- 任务 specification；
+- 当前 agent 的角色边界。
+
+五类 hallucination taxonomy：
+- Factual：与 ground-truth data 矛盾的事实错误。
+- Referential：引用了轨迹历史中不存在的实体、观察或结果。
+- Logical：推理不由前提推出。
+- Procedural：跳过、重排、编造必要流程，或声称完成了没有完成的步骤。
+- Scope：Agent 越过自己的职责边界行动或声明。
+
+检测任务：
+- subtask-level detector：判断每一步是否有某类幻觉。
+- trajectory-level detector：判断整条轨迹是否含幻觉。
+
+模型范式：
+- BERT：单步 subtask 分类。
+- NLI：把历史作为 premise、当前 thought/action 作为 hypothesis，判断 entailment/contradiction。
+- Longformer：整条长轨迹输入，做 trajectory-level 分类。
+- LLM-as-a-Judge：作为零样本自动评测 baseline。
+
+数据与实验：
+Trajel 包含 225 条专家标注轨迹，来自 42 个工业 AssetOps 问题和 6 个模型配置。每条轨迹有 LLM judge 标注和 blind human review。人工标注字段包括是否幻觉、幻觉类型、位置、解释。
+
+主要统计：
+- Human-identified hallucination rate：约 68.3%。
+- LLM-judge-identified hallucination rate：约 79.1%。
+- Single-type hallucination：79 条。
+- Multi-type hallucination：75 条，占 hallucinated trajectories 的 48.7%。
+
+主要结论：
+- Procedural hallucination 最常见，占所有类型出现次数约 38.5%。
+- Factual 占约 26.3%，Scope 占约 19.8%，Logical 占约 8.5%，Referential 占约 6.9%。
+- LLM judge 二分类 F1 约 0.855，recall 约 92.2%，precision 约 79.7%，有过度标注倾向。
+- LLM judge 对 procedural/factual 检测较好，但对 logical/referential 很差，F1 分别约 0.258 和 0.222。
+- 监督模型表现有限：BERT F1 约 0.590、NLI F1 约 0.563 但 ROC-AUC 最高 0.689、Longformer F1 约 0.533。
+- execution-quality signals 很强，尤其 clarity and justification，AUC 约 0.908，超过训练分类器。
+- 当 clarity/justification 和 result verification 都缺失时，hallucination rate 达到约 97.1%，可作为运行时 kill-switch 候选条件。
+
+复现价值：
+适合做“轨迹级工业 Agent 幻觉审计”的 benchmark。如果数据和框架可获取，可以围绕轻量 runtime monitor、execution signal 融合、role-boundary detector 做改进。
+
+局限：
+数据只有 225 条，且来自单一工业域和同一 AssetOpsBench 框架；人工一致性中等，logical/referential 类型一致性低；监督模型训练数据太少；论文主要是审计和评测，不是完整 mitigation。
+
+对后续选题的启发：
+这篇很重要的一点是：简单执行质量信号比复杂监督分类器更有效。后续可以考虑把 Trajel 的 execution-quality signals 和 AgentProp/Relign 的工具运行时干预结合，做“低成本轨迹级幻觉风险监控与干预”。
+
+
+==============================
+三、对当前选题的初步观察
+==============================
+
+1. 最符合“开源可复现 baseline + 短期能改代码做实验”的候选：
+- Reducing Tool Hallucination via Reliability Alignment / Relign
+- AgentProp-Bench runtime interceptor
+- ToolBeHonest / ToolBH
+- HaluAgent
+
+其中 Relign 最直接，因为论文明确给出代码和数据地址，并且方法本身就是可改模块的训练/对齐框架。
+
+2. 最有顶会潜力但实验成本更高的候选：
+- AgentDebug：root-cause localization + rerollout repair。
+- AgentHallu：轨迹级 hallucination attribution。
+- Trajel：轨迹级工业 Agent 审计和 runtime signal。
+- MARCH：多 Agent self-check + RL，方向强但训练重。
+
+3. 如果要避开纯“投机解码/推理加速”，Agent 幻觉方向可以考虑三个可讲故事的切入：
+- 工具调用层面的 honesty / abstention / clarification：工具缺失、参数缺失、工具不匹配时不要编造。
+- 轨迹级 runtime monitor：用低成本信号提前发现高风险步骤，触发回滚、重试、换工具或问用户。
+- 小模型 verifier：用小模型和工具做便宜的轨迹检查，减少强 LLM judge 依赖。
+
+4. 当前最稳的短期路线：
+以 Relign 或 AgentProp-Bench 为 baseline，做“运行时风险感知的工具幻觉抑制”。相比从零构建 Agent 幻觉数据集，这条路线更容易复现、可控变量更多、代码改动更明确，也能自然连接 ToolBH、Reasoning Trap、AgentHallu/Trajel 的发现。
+
+5. 需要后续重点核验的事项：
+- 每篇论文是否真正开源代码和数据。
+- baseline 是否能在本机或服务器可用显卡上跑通。
+- 训练成本是否允许；如果不允许，应优先选 runtime-only 或 small-model verifier 方案。
+- 是否能构造一个清晰 novelty：不是简单把已有 detector 换模型，而是引入新的风险建模、干预策略或评估维度。

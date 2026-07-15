@@ -1,0 +1,704 @@
+\documentclass[11pt]{article}
+
+% Change "review" to "final" to generate the final (sometimes called camera-ready) version.
+% Change to "preprint" to generate a non-anonymous version with page numbers.
+\usepackage[preprint]{acl}
+\usepackage{amsmath} 
+% Standard package includes
+\usepackage{times}
+\usepackage{latexsym}
+\usepackage{amsthm}
+\newtheorem{definition}{Definition}[section]
+\newcommand{\defname}[1]{\textbf{#1.}}
+% For proper rendering and hyphenation of words containing Latin characters (including in bib files)
+\usepackage[T1]{fontenc}
+% For Vietnamese characters
+% \usepackage[T5]{fontenc}
+% See https://www.latex-project.org/help/documentation/encguide.pdf for other character sets
+\usepackage{tikz}
+\usetikzlibrary{shadows.blur}
+\usepackage{forest}
+\usetikzlibrary{arrows.meta,positioning,shapes.misc}
+\usetikzlibrary{arrows.meta} % 提供 -Latex 箭头
+\usepackage{tikz-qtree}
+\usetikzlibrary{trees} % this is to allow the fork right path
+
+% This assumes your files are encoded as UTF8
+\usepackage[utf8]{inputenc}
+
+% This is not strictly necessary, and may be commented out,
+% but it will improve the layout of the manuscript,
+% and will typically save some space.
+\usepackage{microtype}
+
+% This is also not strictly necessary, and may be commented out.
+% However, it will improve the aesthetics of text in
+% the typewriter font.
+\usepackage{inconsolata}
+\usepackage{amsmath,amssymb}
+%Including images in your LaTeX document requires adding
+%additional package(s)
+\usepackage{graphicx}
+\usepackage{booktabs}
+% If the title and author information does not fit in the area allocated, uncomment the following
+%
+%\setlength\titlebox{<dim>}
+%
+% and set <dim> to something 5cm or larger.
+
+\input{latex/math}
+
+\title{From Efficiency to Adaptivity: A Deeper Look at Adaptive Reasoning in Large Language Models}
+
+
+% Author information can be set in various styles:
+% For several authors from the same institution:
+% \author{Author 1 \and ... \and Author n \\
+%         Address line \\ ... \\ Address line}
+% if the names do not fit well on one line use
+%         Author 1 \\ {\bf Author 2} \\ ... \\ {\bf Author n} \\
+% For authors from different institutions:
+% \author{Author 1 \\ Address line \\  ... \\ Address line
+%         \And  ... \And
+%         Author n \\ Address line \\ ... \\ Address line}
+% To start a separate ``row'' of authors use \AND, as in
+% \author{Author 1 \\ Address line \\  ... \\ Address line
+%         \AND
+%         Author 2 \\ Address line \\ ... \\ Address line \And
+%         Author 3 \\ Address line \\ ... \\ Address line}
+% \author{Chao Wu \\
+%   University at Buffalo\\
+%   \texttt{cwu64@buffalo.edu} \And
+%   Zhenyi Wang \\
+%   University of Maryland, College Park \\
+%   \texttt{zwang168@umd.edu} \AND
+%   Baoheng Li \\
+%   University at Buffalo\\
+%   \texttt{baohengl@buffalo.edu} \And
+%   Mingchen Gao \\
+%   University at Buffalo\\
+%   \texttt{mgao8@buffalo.edu}\\}
+
+\author{
+  Chao Wu \\
+  University at Buffalo\\
+  \texttt{cwu64@buffalo.edu} \\
+  \And
+  Baoheng Li \\
+  University at Buffalo\\
+  \texttt{baohengl@buffalo.edu} 
+  \AND
+  Mingchen Gao \\
+  University at Buffalo\\
+  \texttt{mgao8@buffalo.edu}
+  \And
+  Yu Tian \\
+  University of Central Florida \\
+  \texttt{yu.tian2@ucf.edu}
+  \And
+  Zhenyi Wang \\
+  University of Central Florida \\
+  \texttt{zhenyi.wang@ucf.efu} 
+}
+
+
+% \author{
+%  \textbf{Chao Wu\textsuperscript{1}},
+%  \textbf{Zhenyi Wang\textsuperscript{2}},
+%  \textbf{Baoheng Li\textsuperscript{1}},
+%  \textbf{Mingchen Gao\textsuperscript{1}},
+% \\
+%  \textbf{Fifth Author\textsuperscript{1,2}},
+%  \textbf{Sixth Author\textsuperscript{1}},
+%  \textbf{Seventh Author\textsuperscript{1}},
+%  \textbf{Eighth Author \textsuperscript{1,2,3,4}},
+%\\
+%  \textbf{Ninth Author\textsuperscript{1}},
+%  \textbf{Tenth Author\textsuperscript{1}},
+%  \textbf{Eleventh E. Author\textsuperscript{1,2,3,4,5}},
+%  \textbf{Twelfth Author\textsuperscript{1}},
+%\\
+%  \textbf{Thirteenth Author\textsuperscript{3}},
+%  \textbf{Fourteenth F. Author\textsuperscript{2,4}},
+%  \textbf{Fifteenth Author\textsuperscript{1}},
+%  \textbf{Sixteenth Author\textsuperscript{1}},
+%\\
+%  \textbf{Seventeenth S. Author\textsuperscript{4,5}},
+%  \textbf{Eighteenth Author\textsuperscript{3,4}},
+%  \textbf{Nineteenth N. Author\textsuperscript{2,5}},
+%  \textbf{Twentieth Author\textsuperscript{1}}
+%\\
+%\\
+ % \textsuperscript{1}The State University of New York at Buffalo,
+ % \textsuperscript{2}University of Maryland, College Park
+ % \textsuperscript{3}Affiliation 3,
+ % \textsuperscript{4}Affiliation 4,
+ % \textsuperscript{5}Affiliation 5
+% \\
+ % \small{
+ %   \textbf{Correspondence:} \href{mailto:email@domain}{email@domain}
+ % }
+% }
+
+% \newcommand{\zy}[1]{{\color{blue}{\bf\sf [ZY: #1]}}}
+% \newcommand{\cw}[1]{\textcolor{red}{[CW: #1]}}
+\begin{document}
+\maketitle
+\begin{abstract}
+Recent advances in large language models (LLMs) have made reasoning a central benchmark for evaluating intelligence. While prior surveys focus on efficiency by examining how to shorten reasoning chains or reduce computation, this view overlooks a fundamental challenge: current LLMs apply uniform reasoning strategies regardless of task complexity, generating long traces for trivial problems while failing to extend reasoning for difficult tasks. This survey reframes reasoning through the lens of {adaptivity}: the capability to allocate reasoning effort based on input characteristics such as difficulty and uncertainty. We make three contributions. First, we formalize deductive, inductive, and abductive reasoning within the LLM context, connecting these classical cognitive paradigms with their algorithmic realizations. Second, we formalize adaptive reasoning as a control-augmented policy optimization problem balancing task performance with computational cost, distinguishing learned policies from inference-time control mechanisms. Third, we propose a systematic taxonomy organizing existing methods into training-based approaches that internalize adaptivity through reinforcement learning, supervised fine-tuning, and learned controllers, and training-free approaches that achieve adaptivity through prompt conditioning, feedback-driven halting, and modular composition. This framework clarifies how different mechanisms realize adaptive reasoning in practice and enables systematic comparison across diverse strategies. We conclude by identifying open challenges in self-evaluation, meta-reasoning, and human-aligned reasoning control.
+\end{abstract}
+
+\section{Introduction}
+Reasoning is a core aspect of intelligence, allowing humans to draw inferences from evidence, rules, and prior knowledge to make systematic decisions. In the context of large language models (LLMs), reasoning has become a central benchmark of progress, not only for solving complex tasks such as mathematics, programming, and scientific discovery, but also for demonstrating abilities beyond pattern recognition. As LLMs scale in capability, understanding how they reason and how to control their reasoning processes has emerged as a fundamental research question with both theoretical and practical implications.
+
+Existing surveys on LLM reasoning have largely focused on efficiency: how to shorten reasoning chains, avoid overthinking, and reduce computational cost. While efficiency is an important practical concern, it does not fully capture the broader challenge. Current LLMs often adopt a one-size-fits-all reasoning strategy, generating long reasoning traces even for trivial problems while failing to extend reasoning when faced with difficult tasks. What is missing is not merely efficiency, but adaptivity, which is the ability to flexibly adjust reasoning strategies based on context, difficulty, and uncertainty. We define adaptive reasoning in LLMs as the capability to allocate reasoning effort based on input characteristics such as difficulty and uncertainty. This adaptivity can be realized through learned policies that internalize allocation strategies during training, or through dynamic control mechanisms applied at inference time. Unlike efficiency-centric approaches that uniformly constrain reasoning length, adaptive reasoning emphasizes input-dependent resource allocation: answering easy questions quickly while allocating deliberate reasoning effort to harder or unfamiliar problems, thereby mirroring the natural scaling of human cognitive effort with task demands.
+
+To realize adaptive reasoning, LLMs must flexibly employ different reasoning strategies depending on task demands. Reasoning in LLMs encompasses diverse cognitive patterns, among which three classical paradigms—inductive, deductive, and abductive reasoning—provide a useful conceptual lens. Inductive reasoning generalizes from observed examples, as seen in in-context learning \cite{brown2020language}; deductive reasoning applies explicit logical rules to derive valid conclusions, underlying structured chain-of-thought \cite{wei2022chain} and program-of-thought \cite{chen2022program} frameworks; abductive reasoning seeks plausible explanations for observed outcomes. However, rather than organizing methods by reasoning type, this survey focuses on how adaptivity is implemented in practice. We propose a systematic taxonomy distinguishing training-based approaches, which internalize adaptive allocation strategies through reinforcement learning, supervised fine-tuning, and learned controllers, from training-free approaches, which achieve adaptivity through prompt conditioning, feedback-driven halting, and modular composition at inference time.
+Our contributions are threefold:
+\begin{itemize}
+\item We reframe LLM reasoning research through the lens of {adaptive reasoning}, moving beyond efficiency-centric approaches to emphasize input-dependent resource allocation. We define adaptivity as the capability to allocate reasoning effort based on task difficulty and uncertainty, realized through either learned policies or dynamic inference control.
+\item We formalize deductive, inductive, and abductive reasoning within the LLM context, providing clear definitions that connect these classical cognitive paradigms with their algorithmic realizations in contemporary LLM systems.
+\item We propose a systematic taxonomy organizing existing methods by implementation mechanism, distinguishing training-based approaches that learn adaptive policies from training-free approaches that apply dynamic control at inference and enabling systematic comparison across diverse adaptive reasoning strategies.
+\end{itemize}
+\section{Background and Foundations}
+\subsection{What is reasoning in LLMs?}
+
+
+Reasoning is a cornerstone of human intelligence, enabling inference and decision-making from evidence and rules. Following \citet{huang-chang-2023-towards} and \citet{10.1145/3729218}, reasoning can be viewed as a \textit{logical and systematic process} that uses prior knowledge and contextual evidence to arrive at valid conclusions or hypotheses. Within the context of LLMs, reasoning refers to the model's capacity to generate and verify intermediate representations that connect an input prompt $\mathbf{x}$ to an output $y$ through a structured inference procedure.
+
+We formalize reasoning from two complementary perspectives: (1) as a latent-variable conditional generation process (\S\ref{conditional gen}), and (2) as a resource-bounded optimization problem (\S\ref{optimize}). These formalizations provide the mathematical foundation for understanding adaptive reasoning mechanisms.
+
+\subsubsection{Reasoning as Conditional Generation}
+\label{conditional gen}
+Following \citet{bandyopadhyay2025thinkingmachinessurveyllm}, A language model defines a conditional probability distribution over output sequences:
+\begin{equation}
+p_{\boldsymbol{\theta}}(\mathbf{y}\mid \mathbf{x})
+= \prod_{n=1}^{N} p_{\boldsymbol{\theta}}(y_n \mid \mathbf{x}, y_{<n}),
+\end{equation}
+where $\boldsymbol{\theta}$ denotes model parameters.
+
+Extending this formulation, \citet{phan2023training} formalize reasoning 
+as a latent-variable conditional generation process. 
+Specifically, the model can be viewed as first generating a latent reasoning 
+trace $\mathbf{r}$, which is an unobserved sequence of intermediate thought step, and 
+then producing the final output $\mathbf{y}$ conditioned on both $\mathbf{x}$ 
+and $\mathbf{r}$. This leads to the marginal likelihood:
+\begin{equation}
+\log p_{\boldsymbol{\theta}}(\mathbf{y}\mid \mathbf{x})
+= \log \sum_{\mathbf{r}} 
+p_{\boldsymbol{\theta}}(\mathbf{r}\mid \mathbf{x})\,
+p_{\boldsymbol{\theta}}(\mathbf{y}\mid \mathbf{r},\mathbf{x}).
+\label{conditional equation}
+\end{equation}
+Under this latent-variable perspective, reasoning is formalized as 
+marginalizing over possible reasoning trajectories that mediate between 
+the input $\mathbf{x}$ and the final output $\mathbf{y}$. 
+This view conceptually unifies reasoning and conditional text generation,
+suggesting that the ``thought'' process of an LLM can be understood as sampling 
+from an implicit distribution over intermediate reasoning states.
+
+\subsubsection{Reasoning as Resource-Bounded Optimization}
+\label{optimize}
+Following \citet{alomrani2025reasoningbudgetsurveyadaptive}, 
+test-time reasoning can be viewed as a trade-off between computation and performance. 
+Two equivalent optimization views are commonly considered: 
+a constrained form ($L_1$) that fixes the compute budget, 
+and a penalized form ($L_2$) that adaptively balances accuracy and efficiency. 
+We adopt the $L_2$ formulation, which naturally aligns with the idea of adaptive reasoning:
+\begin{equation}
+\max_{\mathbf{r}\in\mathcal{R}}\;
+\mathcal{P}(\mathbf{r}, \mathbf{x})
++ \alpha\,\mathcal{E}(\mathbf{r}, \mathbf{x}),
+\end{equation}
+where $\mathcal{P}$ measures task performance, 
+$\mathcal{E}$ quantifies computational efficiency 
+(e.g., the inverse of compute cost), 
+and $\alpha$ controls their trade-off. 
+Although $L_2$ removes the explicit resource constraint in $L_1$, 
+it serves as its \emph{Lagrangian relaxation}, 
+implicitly preserving the same budgeted principle through the weighted efficiency term. 
+This formulation highlights reasoning as an adaptive optimization process 
+under limited computational resources.
+
+
+
+
+
+\subsubsection{Limitations of Efficient Reasoning}
+
+
+\label{sec:limitations-efficiency}
+LLMs often exhibit an \emph{overthinking} phenomenon, producing unnecessarily long chains of thought (CoT) for simple problems, thereby increasing compute without improving accuracy
+\citep{Sui2025StopOverthinking,alomrani2025reasoningbudgetsurveyadaptive}.
+Efficiency-oriented methods attempt to limit reasoning tokens, steps, or decoding paths to reduce test-time compute. 
+However, such \textit{static control} allocates identical budgets to all inputs, regardless of difficulty or confidence, 
+leading to redundant reasoning on easy cases and insufficient reasoning on complex ones.
+
+Empirical studies confirm that fixed-length CoT models often waste computation on easy inputs while failing on hard ones \citep{Sui2025StopOverthinking}. 
+% As noted by \citet{alomrani2025reasoningbudgetsurveyadaptive}, current test-time compute (TTC) approaches emphasize \textit{when to stop thinking}, but overlook \textit{how to think adaptively}. 
+The key limitation is that computation is treated as an external constraint rather than a self-regulated process: 
+intelligent reasoning should dynamically decide how much to think based on uncertainty and task complexity.
+
+To address these limitations, this survey proposes adaptive reasoning as a unified framework that (1) characterizes reasoning through broader cognitive paradigms (§\ref{sec:formal-reasoning}), and (2) formalizes adaptivity as a policy optimization problem (§\ref{sec:transfer-to-adaptive}), distinguishing methods that internalize adaptivity through training from those that apply external control at inference.
+
+\subsection{Forms of Reasoning}
+\label{sec:formal-reasoning}
+We formalize three classical reasoning paradigms that LLMs may employ. Let $\mathbf{x}$ denote the input, $\mathbf{y}$ the output, and $\mathbf{r} = (r_1, \ldots, r_K)$ the intermediate reasoning steps. Each paradigm defines how the model constructs and evaluates reasoning trajectories.
+
+\paragraph{Setup.}
+A reasoning process generates an intermediate trajectory 
+$\mathbf{r} = (r_1, \ldots, r_K)$ that mediates between input $\mathbf{x}$ 
+and output $\mathbf{y}$, where each step $r_k$ is autoregressively conditioned on $(\mathbf{x}, r_{<k})$.
+We call a reasoning episode $R_{\boldsymbol{\theta}}(\mathbf{x})=(\mathbf{r},\mathbf{y})$ \emph{valid}
+if it satisfies (1) \textbf{Causal coherence} — each step $r_k$ depends only on $\mathbf{x}$ and previous steps, ensuring a forward information flow;
+(2) \textbf{Goal consistency} — the reasoning trajectory $\mathbf{r}$ produces an answer $\mathbf{y}$ that faithfully and correctly fulfills the task objective, following the principles of faithful and step-wise reasoning \citep{lee2025evaluating,lyu2023faithful}
+
+
+
+\begin{definition}[\textbf{Deductive Reasoning}]
+A reasoning process is \emph{deductive} if each intermediate step $r_k$ 
+logically follows from the input $\mathbf{x}$ and prior steps, and the 
+final answer $y$ is necessarily entailed:
+
+\begin{equation}
+\begin{aligned}
+&\mathbf{x} \cup \{r_1,\dots,r_{k-1}\} \models r_k, 
+\quad &&\forall k \in \{1,\dots,K\},\\[3pt]
+&\mathbf{x} \cup \mathbf{r} \models y. &&
+\end{aligned}
+\label{eq:deductive}
+\end{equation}
+\end{definition}
+Here, the symbol ``$\models$'' denotes logical entailment: 
+a set of premises $A$ entails a conclusion $B$ 
+($A \models B$) if every model that satisfies all formulas in $A$ 
+also satisfies $B$. 
+
+This ensures that the reasoning trajectory preserves logical validity 
+at every step~\citep{ling2023deductive}. In LLMs, deductive reasoning 
+is approximated through verifiable chain-of-thought generation, where 
+each step can be checked for logical entailment from previous 
+statements~\citep{ling2023deductive,SealsShalin2024Deductive,Xia2025FormalLogic}.
+
+
+
+\begin{definition}[\textbf{Inductive Reasoning}]
+\label{def:inductive}
+Let $E = \{(\mathbf{x}_i, y_i)\}_{i=1}^K$ be observed examples, 
+$\mathcal{H}$ a hypothesis space $h: \mathcal{X} \to \mathcal{Y}$,
+and $C: \mathcal{H} \to \mathbb{R}_{\ge0}$ a complexity measure. 
+An inductive reasoning process infers:
+\begin{equation}
+\label{eq:inductive}
+h^* = \arg\min_{h \in \mathcal{H} : h(\mathbf{x}_i)=y_i \,\forall i} C(h),
+\end{equation}
+the simplest hypothesis consistent with all observations.
+\end{definition}
+
+This formalizes \emph{Occam's Razor}~\citep{Baker2022-BAKSSE-2} that preferring 
+hypotheses that explain data with minimal complexity. 
+When $C(h) = -\log p(h)$, this reduces to Maximum A Posteriori (MAP) 
+estimation under Bayesian induction.
+In LLMs, inductive reasoning manifests primarily in \emph{in-context 
+learning} (ICL)~\citep{brown2020language}, where models extrapolate implicit 
+rules from few-shot demonstrations to unseen cases~\citep{Ye2025ICLAttribution}.
+However, empirical studies show that LLMs do not always follow simplicity 
+principles in practice~\citep{SunSaparov2025Occam}.
+
+
+\begin{definition}[\textbf{Abductive Reasoning}]
+\label{def:abductive}
+Given observations $O$ and background knowledge $\mathcal{B}$,
+abductive reasoning generates the most plausible explanatory 
+hypothesis $H^*$ from a candidate space $\mathcal{H}$:
+\begin{equation}
+\label{eq:abductive}
+H^{*} = \arg\max_{H \in \mathcal{H}} p_\theta(H \mid O, \mathcal{B})
+\quad\text{s.t.}\quad \mathcal{B} \cup H \vdash O,
+\end{equation}
+
+where $p_\theta(H \mid O, \mathcal{B})$ quantifies the model's belief in the plausibility 
+of each hypothesis given the observation and prior knowledge. \end{definition}
+Here, the symbol ``$\vdash$'' denotes \emph{syntactic entailment}---that is, 
+the observation $O$ can be formally derived from the combined premises 
+$\mathcal{B}$ and $H$ according to a logical inference system.
+
+
+This instantiates \emph{inference to the best explanation}~\citep{Baker2022-BAKSSE-2}:
+among hypotheses that entail observation $O$ when combined with background knowledge 
+$\mathcal{B}$, abduction selects the most probable one.
+In LLMs, abductive reasoning is realized through conditional generation where the 
+model samples from $p_\theta(H \mid O)$ to produce plausible explanations.
+Benchmarks such as Abductive~\citep{bhagavatula2020abductivecommonsensereasoning} 
+and INABHYD~\citep{SunSaparov2025Occam} evaluate this ability by measuring 
+explanation coherence and plausibility.
+
+
+\subsection{Adaptive Reasoning}
+\label{sec:transfer-to-adaptive}
+
+Formally, we characterize adaptive reasoning through a {control-augmented policy} 
+$\pi_{\boldsymbol{\theta}}(\cdot|\mathbf{x};\boldsymbol{\phi}(\mathbf{x}))$ that maps inputs $\mathbf{x}$ 
+to distributions over reasoning trajectories $\boldsymbol{r}$, 
+where $\boldsymbol{\theta}$ denotes the base model parameters (e.g., LLM weights) 
+and $\boldsymbol{\phi}$ the adaptive control function regulating reasoning behavior.
+
+
+Adaptive reasoning optimizes the control policy to balance task performance $\mathcal{P}(\boldsymbol{r}, \mathbf{x})$ and computational cost $\mathcal{C}(\boldsymbol{r}, \mathbf{x})$:
+% \begin{equation}
+% \label{eq:new adapt}
+% \pi_{\boldsymbol{\theta}} 
+% = \arg\max_{\pi_{\boldsymbol{\theta}}} 
+% \mathbb{E}_{\mathbf{x} \sim \mathcal{D},\, \boldsymbol{r} \sim \pi_{\boldsymbol{\theta}}(\cdot|\mathbf{x})} 
+% \left[ \mathcal{P}(\boldsymbol{r}, \mathbf{x}) 
+% - \lambda \cdot \mathcal{C}(\boldsymbol{r}) \right],
+% \end{equation}
+\begin{equation}
+\label{eq:new adapt}
+\max_{\ \boldsymbol{\phi}\in\Phi}\;
+\mathbb{E}_{\mathbf{x}\sim\mathcal{D},\, \boldsymbol{r}\sim \pi_{\boldsymbol{\theta}}(\cdot\,|\,\mathbf{x};\,\boldsymbol{\phi}(\mathbf{x}))}
+\big[\,\mathcal{P}(\boldsymbol{r},\mathbf{x}) \;-\; \lambda\,\mathcal{C}(\boldsymbol{r},\mathbf{x})\,\big].
+\end{equation}
+where $\lambda$ controls the cost penalty and $\mathcal{D}$ is the data distribution.
+The optimization over $\boldsymbol{\phi} \in \Phi$ captures two complementary approaches to adaptive reasoning. In \textbf{training-based methods} (\S\ref{sec:training-based}), $\boldsymbol{\phi}$ is learned during training, for instance, IBPO \citep{Yu2025IBPO} trains a neural network to predict reasoning budgets, while C3oT \citep{kang2025c3ot} learns to generate short or long reasoning traces conditionally. In \textbf{training-free methods} (\S\ref{sec:training-free}), $\boldsymbol{\phi}$ represents fixed inference-time control such as entropy-based halting \citep{laaouach2025halt} or adaptive sampling thresholds, applied without parameter updates. This unified formulation clarifies how adaptivity arises from either learned policies or inference-time heuristics, both of which modulate $\pi_{\boldsymbol{\theta}}$ to allocate reasoning effort based on input characteristics.
+
+Unlike static efficiency methods that apply uniform compute budgets to all inputs, this framework enables {input-dependent resource allocation} by conditioning reasoning on $\boldsymbol{\phi}(\mathbf{x})$, which adapts to task difficulty and uncertainty. Recent work further shows that such adaptivity can emerge even without reinforcement learning: 
+\citet{karan2025reasoning} demonstrates that inference-time adaptive sampling alone 
+can elicit strong reasoning behaviors from base LLMs, 
+highlighting that reasoning adaptivity may arise naturally from sampling dynamics 
+rather than explicit policy optimization.
+
+\paragraph{Adaptive mechanisms in practice.}
+
+Adaptive mechanisms in practice. Existing work realizes adaptivity in two ways, corresponding to whether the policy $\pi_{\boldsymbol{\theta}}$ is optimized during 
+training or fixed at inference, shown in our taxonomy(§\ref{sec:taxonomy}).
+
+
+\textbf{(1) Training-free adaptivity.}
+Adaptivity can emerge without retraining the model, by dynamically
+regulating reasoning length or sampling during inference.
+\citet{laaouach2025halt} halt generation when the stepwise entropy
+\(H_i=-\!\sum_a p_i(a)\log p_i(a)\) drops below a threshold~$\theta$.
+\citet{aggarwal2023letssamplestepstep} use a Dirichlet prior over
+samples to detect when majority confidence exceeds \(C_{\text{thresh}}\),
+stopping further decoding.
+\citet{Han2025TALE} estimates minimal token budgets per instance and
+predicts per-sample cost as
+\(\text{Cost}=\frac{1}{N}\sum_{i=1}^N T(M(x_i))\).
+These methods achieve instance-level compute control through
+entropy, confidence, or budget signals.
+
+\textbf{(2) Training-based adaptivity.}
+Other approaches learn a reasoning policy that internalizes computation
+allocation during optimization.
+\citet{Yu2025IBPO} formulate inference-aware optimization
+with explicit budget constraints, where the policy is trained 
+to maximize reward while satisfying correctness thresholds 
+that implicitly controls compute allocation.
+Such training-based strategies generalize TTC to the learning phase,
+yielding policies that adapt depth and effort before deployment.
+
+\textbf{Key properties.} ~\eqref{eq:new adapt} 
+directly encodes three key properties of adaptive reasoning: 
+
+\textbf{(1)~Input-dependent allocation}—$\pi_\theta(\cdot|\mathbf{x})$ 
+conditions on $\mathbf{x}$ and is optimized to allocate reasoning 
+effort based on input difficulty;
+
+\textbf{(2)~Self-evaluation}—$\mathcal{P}(\mathbf{r}, \mathbf{x})$ 
+captures internal feedback signals (e.g., confidence, intermediate 
+rewards) that guide reasoning decisions;
+
+\textbf{(3)~Cost-aware optimization}—the term 
+$\lambda \cdot \mathcal{C}(\mathbf{r})$ explicitly balances 
+correctness and efficiency.
+
+These properties are realized through training-based methods 
+(\S\ref{sec:training-based}) that optimize $\pi_\theta$ during 
+training, or training-free methods (\S\ref{sec:training-free}) that apply dynamic control at inference. This distinction forms 
+the foundation for our taxonomy in \S\ref{sec:taxonomy}.
+
+\section{Taxonomy of Adaptive Reasoning}
+\input{latex/taxonomy}
+\label{sec:taxonomy}
+
+\subsection{Training-based Adaptive Reasoning}
+\label{sec:training-based}
+
+Training-based adaptive reasoning methods aim to endow models with the ability to regulate their reasoning depth and computational cost \emph{during training}.
+Instead of applying external halting or sampling rules, these methods modify learning objectives or data organization so that the model internalizes
+a sense of when to reason longer, when to compress, and how to allocate computational resources based on instance difficulty or uncertainty.
+This section reviews five main families of approaches that operationalize such adaptivity at training time.
+
+\subsubsection{Reinforcement Learning Methods}
+\label{sec:rl}
+Reinforcement-learning (RL)–based approaches integrate reasoning accuracy and computational efficiency into a unified optimization objective.
+IBPO \citep{Yu2025IBPO} formulates an inference-budget–constrained policy optimization problem where the policy learns to allocate
+larger token budgets to harder questions and smaller ones to easier instances.
+LCPO \citep{Aggarwal2025LCPO} directly adds a length-adherence(i.e., a reward that penalizes deviations from the target reasoning length) reward term to policy gradients,
+enabling the agent to match target reasoning lengths and revealing the emergence of
+short-reasoning models that preserve logical fidelity.
+\citep{Arora2025EfficientRL} propose a reasoning-efficient RL framework
+that shapes rewards to favor concise yet correct reasoning trajectories.
+SABER \citep{Zhao2025SABER} introduces switchable and balanced reward schedules to train models under multiple budget tiers.
+LSPO \citep{Chen2025LSPO} develops a length-aware data sampling strategy that dynamically filters training batches based on response length (e.g., retaining the shortest and longest) to stabilize training.
+Other variants include LASER \citep{liu2025learnreasonefficientlyadaptive}, which introduces adaptive, difficulty-aware reward shaping, penalizing lengthy reasoning more heavily on simple tasks, and Slow-Fast Policy Optimization (SFPO) \citep{Li2025SFPO} structures each update into fast, reposition, and slow phases to reduce gradient noise and stabilize convergence. Multi-objective approaches such as 
+{BRPO} \citep{qi2025optimizinganytimereasoningbudget} optimizes anytime reasoning via budget-sampled dense rewards and a variance-reduced policy gradient, and
+{HBPO} \citep{lyu2025hierarchicalbudgetpolicyoptimization} structures exploration across hierarchical token-budget groups to preserve capability while reducing average tokens.
+Together, these works demonstrate how reinforcement learning can encode budget awareness and trade-offs directly into learned reasoning policies through principled reward shaping and constraint design.
+Other variants include
+BudgetThinker \citep{wen2025budgetthinker} introduces dynamic control tokens whose embeddings encode remaining compute, enabling the model to adjust reasoning depth continuously during decoding, while uniquely combining an RL-based reward function with explicit control tokens, bridging the gap between purely implicit policy optimization and supervised control. AdaReasoner \citep{Tan2025AdaReasoner} learns an adaptive policy via reinforcement learning to dynamically configure reasoning parameters (e.g., temperature, step length, prompt type) for different tasks
+
+\subsubsection{Supervised Fine-tuning and Distillation Methods}
+\label{sft}
+A complementary line of work leverages supervised fine-tuning (SFT) or distillation to
+teach models to produce shorter yet equally valid reasoning chains.
+C3oT \citep{kang2025c3ot} jointly trains on long–short pairs of chain-of-thought (CoT) exemplars,
+allowing conditional generation of compact rationales without accuracy loss.
+CoT-Valve \citep{Ma2025CoTValve} identifies a controllable ``length direction'' in parameter space and tunes it with paired long/short data for elastic reasoning compression.
+TokenSkip \citep{Xia2025TokenSkip} prunes semantically redundant tokens and retrains the model under different compression ratios to learn explicit compression control.
+LS-Mixture SFT \citep{Yu2025LSMixtureSFT} integrates long and short CoT data during fine-tuning,
+enabling adaptive reasoning depth across instances.
+Distilling 2-1 \citep{Zhang2024DistillingTwoOne} removes explicit reasoning chains during distillation while retaining correctness, encouraging implicit short reasoning behaviors.
+SoftCoT \citep{Xu2025SoftCoT} and SoftCoT++ \citep{Xu2025SoftCoTpp} represent thought processes as continuous latent vectors, allowing smooth trajectory distillation that generalizes across prompts.
+Skip-Thinking \citep{chen2025skipthinkingchunkwisechainofthoughtdistillation} conducts chunk-wise distillation to mitigate gradient saturation in long CoT training. {Mixture of Reasonings (MoR)} \citep{xiong2025mixturereasoningsteachlarge} jointly trains LLMs on multiple reasoning strategies (e.g., logical, commonsense, numerical) through multi-style CoT supervision, enabling implicit adaptive reasoning style selection without explicit routing.
+TALE \citep{Han2025TALE} performs token-budget–aware prompt tuning that learns to predict minimal feasible token counts per instance.
+Length-Instruction Fine-Tuning with Chain-of-Thought (LIFT-COT) \citep{electronics14081662}
+extends standard supervision with explicit length labels,
+enabling the model to adhere to user-specified reasoning length or latency constraints
+while maintaining coherence in its generated rationales. SCoT \citep{wang2025efficientreasoningllmsspeculative} introduces a speculative chain-of-thought framework where a small draft model rapidly generates multiple reasoning trajectories, and a large target model selects or corrects them, achieving up to 3× faster inference with near-target-level accuracy. 
+Together, these supervised and distillation-based methods internalize compression control within model parameters, achieving adaptive reasoning efficiency without reinforcement objectives.
+\subsubsection{Learned Controllers and Routers}
+\label{sec:controller routers}
+
+Another line of work introduces auxiliary controllers or routing modules trained jointly or sequentially with the base model to decide
+which reasoning path or sub-model to activate.
+RouteLLM \citep{ong2024routellm} learns a lightweight router from preference data to dispatch easy inputs to cheaper small models and
+difficult ones to larger models, reducing total compute without degrading accuracy.
+SelfBudgeter \citep{Li2025SelfBudgeter} trains a two-stage system that first predicts the required reasoning budget and then enforces it through
+gradient-penalized reinforcement optimization. {ThinkSwitcher}~\citep{Liang2025ThinkSwitcher} extends this idea by training a supervised switching module that decides between concise and elaborate reasoning trajectories based on predicted task difficulty.  In Mixture-of-Experts (MoE) models, AdaMOE~\citep{zeng2024adamoe} achieves token-adaptive computation by introducing "null experts" that consume zero FLOPs. A load-balancing loss is used during training to teach the model's router to adaptively send tokens to either true experts for computation or null experts to skip computation, thereby dynamically allocating resources at the token level.  Route-To-Reason (RTR)~\citep{pan2025routereasonadaptiverouting} learns to predict accuracy–cost trade-offs across model–strategy pairs and dynamically routes each query to the optimal expert combination under a compute budget. Collectively, these works embed adaptivity at the system-decision level and bridge symbolic routing with learned compute control.
+
+\subsection{Training-free Adaptive Reasoning}
+\label{sec:training-free}
+This section overviews training-free adaptive reasoning, where model parameters remain frozen and adaptivity arises from inference-time control. It introduces three categories: prompt-conditioned, feedback-driven, and modular methods.
+
+Training-free adaptive reasoning denotes inference-time mechanisms that modulate the \emph{depth, breadth, or structure} of reasoning without any parameter update.
+Formally, a frozen model $f_\theta$ generates a reasoning trajectory $r=(t_1,\dots,t_n)$ governed by a control policy $\pi(x,t_i)$ that dynamically decides continuation or termination based on input difficulty or internal uncertainty.
+Unlike static efficiency control, these approaches allocate computation adaptively for each instance, emphasizing resource-aware and self-regulated inference
+\citep{Sui2025StopOverthinking,alomrani2025reasoningbudgetsurveyadaptive,zhu2025conciseadaptivethinkinglarge}.
+
+% ===============================================================
+\subsubsection{Prompt-conditioned Methods}
+\label{sec:prompt-conditioning}
+
+\textbf{Explicit token- and instruction-level control.}
+Prompt-conditioned methods introduce explicit instructions, control tokens, or concise templates that determine reasoning length at test time.
+They embody \emph{external} adaptivity—computation is modulated through textual conditions rather than learned signals \citep{cai2025does}.
+\citet{Lee2025TokenComplexity} quantifies token complexity to estimate minimal reasoning spans per instance.
+Contraied-CoT \citep{Nayab2025ConciseThoughts} employs templates that prioritize conciseness, and enforce concise reasoning by setting explicit length constraints (e.g., '100 words'). Sketch-of-Thought \citep{aytes2025sketchofthoughtefficientllmreasoning}
+ introduces cognitive-inspired sketching to generate compact, structured reasoning trajectories.
+ {Chain-of-Draft} (CoD) \citep{Xu2025ChainOfDraft} introduces a “draft-first” reasoning style: the model writes short, essential reasoning steps (at most ~5 words) per turn, thus minimizing verbosity while preserving correctness. {ConciseHint} \citep{Tang2025ConciseHint} integrates continuous hints or contextual anchors for difficulty-aware reasoning.
+Instruction-level prompt schemes such as Plan-and-Budget \citep{Lin2025PlanBudget}
+introduce explicit planning and budgeting instructions during inference,
+enabling the model to allocate reasoning depth and token usage adaptively
+across sub-questions.
+
+Together, these approaches treat reasoning efficiency as a prompt-engineering problem with {explicit, symbolic, yet parameter-free} adaptivity.
+
+% ===============================================================
+\subsubsection{Feedback-driven Methods}
+\label{sec:feedback}
+
+
+\textbf{Uncertainty- and entropy-based halting.}
+Feedback-driven adaptation relies on internal feedback such as entropy, confidence, or semantic closure to determine when reasoning should stop or expand.
+\citet{laaouach2025halt} defines entropy-threshold halting, where decoding terminates once uncertainty drops below a pre-defined threshold.
+\citet{Yang2025DEER} introduces a feedback-driven early exit mechanism that monitors token-level confidence during reasoning to adaptively halt generation once sufficient certainty is reached.
+\citet{mao2025earlystoppingchainofthoughtslarge} 
+employs a run-jump test to detect answer convergence, terminating the reasoning process when a sufficient number of consecutive steps yield identical intermediate answers.
+{EAGER} \citep{Scalena2025EAGER} leverages token-level entropy to branch into multiple reasoning paths only when high uncertainty is detected. {Self-Certainty} \citep{Kang2025SelfCertainty} proposes a metric that evaluates answer quality from the model’s own output probabilities, offering a reward-model-free substitute for Best-of-N selection.
+Sequence-level entropy 
+\citep{zhu2025uncertainty,sharma2025think} and confidence-based filtering methods such as DeepConf\citep{Fu2025DeepConf} further refine this paradigm. 
+
+\textbf{Verifier- and constraint-guided feedback.}
+Beyond internal entropy and confidence, some approaches externalize feedback via verifiers or structural constraints.
+\citet{liu2025answerconvergence} detect \emph{answer convergence} across partial chains and stop early when consistency stabilizes.
+\citet{wang2025nowait} prune filler \emph{thinking} tokens by suppressing keywords (e.g., ``Wait'', ``Hmm'') during decoding.
+Speculative or constraint-based schemes such as {Speculative Search} \citep{wang2025specreasoning} and {Value-Guided Search} \citep{wang2025valueguided} use acceptance thresholds or value models to admit only high-quality thoughts under limited budgets. 
+
+
+
+MetaReasoner~\citep{sui2025metareasonerdynamicguidanceoptimized} employs a contextual bandit controller that dynamically adjusts reasoning depth during inference based on external validation signals, exemplifying feedback-driven adaptation without reinforcement fine-tuning.
+% For agent-style reflective prompting, \citet{li-etal-2025-dora} dynamically optimizes reflection advice (note: this targets agent reflection rather than decoding constraints).
+These methods remain feedback-driven in essence: reasoning continues or halts based on real-time validation rather than fixed templates.
+
+
+
+
+\textbf{Consistency- and sampling-based adaptation.}
+A parallel line of work focuses on reasoning breadth—how many rationales to sample before aggregation.
+{Adaptive-Consistency} \citep{aggarwal2023letssamplestepstep} and {RASC} \citep{wan2025reasoningawareselfconsistencyleveraging} estimate consensus and halt when majority agreement stabilizes.
+
+Best-of-$N$ optimization is improved by {Fast BoN} \citep{Sun2024FastBoN}, which employs efficient sampling algorithms to generate high-scoring responses,and {ST-BoN} \citep{Wang2025STBoN}, which leverages early sampling consistency to identify and truncate suboptimal reasoning paths before full generation, while {DPTS} \citep{Ding2025DPTS} adaptively prunes search branches.
+Correctness-first sampling \citep{Li2025SampleSmartNotHard}, also known as Sample Smart, further balance accuracy and latency, refining adaptive breadth control for reasoning LLMs.
+
+Collectively, these methods realize an {internal self-regulation}that reasoning is guided by feedback loops rather than pre-specified templates.
+
+% ===============================================================
+\subsubsection{Modular Methods}
+\label{sec:modular}
+
+
+This category covers systems that combine or reuse pre-trained reasoning models through composition, merging, or ensembling.
+To clarify the boundary with \ref{sec:controller routers}, we \emph{treat any static, no-gradient weight interpolation or parameter merging} (e.g., long–short or activation-guided merging) 
+as \textbf{training-free modular adaptation}.
+In contrast, frameworks that involve training new gating, routing, or fusion modules are considered \textbf{learned controllers or routers} (\ref{sec:controller routers}).
+
+\textbf{Pipeline-based adaptive inference.}
+At the system level, modular methods dynamically allocate reasoning compute through a plan–budget–execute pipeline.
+
+Although implemented through decoding-level control rather than explicit architectural modules,
+{AlphaOne} \citep{Zhang2025AlphaOne}
+employs pacing tokens to regulate cognitive tempo across short-, long-, and tool-augmented reasoning phases.
+This design mimics modular behavior by dynamically allocating computation among distinct reasoning modes,
+bridging concise and deliberative thinking within a unified system. CoThink \citep{fan2025cothink} introduces a training-free modular pipeline where an instruct model first drafts a concise reasoning outline, and a thinking model expands it, reducing token usage while maintaining accuracy.
+Industrial frameworks such as {Bag-of-Tricks for Inference-Time Compute} \citep{liu2025bagtricksinferencetimecomputation} 
+systematically benchmarks training-free modular techniques that combine generation, verification, and confidence-weighted selection to improve inference-time reasoning efficiency. These systems demonstrate how architectural modularity induces reasoning flexibility without retraining. 
+
+\textbf{Model-merging and ensemble-based adaptation.}
+
+
+A complementary branch combines pre-trained reasoning modules by parameter interpolation or selective ensembling.
+Long-to-short reasoning via model merging(L2S merging) \citep{Wu2025L2S} reduces average reasoning length while preserving accuracy, and
+activation-informed merging(ACM)\citep{Yao2025ACM} learns layer-wise coefficients from activation mutual information.
+For language-specific settings, model merging can transfer reasoning ability from a strong “reasoner” into a target-language model without retraining \citep{Pipatanakul2025LangSpecificMerge}.
+Commercial deployments such as Kimi k1.5 also report hybrid short/long reasoning variants obtained by merging long-CoT and short-CoT specialists \citep{TeamKimi2025Kimi15}.
+These practices share the same anchor that {adaptive compute distribution across fixed modules} via weight interpolation or expert ensembling.
+\section{Conclusion and Open Challenges}
+This survey reframes reasoning in LLMs through the lens of adaptivity, defining it as the dynamic modulation of reasoning resources based on input-dependent complexity. We formalize this via classical cognitive paradigms and a unified taxonomy of training-based and training-free mechanisms. 
+
+However, as the field shifts toward test-time scaling exemplified by models like OpenAI o1 \cite{jaech2024openai} and DeepSeek-R1 \cite{guo2025deepseek}, new challenges emerge. A primary concern is the reliability of long-chain reasoning; while scaling inference computing can unlock complex problem-solving, it frequently leads to ``reasoning drift,'' where minor errors accumulate into hallucinations. Future adaptivity mechanisms must therefore transition from simple halting to active error-aware backtracking and dynamic pruning of reasoning paths. Furthermore, the meta-reasoning overhead remains a bottleneck; adaptation signals must be lightweight, potentially utilizing embedding-level difficulty estimations, to ensure that the cost of deciding {how} to reason does not offset the efficiency gains. Crucially, extending these mechanisms to dynamic and embodied systems represents a major frontier. Recent work such as Ares \cite{yang2026ares} and RARRL \cite{liu2026should} demonstrate that agents must autonomously balance high-level cognition with execution constraints, while others adapt via continuous environmental feedback \cite{kurokitime}. Finally, as adaptive reasoning extends into creative and exploratory domains, the community requires more nuanced metrics that go beyond exact-match accuracy to capture the marginal utility and semantic richness of test-time compute.
+
+\section{Limitations}
+This survey inevitably faces two limitations.
+First, due to space constraints, we focus on representative adaptive reasoning methods and do not exhaustively cover all recent variants, especially those emerging in multimodal or agentic settings. Our taxonomy emphasizes conceptual clarity over completeness, which may overlook some niche but relevant techniques.
+Second, the field of adaptive reasoning is evolving rapidly and new paradigms such as self-improving reasoning, adaptive reflection, and meta-evaluation appear almost monthly. Consequently, future developments may shift or refine the taxonomy presented here.
+\bibliography{custom}
+
+% \appendix
+% \clearpage   
+% \section{Detailed Formalization of Inductive Reasoning}
+% \label{sec:induct detail}
+
+% \begin{definition}
+% Let $\mathcal{H}$ denote a hypothesis space of candidate rules 
+% $h:\boldsymbol{\mathcal{X}}\!\to\!\boldsymbol{\mathcal{Y}}$,
+% $\mathbf{E}=\{(\mathbf{u}_i,\mathbf{v}_i)\}_{i=1}^{K}$ the observed examples,
+% and $C:\mathcal{H}\!\to\!\mathbb{R}_{\ge 0}$ a simplicity (or description–length) functional 
+% (e.g., $C(h)=-\log p(h)$).
+% Define the \emph{version space} iteratively as
+% \begin{equation}
+% \begin{aligned}
+% \mathcal{V}_0 &= \mathcal{H},\\
+% \mathcal{V}_k &= \{\,h\in\mathcal{V}_{k-1}\mid h(\mathbf{u}_k)=\mathbf{v}_k\,\},
+% \quad k=1,\dots,K.
+% \end{aligned}
+% \end{equation}
+% A reasoning process is \emph{inductive} if its trajectory
+% $\mathbf{r}=(\mathbf{r}_1,\dots,\mathbf{r}_K)$ performs step-wise \emph{consistency refinement}
+% ($\mathcal{V}_k\subseteq\mathcal{V}_{k-1}$ for all $k$)
+% and yields a final hypothesis $h^\star$ that balances fit and simplicity:
+% \begin{equation}
+% \begin{aligned}
+% h^\star &= \arg\max_{h\in\mathcal{V}_K}[\log p(\mathbf{E}\mid h)+\log p(h)],\\
+%         &= \arg\min_{h\in\mathcal{V}_K} C(h).
+% \end{aligned}
+% \end{equation}
+% \end{definition}
+
+% This formulation follows the classical principle of \emph{Occam’s Razor}\cite{Baker2022-BAKSSE-2},
+% preferring the simplest hypothesis consistent with all observations, even though empirical studies suggest that LLMs do not always adhere to this principle in practice~\citep{SunSaparov2025Occam}.
+% When $C(h)=-\log p(h)$, it becomes a maximum-a-posteriori (MAP) approximation
+% to Bayesian induction, in which each observation incrementally
+% updates the posterior over $\mathcal{H}$.
+% The nested version spaces 
+% $\mathcal{H}=\mathcal{V}_0 \supseteq \mathcal{V}_1 \supseteq \cdots \supseteq \mathcal{V}_K$
+% Thus, they represent the reasoning trajectory that filters inconsistent hypotheses.
+% In large language models, such inductive behavior is observed when the model
+% generalizes hidden rules from few-shot demonstrations rather than memorizing
+% surface patterns~\citep{Ye2025ICLAttribution,SunSaparov2025Occam}.
+
+
+
+% \section{Critique of Prior Test-Time Compute Formulations}
+% \label{app:critique}
+
+% Prior work on test-time compute \citep{alomrani2025reasoningbudgetsurveyadaptive} formalizes adaptive reasoning as optimizing reasoning traces $r$ for individual inputs:
+% \begin{equation}
+% \max_{r \in \mathcal{R}} \mathcal{P}(r, \mathbf{x}) + \alpha \cdot \mathcal{E}(r, \mathbf{x}),
+% \label{eq:ttc-l2}
+% \end{equation}
+% where $\mathcal{P}(r, \mathbf{x})$ measures performance and $\mathcal{E}(r, \mathbf{x})$ quantifies efficiency (typically defined as the inverse of compute cost). While this formulation effectively captures instance-level optimization at test time, it presents three fundamental limitations when extending to training-based adaptivity.
+
+% \subsection{Challenge 1: Single-Instance Optimization vs. Distributional Learning}
+
+% Equation~\ref{eq:ttc-l2} optimizes the reasoning trace $r$ for a given input $\mathbf{x}$, treating each instance independently. However, training-based methods aim to learn generalizable policies that adapt reasoning effort based on input characteristics across a data distribution $\mathcal{D}$. The formulation does not specify:
+% \begin{itemize}
+% \item How adaptivity is \textit{acquired} during training (i.e., what parameters are optimized and over what objective);
+% \item How the model generalizes from training instances to unseen inputs at deployment;
+% \item How to balance instance-level optimization (test time) with distributional learning (training time).
+% \end{itemize}
+
+% For example, methods like IBPO \citep{Yu2025IBPO} and BRPO \citep{qi2025optimizinganytimereasoningbudget} train models to allocate different token budgets to easy vs. hard problems. This requires optimizing over a distribution of inputs, not individual traces, which is not captured by Equation~\ref{eq:ttc-l2}.
+
+% \subsection{Challenge 2: Efficiency as Reward is Unnatural}
+
+% The efficiency term $\mathcal{E}(r, \mathbf{x})$ appears as a \textit{positive reward} in Equation~\ref{eq:ttc-l2}, where higher efficiency (lower cost) increases the objective. However, this formulation creates two practical issues:
+
+% \paragraph{Misalignment with training objectives.} Standard reinforcement learning objectives maximize task-specific rewards (e.g., correctness) rather than efficiency metrics. For instance:
+% \begin{itemize}
+% \item In RL, the reward signal typically reflects whether the final answer is correct, not how many tokens were used.
+% \item In supervised fine-tuning (SFT), the objective is to maximize the log-likelihood of correct demonstrations, which does not directly penalize reasoning length.
+% \end{itemize}
+% To incorporate efficiency, practitioners typically add \textit{length penalties} or \textit{cost constraints} to the training objective \citep{Aggarwal2025LCPO, liu2025learnreasonefficientlyadaptive}. Treating efficiency as a reward rather than a cost creates conceptual friction with these established training paradigms.
+
+% \paragraph{Unclear operational definition.} The formulation defines $\mathcal{E}(r, \mathbf{x})$ as the inverse of compute cost (e.g., $\mathcal{E} = 1 / \text{tokens}$). While mathematically valid, this definition is rarely used in practice. Training methods instead directly penalize cost:
+% \begin{equation}
+% \text{Reward} = \text{Correctness}(r, \mathbf{x}) - \lambda \cdot \text{Cost}(r),
+% \end{equation}
+% where $\lambda$ controls the cost penalty. This formulation is more intuitive and aligns with multi-objective optimization frameworks.
+
+% \subsection{Challenge 3: Absence of Policy Modeling}
+
+% Equation~\ref{eq:ttc-l2} optimizes over reasoning traces $r \in \mathcal{R}$ but does not model the \textit{policy} $\pi_{\boldsymbol{\theta}}$ that generates $r$. This omission creates a conceptual gap when formalizing training-based methods, where the core object of optimization is the policy parameters $\boldsymbol{\theta}$, not individual traces.
+
+% \paragraph{What is being learned?} In training-based adaptivity, the model learns a parameterized policy $\pi_{\boldsymbol{\theta}}(\cdot | \mathbf{x})$ that maps inputs to distributions over reasoning traces. The optimization objective is:
+% \begin{equation}
+% \max_{\boldsymbol{\theta}} \mathbb{E}_{\mathbf{x} \sim \mathcal{D}} \left[ \mathbb{E}_{r \sim \pi_{\boldsymbol{\theta}}(\cdot|\mathbf{x})} \left[ R(r, \mathbf{x}) \right] \right],
+% \end{equation}
+% where $R(r, \mathbf{x})$ is a reward function (e.g., correctness minus cost). The policy $\pi_{\boldsymbol{\theta}}$ encodes \textit{how} the model decides to allocate reasoning effort—this is what is learned during training and deployed at inference.
+
+% Equation~\ref{eq:ttc-l2} does not represent this learning process. It describes how to \textit{evaluate} a reasoning trace $r$ for a given input $\mathbf{x}$, but not how to \textit{learn} a policy that generates adaptive traces across diverse inputs. This distinction is critical: training-based methods optimize $\boldsymbol{\theta}$ (the policy), not $r$ (the trace).
+
+% \paragraph{Generalization across inputs.} Without modeling the policy explicitly, it is unclear how adaptivity transfers from training to deployment. For example:
+% \begin{itemize}
+% \item IBPO \citep{Yu2025IBPO} trains a policy to predict reasoning budgets based on query difficulty.
+% \item C3oT \citep{kang2025c3ot} learns to generate short or long reasoning conditionally based on task context.
+% \item BudgetThinker \citep{wen2025budgetthinker} conditions the policy on explicit budget tokens.
+% \end{itemize}
+% All these methods learn a parameterized policy $\pi_{\boldsymbol{\theta}}$ that generalizes across inputs. Equation~\ref{eq:ttc-l2} does not capture this inductive bias.
+
+% \subsection{Summary of Limitations}
+
+% The test-time compute formulation (Equation~\ref{eq:ttc-l2}) effectively describes \textit{how to optimize reasoning for a single input at inference time}, but it does not address:
+% \begin{enumerate}
+% \item How adaptivity is learned during training across a distribution of inputs;
+% \item How efficiency should be integrated into training objectives (as a reward or a penalty);
+% \item How to model the policy $\pi_{\boldsymbol{\theta}}$ that generates adaptive reasoning traces.
+% \end{enumerate}
+
+% Our proposed formulation (Equation~2 in the main text) addresses these gaps by explicitly optimizing a policy $\pi_{\boldsymbol{\theta}}$ over a data distribution $\mathcal{D}$, treating cost as a penalty rather than efficiency as a reward, and clarifying the distinction between policy optimization (training) and trace evaluation (inference). This policy-centric view provides a unified framework for understanding both training-free and training-based adaptive reasoning methods.
+
+% \section{Completed Taxonomy}
+% \input{latex/complete_taxonomy}
+\end{document}

@@ -1,0 +1,28 @@
+\section{Introduction}
+Large language models (LLMs) have emerged as powerful tools, delivering state-of-the-art performance across a wide range of tasks such as text generation, translation, and reasoning.
+The scaling law~\cite{kaplan2020scaling} has driven a trend toward increasingly large models, exemplified by models such as GPT~\cite{brown2020language}, PaLM~\cite{chowdhery2023palm}, LLaMA~\cite{touvron2023llama}, Deepseek~\cite{liu2024deepseek}, and Qwen~\cite{yang2025qwen3}, which often contain tens to hundreds of billions of parameters. 
+Despite their powerful capabilities, the enormous scale of LLMs poses serious challenges for efficient deployment due to high computational demands~\cite{sheng2023flexgen,zhou2024survey,wang2024model}. 
+This resource burden not only limits deployment on edge devices and consumer-level hardware but also increases the cost and carbon footprint of serving LLMs in production~\cite{strubell2020energy,patterson2022carbon}.
+
+As the scale of LLMs continues to grow, compression techniques, including weight quantization~\cite{frantar2022gptq,lin2024awq,huang2024billm,li2024arb}, network pruning~\cite{ma2023llm,frantar2023sparsegpt,sunsimple,gao2024disp,su2026rose}, knowledge distillation~\cite{gu2023minillm,yang2024survey,xu2024survey,zhang2024dual}, and low-rank decomposition~\cite{hsulanguage,kaushal2023lord,yuan2023asvd,wang2024svd,li2025adasvd}, have become increasingly important for the practical deployment of LLMs in resource-constrained environments. 
+The syntactic and semantic correlations acquired during training often induce redundancy in LLM weight matrices, giving rise to a low-rank structure~\cite{saha2024compressing}. 
+As a result, singular value decomposition (SVD) provides a principled and effective approach for compressing these matrices with minimal loss. 
+In particular, post-training approaches are gaining traction, as they can significantly reduce memory and compute requirements without the need for expensive retraining, making them especially suitable for scaling up foundation models. 
+Recent studies on post-training SVD-based LLM compression, including ASVD~\cite{yuan2023asvd}, SVD-LLM~\cite{wang2024svd}, Basis Sharing~\cite{wang2024basis}, and AdaSVD~\cite{li2025adasvd}, have made significant progress in reducing model size while preserving performance, demonstrating the effectiveness of low-rank approximation techniques in compressing LLMs. 
+However, existing methods suffer from two major limitations. First, existing methods ignore the importance of the residual matrix generated during SVD truncation, leading to significant truncation loss. Second, compressing all model layers often results in high layer-wise error and severe error propagation.
+
+In this work, we propose \textbf{ERC-SVD}, a new post-training SVD-based compression method for LLMs. 
+Building upon the key observations outlined above, ERC-SVD introduces two core technical innovations.
+\ding{172} \textbf{Residual compensation for SVD truncation:} The residual matrix produced during SVD truncation can be effectively utilised to reduce the truncation loss. 
+Specifically, we perform SVD truncation in two stages: we first truncate the original weight matrix $\boldsymbol{W}$ to obtain its intermediate low-rank approximation $\boldsymbol{W}_{r_i}$. After that, we compute the residual matrix $\boldsymbol{R}$ between $\boldsymbol{W}$ and $\boldsymbol{W}_{r_i}$. 
+Second, we apply SVD truncation to $\boldsymbol{R}$, yielding $\boldsymbol{R}_{r_r}$. 
+Finally, we construct the compressed weight matrix $\boldsymbol{\hat{W}}_{r}=\boldsymbol{W}_{r_i}+\boldsymbol{R}_{r_r}$, where the rank satisfies $r_i + r_r = r$. Detailed description and a mathematical proof are provided in Section~\ref{sec_rc}. \ding{173} \textbf{Partial-layer compression for SVD:} LLMs consist of a sequence of consecutive layers, where the output of each layer serves as the input to the next. 
+Therefore, any error introduced in earlier layers can propagate and accumulate through subsequent layers, leading to severe performance degradation. 
+To mitigate this, we propose compressing only the last few layers under a fixed overall compression ratio while keeping the earlier layers intact. This strategy ensures that the earlier layers remain error-free, reducing the impact of error propagation.
+
+Our key contributions can be summarised as follows:
+\begin{itemize}
+    \item We introduce \textbf{residual compensation for SVD truncation}, a theoretically grounded compensation strategy. By leveraging the residual matrix generated during the SVD truncation, our strategy significantly reduces the overall truncation loss.
+    \item We propose \textbf{partial-layer compression for SVD}, which compresses only the last few layers of the model under a fixed overall compression ratio. This strategy effectively reduces layer-wise error and mitigates error propagation.
+    \item Extensive experiments on multiple LLMs (LLaMA, OPT, Mistral, Vicuna, and Qwen) and benchmark datasets (both language modelling and zero-shot reasoning) demonstrate that ERC-SVD outperforms existing methods across a wide range of compression ratios.
+\end{itemize}

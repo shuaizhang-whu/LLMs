@@ -1,0 +1,117 @@
+\section{Experiments}
+
+\input{tables/main_result}
+% \input{tables/benifit_cost_ratio.tex}
+
+
+\subsection{Experimental Setup}
+
+\paragraph{Datasets.} In our experiments, we primarily utilized three datasets:  \textbf{ToolBench}, \textbf{StableToolBench} and \textbf{RelyToolBench}. ToolBench~\cite{qin2023toolllm} was constructed by scraping various APIs from RapidAPI and generating corresponding tasks and executions, comprising a total of 120,000 data samples. StableToolBench~\cite{guo2024stabletoolbench} is a selected subset of solvable samples from ToolBench, and it also proposed a stable environment for evaluation.  We randomly select 10,000 samples from Toolbench for constructing reliability alignment data. We further construct RelyToolBench based on StableToolBench for evalution.
+
+% ToolBench is utilized for training purposes, from which we extracted 10,000 samples to construct our Reliable Alignment training dataset. In addition to these samples, we also randomly sampled a portion of the data to introduce additional tool replacements and construct missing parameters, similar to the evaluation of StableToolBench.
+
+\paragraph{Baselines.} (1) \textbf{RLHF \& StepTool.}  The two baselines are proposed in Steptool~\cite{yu2024steptool}, which augments tool learning by introducing step-level rewards. RLHF is a simplified reinforcement learning version of Steptool with only trajectory-level reward. (2) \textbf{SFT \& DPO.} We also implemented a joint training approach that combines SFT and DPO losses on the same base model as baseline. The combination ratio is set to 0.5.
+
+
+%SFT learns from correct tool-call traces, while DPO ranks trajectories based on hallucination severity. Their combination enhances tool-use stability and reduces invalid calls. %我们实现了基于同一个基座模型，同时使用DPO和SFT的loss进行混合训练
+
+% \paragraph{Relign.}  
+% Relign expands the action space, allowing deferrals and corrections to mitigate hallucinations. It integrates preference optimization and structured training to improve reliability and efficiency.
+
+
+\paragraph{Training and inference details.}
+We use \textsc{Llama-3.1-8B-Instruct}, \textsc{Qwen-2.5-7B-Instruct}, and \textsc{Toolllama 7B}~\cite{qin2023toolllm} as our experimental models. Since LLaMA and Qwen models struggle with complex tool-calling tasks, we fine-tune them using 5,000 instances randomly sampled from ToolBench as the baseline. For all the experiments, we set the training batch size to 32, and the max sequence length to 8192. We utilize the \textsc{DeepSpeed-Chat} framework for efficient model training.  In all methods, the learning rate is set to 1e-5 for SFT and 1e-5 for DPO to ensure consistency, with all training conducted over two epochs. We did not perform a grid search but used standard hyperparameters for all experiments to ensure stable fine-tuning and consistent results.
+
+To construct the SFT training data, we randomly split 10,000 samples into three subsets: 4,000 remain unchanged, 3,000 are modified by replacing tool choices, and 3,000 are used to construct missing parameter cases. The model is directly fine-tuned on these curated tool-call traces. For DPO data construction, we start with the same 10,000 tasks and allow multi-round interactions with the environment. In each round, we sample ten tool-use trajectories at a temperature of 0.7 and use \textsc{GPT-4o} as a hallucination evaluator to construct preference pairs. To ensure data diversity, we retain at most one trajectory per step for each preference combination. While the SFT dataset size remains fixed, DPO training steps vary depending on the number of valid preference pairs. Not all interaction rounds yield usable DPO samples, resulting in a total of 10,000 to 20,000 preference pairs in practice. For instance, Relign training yields 17,000, 19,000, and 14,000 pairs for Toolllama, Llama3.1, and Qwen2.5, respectively. We train with a batch size of 32 for two epochs, with the final number of training steps determined by the number of collected DPO pairs.
+
+Additionally, evaluations regarding tool hallucinations and task success were performed using the \textsc{GPT-4o} model, and other evaluation details follow the setup in StableToolBench~\cite{qin2023toolllm}. The prompt for evaluating StableToolBench across all models is provided in Appendix~\ref{sec:evaluating_stabletoolbench}. For computing both benefit-cost utility, the necessary tool calling number is set to 1 for solvable tasks (original subsets) and 0 for unsolvable tasks ( missing parameter and unmatched tools subsets). We conduct all experiments using Nvidia A800 GPUs.
+
+
+\subsection{Main Results}
+\begin{figure*}[t!]
+    \centering
+    \includegraphics[width=\linewidth]{figs/metrics_grouped.pdf}
+    \vspace{-10mm}
+    \caption{Comparison of performance metrics between the baseline and Relign across three subsets: Original (O), Missing Parameter (MP), and Unmatched Tools (UT).}
+    \label{fig:main_results}
+\end{figure*}
+
+
+\begin{figure}[t!]
+    \centering
+    \includegraphics[width=\linewidth,trim=10 10 10 10,clip]{figs/hallu_dist.pdf}
+    \vspace{-4mm}
+    \caption{\textbf{Distribution of tool hallucination types.} The results highlight the effectiveness of Relign in reducing hallucination across all subsets.}
+    \label{fig:hallu_type}
+\end{figure}
+
+% \begin{figure}[t!]
+%     \centering
+% \includegraphics[width=\linewidth,trim=5 5 5 5,clip]{figs/metrics_data_size.pdf}
+%     \vspace{-4mm}
+%     \caption{\textbf{Comparison of performance metrics between different training data sizes.}}
+%     \label{fig:data_size}
+% \end{figure}
+
+% \begin{figure}[t!]
+%     \centering
+% \includegraphics[width=\linewidth,trim=5 5 5 5,clip]{figs/metrics_model_size.pdf}
+%     \vspace{-4mm}
+%     \caption{\textbf{Comparison of performance metrics between different model sizes.}}
+%     \label{fig:model_size}
+% \end{figure}
+
+As shown in Table~\ref{table:main_res}, we assessed the performance of our model on three subsets of StableToolbench. Our primary focus was on measuring the tool hallucination rate and the task pass rate. Our results indicate that the implementation of the Reliability Alignment framework, which includes both SFT and DPO, significantly reduces the tool hallucination rate of the baseline model. Moreover, we observed a decrease in the average number of tool callings required for each task. Although previous tool-learning methods, such as StepTool, effectively improve task success rates, they provide no reduction in tool hallucination rates and do not decrease the number of tool calls. In contrast, our approach not only enhances task success rates but also significantly reduces hallucinations. Furthermore, our Relign-trained model based on LLaMA 3.1 outperforms many closed-source models of similar scale, such as GPT-3.5-Turbo and GPT-4o Mini, approaching the performance of GPT-4o.
+
+
+Figure~\ref{fig:main_results} further demonstrates the effectiveness of our Relign framework in reducing tool hallucination and improving system efficiency across three categories of subsets: Original (O), Missing Parameter (MP), and Unmatched Tools (UT). Relign achieves a remarkable and consistent improvement in all the metrics over all subsets. 
+% Our method achieves a remarkable improvement in the Reliable Pass Rate, particularly in the UT subset, where the rate increases from 90.5\% in the baseline to 97.8\%. Similarly, the Tool Hallucination rate experiences a drastic reduction, dropping from 83.0\% to only 4.3\% in the UT subset, highlighting the robustness of our approach in handling mismatched tools. Furthermore, the Average Tool Calling Number decreases significantly across all subsets, with the UT subset seeing a reduction from 4.0 calls in the baseline to just 0.2 calls, showcasing the enhanced ability to reject unmatched tool usage. Finally, our framework maximizes task Utility, with the UT subset showing a substantial increase from 13.8 in the baseline to 19.2, underscoring the practical benefits of our alignment strategies in achieving both reliable and resource-efficient task execution.
+
+
+% \subsection{Reliability Evaluation}
+
+% Table 2 presents the comprehensive results of the reliability evaluation across different models and methods. In this table, we focus on two key metrics: \textbf{Utility} and \textbf{Ratio}. From the data, it is evident that our proposed approach significantly improves both the utility and ratio compared to the baseline models. Although the combination of SFT and DPO slightly reduces the task pass rate, the substantial reduction in tool hallucinations and unnecessary tool callings leads to a marked increase in both utility and ratio. This improvement indicates better system reliability, as the model becomes more efficient in task completion with fewer errors related to tool usage. The higher utility and ratio values demonstrate that our alignment method not only reduces hallucinations but also enhances the system’s effectiveness in reliably handling complex tasks. 
+
+% \input{tables/hallucination_type.tex}
+
+\subsection{Tool Hallucination Analysis}
+Figure~\ref{fig:hallu_type} provides a detailed distribution of different types of tool hallucinations. With Relign framework, all hallucination types show significant reductions, with the greatest improvement observed in the Content Hallucination category, particularly in the Unmatched Tools subset. However, Timing Hallucination demonstrates a relatively smaller improvement, likely due to the inherent difficulty in learning the sequential dependencies required to avoid repetitive or redundant tool calls. This underscores the robustness of our method while identifying areas for further optimization.
+
+% Specifically, within the I1 instruction subset, the predominant hallucinations are tool timing hallucination and tool content hallucination. In the Missing Parameter subset, Tool Content Hallucination is the most common type of error, while in the Unmatched Tools subset, tool type Hallucination dominates. Experimental results demonstrate that our alignment framework enables the model to learn how to accurately assess both the purpose and correct usage of tools, significantly reducing hallucinations in tool selection and usage, and thereby improving the overall reliability of tool callings. Across all subsets, the method demonstrates a consistent reduction in the occurrence of various types of hallucinations. Notably, in the Unmatched Tool subset, our model successfully eliminates hallucinations entirely, bringing the hallucination rate to zero. This significant improvement enhances the reliability of tool usage across the entire subset and reduces hallucination-related errors, ultimately contributing to more accurate and dependable tool interactions.
+
+\subsection{Comparison with Existing Metrics}
+Our RePR metric is a refined version of Pass Rate, as we found that some tasks in the original pass rate metric exhibited result hallucinations. Therefore, we believe the pass rate has certain inaccuracies and did not include its results in our paper. As shown in the Table~\ref{table:existing_metrics}, we have supplemented some of the original Pass Rate results. The results indicate that RePR is lower than Pass Rate, and the gap is more pronounced in base models without Relign alignment. This suggests that unaligned models tend to produce more tool hallucinations, which in turn mislead the final results. Moreover, whether using Pass Rate or RePR, our Relign framework consistently improves task success rates.
+
+\input{tables/orig_pass_rate}
+
+\subsection{Out-of-distribution Generalization to APIBench}
+As shown in the table below, we also evaluate our method on the out-of-domain test set APIBench. We follow the evaluation setup described in ~\citep{qin2023toolllm} (for more details, please refer to ~\citealp{qin2023toolllm}). Rather than training on APIBench, we treat each API in the prompt as a function call to assess how well our trained model generalizes to OOD datasets. Experimental results with two types of tool retrieval indicate that Relign improves model performance on other tool-use tasks as well, suggesting that reducing tool hallucinations helps models learn better tool-use strategies (AST represents tool-calling accuracy).
+\input{tables/apibench}
+
+
+\subsection{Discussion}
+
+\begin{figure}[t!]
+    \centering
+\includegraphics[width=\linewidth,trim=5 5 5 5,clip]{figs/metrics_data_size.pdf}
+    \vspace{-4mm}
+    \caption{\textbf{Impact of Training Data Size on Performance and Hallucination Metrics.} Experiments are conducted on LLaMA3.1.}
+    \vspace{-4mm}
+    \label{fig:data_size}
+\end{figure}
+
+\paragraph{Does More Data Reduce Hallucination?}
+Increasing the amount of training data from 1k to 5k consistently improves model performance, as reflected by the rising Reliable Pass Rate in Figure~\ref{fig:data_size}. However, this increase in data size does not always lead to a reduction in hallucination rates. Both Tool and Task Hallucination rates remain stable or even slightly increase with more data. This could be attributed to overfitting on ToolBench data, which consists of well-structured tool interaction trajectories and lacks samples that handle edge cases (e.g., failure scenarios where a task cannot be completed). Thus, the model learns correct tool calls but struggles with failure scenarios, defaulting to excessive hallucinated tool calls instead of invoking indecisive actions—precisely the issue Relign aims to address.
+
+\begin{figure}[t!]
+    \centering
+\includegraphics[width=\linewidth,trim=5 5 5 5,clip]{figs/metrics_model_size.pdf}
+    \vspace{-4mm}
+    \caption{\textbf{Impact of Model Size on Performance and Hallucination Metrics.} Experiments are conducted on Qwen2.5 with 5k data.}
+    \vspace{-4mm}
+    \label{fig:model_size}
+\end{figure}
+
+\paragraph{Does a Larger Model Reduce Hallucination?}
+Scaling up model size from 1.5B to 14B, while keeping the training data fixed at 5k, leads to significant improvements in both performance and hallucination reduction, as seen in Figure~\ref{fig:model_size}. Larger models exhibit a better ability to capture complex task dependencies and context, resulting in a noticeable decline in both tool hallucinations and excessive tool calls, leading to more reliable and efficient tool use. Moreover, the Reliable Pass Rate increases with model size, highlighting the enhanced robustness and generalization capabilities of larger models. These results suggest that scaling model parameters is a key strategy for improving the reliability and accuracy of tool usage in complex environments.
+

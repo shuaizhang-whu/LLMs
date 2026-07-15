@@ -1,0 +1,36 @@
+\section{Related Work}
+
+\textbf{LLM and agentic serving.}
+General LLM serving systems improve throughput and latency through scheduling, batching, multiplexing, distributed serving, and KV/context memory management~\cite{kwon2023efficient,agrawal2024sarathiserve,wu2023fast,duan2024muxserve,qiao2024conserve,qiu2024efficient,li2025throughput,pan2025kvflow,kim2025kvzip,cai2025rkv,yang2025kvlink,hu2024epic,xie2025strata,prabhu2024vattention}.
+Agentic serving systems extend this line to tool-using, multi-turn programs with workflow/session-aware execution, intercept support, and cache management~\cite{luo2025autellix,parrot24,zhang2026megaflow,giusti2025federation,zhang2025ufo3,guo2025agenticlybic,zheng2024sglang,abhyankar2024infercept,wang2025augserve,zhai2026toolcaching,xu2025alignment,li2026continuum,chen2026concur,kang2026thunderagent,zheng2026efficient,xia2026idleness}.
+However, this serving line remains largely tool-execution unaware: it does not directly speed up tool calls, and it misses opportunities to use tool-side information to further optimize LLM serving, which \sys{} targets.
+
+\textbf{Tool \& runtime acceleration.}
+Tool execution performance is shaped by serverless/workflow runtimes, so recent work reduces \emph{workflow orchestration overhead} and mitigates \emph{cold starts} via better provisioning/worker reuse~\cite{liu2023unum,joosen2025serverless,liu2024jiagu,prewarm}.
+Additional systems target \emph{cross-service caching/state management} for microservice graphs and serverless settings~\cite{zhang2024mucache,zhang2025causalmesh}, and speed up tool-heavy pipelines with more efficient \emph{data passing/transfer paths}~\cite{marcelino2024truffle,wu2024faastube,marcelino2025databelt}.
+Yet, most of these techniques assume a largely static workflow/microservice graph and cannot directly exploit the online, LLM-generated control flow and context-dependent argument binding in agent loops, which \sys{} is designed to handle.
+
+\textbf{Speculation.}
+Speculation has been applied to \emph{serverless functions} to accelerate workflows by executing likely-needed tasks early~\cite{stojkovic2023specfaas}.
+Emerging agentic work explores \emph{speculative actions and speculative tool calls} to overlap tool latency with reasoning/search while preserving correctness constraints~\cite{ye2025speculative,huang2025reducing,nichols2025spectoocalls}. Compared to \sys{}, existing speculation mechanisms struggle to (i) infer the concrete, context-dependent arguments that are only produced online by the agent, making accurate tool-call speculation difficult, and (ii) manage the correctness and side-effect risks of executing wrong calls, which requires explicit, risk-aware control.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+\section{Conclusion}
+
+In this paper, we presented \sys, a coordinated tool--LLM parallelization system for low-latency LLM agent serving.
+\sys predicts concrete future tool invocations from recurring agent patterns, executes them speculatively while the LLM generates, and paces returning sessions so that hidden tool time is not converted into extra LLM-side delay.
+Across deep research, software engineering, and scientific-agent workloads, \sys reduces exposed tool stalls and LLM-side waiting while preserving the agent's semantically sequential execution.

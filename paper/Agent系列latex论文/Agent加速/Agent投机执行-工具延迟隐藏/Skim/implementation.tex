@@ -1,0 +1,22 @@
+\section{Implementation}
+\sys{} is implemented in Python as a multi-tier speculative
+execution layer atop existing ReAct-based web agents. The
+offline pipeline performs one-time per-site analysis through
+HTTP probing with headless-browser escalation, discovering
+search endpoints, URL templates, pagination behavior, rendering
+requirements, and bot-detection characteristics; a local
+Qwen2.5-14B-Instruct model served via vLLM~\cite{vllm} enriches each profile
+with query-construction guidance and representative search
+templates. At runtime, the URL predictor synthesizes destination
+URLs through regex extraction, typed URL templates, and
+Qwen-based slot filling, while the resource predictor selects
+the minimum execution environment and model from the task,
+retrieved content, and offline capability metadata. Tasks are
+then mapped to one of four execution tiers ranging from direct
+HTTP+Qwen retrieval to full ReAct; lightweight tiers perform
+schema-guided HTML cleaning and extraction with Qwen2.5-14B, and
+higher tiers invoke browser navigation or off-the-shelf ReAct
+agents (WebVoyager, BrowserUse, AgentOccam) configured with
+GPT-4o, consistent with prior web-agent evaluations and benchmark configurations. A Qwen-based verifier guards speculative outputs and
+cascades to heavier tiers on rejection, preserving navigational
+progress through warm-start URLs produced by earlier stages.

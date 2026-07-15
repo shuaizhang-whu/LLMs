@@ -1,0 +1,146 @@
+\section{Appendix B: Additional-Experiments}
+\label{app:additional_exp}
+
+\subsection{Quantitative Validation for Synthetic Data}
+\label{app: syndata_validation}
+To quantitatively validate the fidelity of our synthetic edits in Section~\ref{sec:construction_and_scaling}, we have added two complementary structural-similarity metrics between the original snapshot and each of the four synthetic variants:
+
+\begin{enumerate}
+    \item \textbf{Normalized Tree-Edit Distance (Zhang--Shasha):} We parse each AXTree into a labeled tree and compute the minimal edit distance, normalized by the larger tree size. Across the four variants, the \textit{mean} normalized distance is \textbf{0.0088} (std \textbf{0.0076}), indicating on average less than 1\% structural change.
+
+    \item \textbf{Jaccard Similarity on Node Sets:} We collect each tree's set of node labels (using the raw text lines as labels) and compute
+    $$
+    \mathrm{Jaccard} = \frac{|A \cap B|}{|A \cup B|}
+    $$
+    with a \textit{mean} Jaccard score of \textbf{0.9911} (std \textbf{0.0000}), demonstrating over 99\% node-level overlap.
+\end{enumerate}
+
+These results confirm that our edits introduce only minimal, precisely controlled structural modifications while preserving virtually the entire DOM structure of the observation context and the same risk setting. At the same time, by strategically altering the core portion of Sarah's reply (in Figure~\ref{fig:axtree-compare}), these edits require completely different reasoning paths from the agent, thereby enriching the dataset to robustly evaluate the agent's behavior under diverse out-of-scope queries.
+
+\subsection{Quantitative Validation of the Accuracy and Robustness of LLM-as-a-Judge}
+\label{app: llm_judge_validation}
+
+
+As described in Section~\ref{sec:evaluation}, \textit{LLM-as-a-Judge} is a natural choice for evaluating the LLM agent's actions due to its ability to semantically connect the intention behind an action with the surrounding dynamic context. To support this evaluation framework, we constructed a 160-sample subset by selecting 20 representative samples from each distinct risk setting. These samples were approximately evenly distributed across three utility score levels to ensure coverage and diversity. This same subset was used consistently across all the validation experiments in this section. We evaluate performance using two metrics: \textit{Accuracy}, which reflects overall agreement with the reference judgments, and \textit{ZeroAccuracies} (\textit{ZeroAcc}), which measures the judge's accuracy specifically on samples with a utility score of zero, reflecting \textbf{only} hallucinatory actions. 
+
+\paragraph{Cross-Validation with Human Reference}
+\label{app:human_validation}
+
+To quantify the robustness of our evaluation paradigm and detect potential model-specific biases, we conducted extensive cross-validation experiments involving multiple LLM judges.
+
+Specifically, we incorporated two additional state-of-the-art LLM judges with distinct architectures---\textit{Gemini-2.5-flash} and \textit{Claude-3.5-Sonnet}---operating at a temperature of 0. These models were evaluated on the same dataset with identical prompts, in parallel with the original \textit{o4-mini} model. Furthermore, human annotations were collected to serve as a reference baseline.
+
+We then computed the mean \textit{Accuracy} between each LLM judge and the human reference to assess their alignment. We also report \textit{ZeroAcc}, which measures the judge's performance specifically on samples with a utility score of zero, reflecting \textbf{only} hallucinatory actions.
+
+The results in Table~\ref{tab:llm_judge_human_agreement} reinforce the consistency and reliability of our \textit{LLM-as-a-Judge} paradigm. All three LLM judges demonstrate strong alignment with human annotations, achieving \textit{Accuracy} scores above 0.75. Notably, \textit{Claude-3.5-Sonnet} attains the highest \textit{ZeroAcc} score, indicating superior capability in detecting hallucinated actions. These findings support the robustness of our evaluation framework across models and risk settings.
+
+\begin{table}[htbp]
+\centering
+\footnotesize
+\begin{tabular}{lcc}
+\toprule
+\textbf{LLM Judge} & \textbf{Accuracy} & \textbf{ZeroAcc} \\
+\midrule
+o4-mini & 0.756 & 0.789 \\
+Claude-3.5-Sonnet & 0.769 & 0.895 \\
+Gemini-2.5-flash & 0.769 & 0.806 \\
+\bottomrule
+\end{tabular}
+\caption{Cross-validation results comparing LLM judges against human reference annotations on a 160-sample subset across six risk settings. \textit{Accuracy} measures overall agreement, while \textit{ZeroAcc} reflects agreement specifically on hallucinated cases (utility score = 0). \textit{Claude-3.5-Sonnet} exhibits the strongest hallucination detection performance.}
+\label{tab:llm_judge_human_agreement}
+\end{table}
+
+
+\paragraph{Self-Consistency Validation Under Temperature Variation}
+\label{app:temp_validation}
+
+To assess the robustness of the LLM judge under stochastic decoding, we conducted self-consistency experiments on \textit{o4-mini} using two independent runs at temperature = 1. We compared the judgments from each run against the baseline results produced at temperature = 0, using \textit{Accuracy} and \textit{ZeroAcc} to evaluate overall alignment and hallucination-specific agreement, respectively.
+
+As shown in Table~\ref{tab:self-consistency-temp}, both runs achieved high consistency with the baseline, with Accuracy scores of 0.849 and 0.819, and ZeroAcc scores of 0.845 and 0.831. These results confirm that the LLM judge is largely stable under sampling variation, though slight deviations indicate room for further improvement in determinism.
+
+
+\begin{table}[htbp]
+\centering
+\footnotesize
+\begin{tabular}{lcc}
+\toprule
+\textbf{Robustness to Sampling Temperature} & \textbf{Accuracy} & \textbf{ZeroAcc} \\
+\midrule
+o4-mini (run 1, temp = 1) & 0.849 & 0.845 \\
+o4-mini (run 2, temp = 1) & 0.819 & 0.831 \\
+\bottomrule
+\end{tabular}
+\caption{Self-consistency of the \textit{o4-mini} LLM judge under temperature variation. \textit{Accuracy} measures overall agreement with the deterministic (temperature = 0) baseline; \textit{ZeroAcc} focuses specifically on hallucination cases.}
+\label{tab:self-consistency-temp}
+\end{table}
+
+\paragraph{Prompt Format Validation under Structural Perturbations}  
+To assess the robustness of the LLM judge to prompt structure, we conducted experiments with format perturbations. The original prompt comprises four components: (1) task and output instructions, (2) explanation of the risk setting, (3) scoring rubric for classifying agent behavior, and (4) the agent's reasoning trace and context. Two perturbed variants were constructed by randomly reordering these components and modifying heading hierarchies (e.g., promoting second-level headings to first-level), while preserving semantic content.
+
+This evaluation follows prior work~\cite{ghazarian2024assessment, ngweta2025towards} showing that LLM-based evaluators may be sensitive to prompt structure, especially the position and format of scoring criteria. Our perturbations extend beyond rubric order by altering overall prompt organization.
+
+We compare the perturbed prompt responses against those from the original prompt using \textit{Accuracy} and \textit{ZeroAcc}, as defined earlier in this section. Results in Table~\ref{tab:llm_judge_prompt_robustness}  indicate that, even under randomized and structurally non-ideal formats, the LLM judge remains largely robust: \textit{Accuracy} consistently exceeds 0.75, and \textit{ZeroAcc} remains above 0.85. This supports the reliability of the verification framework under reasonable prompt variation. reports the results.
+
+\begin{table}[htbp]
+\centering
+\footnotesize
+\begin{tabular}{lcc}
+\toprule
+\textbf{Perturbed Format vs. Original} & \textbf{Accuracy} & \textbf{ZeroAcc} \\
+\midrule
+Format\_1 vs. Original & 0.875 & 0.950 \\
+Format\_2 vs. Original & 0.775 & 0.850 \\
+\bottomrule
+\end{tabular}
+\caption{Evaluation of prompt format robustness. Each row reports the agreement between perturbed and original prompts across 160 samples. \textit{Accuracy} denotes overall agreement in scoring; \textit{ZeroAcc} focuses on hallucinated cases (utility score = 0). Results show that despite structural reordering, the LLM judge maintains stable evaluation behavior.}
+\label{tab:llm_judge_prompt_robustness}
+\end{table}
+
+
+\subsection{Stability Validation of Performance Gaps Across LLM Agents}
+\label{app: stability_validation}
+To assess whether the observed performance differences between open-source and proprietary models are statistically meaningful rather than due to random variation, we conducted a stability analysis across three models---\textit{GPT-4o}, \textit{Qwen2.5-7B-Instruct}, and \textit{Deepseek-chat}---on the full dataset. Each model was evaluated with temperature set to 1 over three independent runs. For each model, we report the mean and standard deviation of both the hallucination rate (HR) and a complementary metric, utility score (US), to quantify the consistency and statistical reliability of observed performance gaps.
+
+Table~\ref{tab:stability-by-risk} summarizes these results across risk settings, showing that the performance differences are consistent across independent runs with modest standard deviations, reinforcing the robustness and statistical validity of our model comparisons.
+
+\begin{table}[htbp]
+\centering
+\footnotesize
+\begin{tabularx}{\textwidth}{p{2cm} *{3}{>{\centering\arraybackslash}X}}
+\toprule
+\textbf{Risk Setting} & \textbf{Qwen2.5-7B (HR$\downarrow$/US$\uparrow$)} & \textbf{DeepSeek-chat (HR$\downarrow$/US$\uparrow$)} & \textbf{GPT-4o (HR$\downarrow$/US$\uparrow$)} \\
+\midrule
+Flawed Interaction History (Erroneous) & 0.305 $\pm$ 0.063 / 0.582 $\pm$ 0.044 & 0.311 $\pm$ 0.027 / 0.612 $\pm$ 0.020 & 0.296 $\pm$ 0.017 / 0.636 $\pm$ 0.018 \\
+Unachievable Goal State         & 0.515 $\pm$ 0.035 / 0.254 $\pm$ 0.020 & 0.615 $\pm$ 0.041 / 0.225 $\pm$ 0.030 & 0.502 $\pm$ 0.057 / 0.294 $\pm$ 0.065 \\
+Out of Scope Queries       & 0.489 $\pm$ 0.058 / 0.370 $\pm$ 0.035 & 0.290 $\pm$ 0.027 / 0.601 $\pm$ 0.018 & 0.303 $\pm$ 0.031 / 0.565 $\pm$ 0.018 \\
+Ill-specified Instructions & 0.434 $\pm$ 0.090 / 0.417 $\pm$ 0.074 & 0.405 $\pm$ 0.026 / 0.472 $\pm$ 0.017 & 0.338 $\pm$ 0.032 / 0.514 $\pm$ 0.025 \\
+Flawed Interaction History (Repetitive) & 0.232 $\pm$ 0.043 / 0.728 $\pm$ 0.015 & 0.471 $\pm$ 0.038 / 0.415 $\pm$ 0.032 & 0.233 $\pm$ 0.096 / 0.718 $\pm$ 0.125 \\
+Pop-up Distractions        & 0.007 $\pm$ 0.012 / 0.993 $\pm$ 0.012 & 0.014 $\pm$ 0.012 / 0.986 $\pm$ 0.012 & 0.013 $\pm$ 0.012 / 0.968 $\pm$ 0.019 \\
+Unexpected Environmental Transitions      & 0.538 $\pm$ 0.034 / 0.395 $\pm$ 0.030 & 0.446 $\pm$ 0.036 / 0.534 $\pm$ 0.030 & 0.376 $\pm$ 0.027 / 0.577 $\pm$ 0.000 \\
+\midrule
+\textbf{Overall}           & 0.377 $\pm$ 0.035 / 0.580 $\pm$ 0.036 & 0.407 $\pm$ 0.025 / 0.495 $\pm$ 0.004 & 0.415 $\pm$ 0.040 / 0.499 $\pm$ 0.036 \\
+\bottomrule
+\end{tabularx}
+\caption{Mean and standard deviation of hallucination rate (HR) and utility score (US) across three independent runs with temperature 1. Results are reported per risk setting and model to assess the stability of observed performance gaps.}
+\label{tab:stability-by-risk}
+\end{table}
+
+\subsection{Statistical Validation of Performance Gaps Across Models}
+To ensure the statistical validity of these observed differences, we conducted a stability analysis across three representative models---\textit{Qwen2.5-7B-Instruct}, \textit{DeepSeek-chat}, and \textit{GPT-4o}---over three independent runs at temperature $=1$. As shown in Table~\ref{tab:stability-summary}, the hallucination rate (HR) and utility score (US) exhibit modest standard deviations, reinforcing that the reported performance gaps are consistent and meaningful rather than resulting from sampling variability alone. Detailed experimental setups and results for each risk setting are provided in Appendix~\ref{app: stability_validation}.
+
+
+
+\begin{table*}
+\centering
+\begin{tabular}{lcc}
+\toprule
+\textbf{Model} & \textbf{HR (mean~$\pm$~std)} & \textbf{US (mean~$\pm$~std)} \\
+\midrule
+Qwen2.5-7B-Instruct & 0.383 $\pm$ 0.029 & 0.511 $\pm$ 0.021 \\
+Deepseek-chat       & 0.365 $\pm$ 0.009 & 0.541 $\pm$ 0.008 \\
+GPT-4o              & 0.302 $\pm$ 0.032 & 0.601 $\pm$ 0.027 \\
+\bottomrule
+\end{tabular}
+\caption{Overall hallucination rate (HR) and utility score (US) across models.}
+\label{tab:stability-summary}
+\end{table*}

@@ -1,0 +1,64 @@
+\section{Noise-Enhanced SVD Truncation}
+We add a noise {\small$\Delta W$} to the original weight matrix {\small$W$} and choose to compress {\small$W_n = W + \Delta W$} instead of {\small$W$}. Below we provide the proof that this modification greatly reduces the compression loss.
+
+\vspace{-2mm}
+{\small
+\begin{equation}
+\begin{split}
+     L&=\left\|W X-W^{\prime} X\right\|_F\\
+    &=\left\|W S S^{-1} X-\operatorname{SVD}(W_n S) S^{-1} X\right\|_F\\
+    &=\left\|(W S-\operatorname{SVD}(W_n S)) S^{-1} X\right\|_F\\
+    &=\left\|(W_n S -\Delta W S-\operatorname{SVD}(W_n S)) S^{-1} X\right\|_F\\
+    &=\left\|(W_n S -\operatorname{SVD}(W_n S)) S^{-1} X - \Delta WX\right\|_F\\
+    &=\left\|(W_n S -\operatorname{SVD}(W_n S)) S^{-1} X - \Delta WX\right\|_F\\
+\end{split}
+\label{formula:loss}
+\end{equation}
+}
+
+\noindent Same as SVD-LLM, we constructs the whitening matrix {\small$S$}, which satisfies {\small$SS^T = XX^T$}. We then perform the SVD compression on {\small$W_nS$}. Therefore, the compression loss {\small$L$} is calculated based on Equation~\ref{formula:loss}.
+
+\noindent Therefore, the upper-bound of the loss $L$ is:
+
+\vspace{-2mm}
+{\small
+\begin{equation}
+\begin{split}
+     L \leq \left\|(W_n S -\text{SVD}(W_n S)) S^{-1} X\right\|_F + \left\|\Delta WX\right\|_F\\
+\end{split}
+\label{formula:deduct}
+\end{equation}
+}
+
+\noindent We set {\small $\Delta W = \epsilon \times Q\times L$} , where {\small $L$} is obtained by the Cholesky decomposition of {\small $(XX^T)^{-1}$}, i.e. {\small$(XX^T)^{-1} = L^TL$ }, {\small $Q$} is the positive definite matrix and $\epsilon$ is a minimum value. We could get:
+
+\vspace{-2mm}
+{\small 
+\begin{equation}
+\begin{split}
+     \left\|\Delta WX\right\|_F 
+     &= \sqrt{\operatorname{trace}[(\Delta WX)^T \Delta WX]}\\
+     &= \sqrt{\operatorname{trace}[\Delta WX(\Delta WX)^T ]}\\
+     &= \sqrt{\operatorname{trace}[\Delta W XX^T \Delta W ^T]} \\
+     &= \sqrt{\operatorname{trace}[\epsilon^2 QL(XX^T)L^TQ^T]} \\
+     &= \sqrt{\operatorname{trace}[\epsilon^2 QL(L^TL)^{-1}L^TQ^T]} \\
+     &= \sqrt{\operatorname{trace}[\epsilon^2 QLL^{-1}(L^T)^{-1}L^TQ^T]} \\
+     &= \sqrt{\operatorname{trace}[\epsilon^2 QQ^T]} = \sqrt{\operatorname{trace}[\epsilon^2]} = \epsilon \approx 0 
+\end{split}
+\label{formula:d2}
+\end{equation}
+}
+
+Therefore, the loss $L$ is about the same as {\small$\left\|(W_n S -\text{SVD}(W_n S)) S^{-1} X\right\|_F$} and is still about equal to the singular values of $W_n S$.
+
+Therefore, our job is to design $Q$ to lower the singular values of $W_n S = (W-\Delta W)S$ and the target could be transformed into the minimization of the kernel function of $(W-\Delta W)S = WS - \epsilon \times Q LS$, as shown in Equation~\ref{formula:goal}, which could be resolved by ADMM algorithm.
+
+\vspace{-2mm}
+{\small
+\begin{equation}
+\begin{split}
+     Q = \min_{Q} \left\|WS - \epsilon Q L S\right\|_*
+\end{split}
+\label{formula:goal}
+\end{equation}
+}

@@ -1,0 +1,246 @@
+\section{Experiments} \label{sec:experiments}
+\subsection{Setups}
+
+\paragraph{Evaluation Details.} We compare our method against five baselines without re-training: conventional SVD, ASVD~\cite{yuan2023asvd}, SVD-LLM~\cite{wang2024svd}, Basis Sharing~\cite{wang2024basis}, and AdaSVD~\cite{li2025adasvd}. We evaluate ERC-SVD on ten models spanning five LLM families: LLaMA-2-7B~\cite{touvron2023llama2}, LLaMA-13B~\cite{touvron2023llama}, LLaMA-2-13B~\cite{touvron2023llama2}, LLaMA-30B~\cite{touvron2023llama}, OPT-6.7B~\cite{zhang2022opt}, OPT-13B~\cite{zhang2022opt}, OPT-30B~\cite{zhang2022opt}, Mistral-7B~\cite{jiang2023mistral}, Vicuna-7B~\cite{chiang2023vicuna}, Qwen-3-8B~\cite{yang2025qwen3}. 
+For language modeling, we use three benchmark datasets: WikiText-2~\cite{merity2016pointer}, PTB~\cite{marcus1993building}, and C4~\cite{raffel2020exploring}.
+For zero-shot reasoning and understanding, we evaluate on seven tasks within the \textit{LM-Evaluation-Harness} framework: OpenbookQA~\cite{mihaylov2018can}, WinoGrande~\cite{sakaguchi2021winogrande}, HellaSwag~\cite{zellers2019hellaswag}, PIQA~\cite{bisk2020piqa}, MathQA~\cite{amini2019mathqa}, ARC\_e and ARC\_c~\cite{clark2018think}. Moreover, to demonstrate the generality and effectiveness of ERC-SVD, we further extend our evaluation to vision-language models (VLMs), LLaVA~\cite{liu2024improved}.
+
+\paragraph{Implementation Details.} \label{implementation_details}
+We follow the protocols of ASVD, SVD-LLM, and Basis Sharing, randomly selecting 256 calibration samples with a sequence length of 2048 from WikiText-2. We then apply matrix scaling prior to performing SVD truncation. All methods are implemented with PyTorch and Transformers on NVIDIA A100 GPUs. 
+
+\subsection{Results}
+We evaluate the overall performance of ERC-SVD across four dimensions: \ding{172} \textbf{Effectiveness under different compression ratios} (ranging from 20\% to 60\%), \ding{173} \textbf{Scalability to larger-scale models}, \ding{174} \textbf{Generalizability across diverse LLM families}, and \ding{175} \textbf{Performance on VLMs}, including quantitative and qualitative results, are provided in Table~\ref{some_benchmark} and Appendix~\ref{ressvd:vlm}, respectively.
+% \FloatBarrier
+\begin{table}[t]
+\centering
+\caption{Overall performance of LLaMA-2-7B~\cite{touvron2023llama2} compressed by ERC-SVD and baselines under 20\% to 60\% compression ratios (``\textsc{Ratio}''), including performance on three language modeling datasets (measured by perplexity (\textcolor{blue}{$\downarrow$})) and zero-shot performance on seven common sense reasoning datasets (measured by individual and average accuracy (\textcolor{green!60!black}{$\uparrow$})). The best results are marked in \textbf{bold}. NaN denotes evaluation failure due to numerical instability. $*$ refers to results derived from the original paper. - means that results are not available.}
+% \vspace{1mm}
+% \vspace{-5pt}
+\label{llama2_result_table}
+\small
+\resizebox{\textwidth}{!}{
+\begin{tabular}{c|c|ccc|cccccccc}
+    \toprule
+     \textsc{Ratio} & \cellcolor{white} \textsc{Method} & \cellcolor{white} WikiText-2\textcolor{blue}{$\downarrow$} & \cellcolor{white} PTB\textcolor{blue}{$\downarrow$} & \cellcolor{white} C4\textcolor{blue}{$\downarrow$} & \cellcolor{white} Openb.$\uparrow$  & \cellcolor{white} ARC\_e$\uparrow$ & \cellcolor{white} WinoG.$\uparrow$ & \cellcolor{white} HellaS.$\uparrow$ & \cellcolor{white} ARC\_c$\uparrow$ & \cellcolor{white} PIQA$\uparrow$ & \cellcolor{white} MathQA$\uparrow$ & \cellcolor{white} Average\textcolor{green!60!black}{$\uparrow$}\\
+    \midrule
+    \textcolor{gray}{-} & \cellcolor{white} \textcolor{gray}{Original} & \cellcolor{white} \textcolor{gray}{5.47} & \cellcolor{white} \textcolor{gray}{26.84} & \cellcolor{white} \textcolor{gray}{7.28} & \cellcolor{white} \textcolor{gray}{0.31} & \cellcolor{white} \textcolor{gray}{0.69} & \cellcolor{white} \textcolor{gray}{0.67} & \cellcolor{white} \textcolor{gray}{0.56} & \cellcolor{white} \textcolor{gray}{0.40} & \cellcolor{white} \textcolor{gray}{0.78} & \cellcolor{white} \textcolor{gray}{0.27} & \cellcolor{white} \textcolor{gray}{0.53}\\
+    \midrule
+        \multirow{5}{*}{20\%}  & \cellcolor{white} SVD & \cellcolor{white} 18208.79 & \cellcolor{white} 59320.78 & \cellcolor{white} 27131.56 & \cellcolor{white} 0.14 & \cellcolor{white} 0.26 & \cellcolor{white} 0.49 & \cellcolor{white} 0.25 & \cellcolor{white} 0.22 & \cellcolor{white} 0.52 & \cellcolor{white} 0.20 & \cellcolor{white} 0.30\\
+
+                               & \cellcolor{white} ASVD & \cellcolor{white} 9.56 & \cellcolor{white} 120.74 & \cellcolor{white} \textbf{12.85} & \cellcolor{white} \underline{0.25} & \cellcolor{white} 0.59 & \cellcolor{white} \underline{0.61} & \cellcolor{white} \underline{0.46} & \cellcolor{white} \underline{0.32} & \cellcolor{white} \underline{0.72} & \cellcolor{white} \underline{0.24} & \cellcolor{white} \underline{0.45}\\
+              
+                               & \cellcolor{white} SVD-LLM & \cellcolor{white} 8.37 & \cellcolor{white} 139.68 & \cellcolor{white} 20.18 & \cellcolor{white} 0.23 & \cellcolor{white} 0.50 & \cellcolor{white} 0.59 & \cellcolor{white} 0.39 & \cellcolor{white} 0.26 & \cellcolor{white} 0.65 & \cellcolor{white} 0.23 & \cellcolor{white} 0.41\\
+
+                               & \cellcolor{white} Basis Sharing & \cellcolor{white} \underline{7.77} & \cellcolor{white} \underline{60.00} & \cellcolor{white} 16.22 & \cellcolor{white} 0.24 & \cellcolor{white} \underline{0.60} & \cellcolor{white} \underline{0.61} & \cellcolor{white} 0.43 & \cellcolor{white} 0.31 & \cellcolor{white} 0.69 & \cellcolor{white} \underline{0.24} &  \cellcolor{white} \underline{0.45} \\
+        \cmidrule{2-13}      
+                               & \cellcolor{cyan!10} \textbf{ERC-SVD} & \cellcolor{cyan!10} \textbf{7.63}  & \cellcolor{cyan!10} \textbf{45.37}  & \cellcolor{cyan!10} \underline{14.73} & \cellcolor{cyan!10} \textbf{0.28} & \cellcolor{cyan!10} \textbf{0.61} & \cellcolor{cyan!10} \textbf{0.65} & \cellcolor{cyan!10} \textbf{0.50} & \cellcolor{cyan!10} \textbf{0.35} & \cellcolor{cyan!10} \textbf{0.73} & \cellcolor{cyan!10} \textbf{0.26} & \cellcolor{cyan!10} \textbf{0.48} \\
+
+    \midrule
+        \multirow{5}{*}{30\%}  & \cellcolor{white} SVD & \cellcolor{white} 30373.39 & \cellcolor{white} 48930.94 & \cellcolor{white} 36905.54 & \cellcolor{white} 0.12 & \cellcolor{white} 0.25 & \cellcolor{white} 0.49 & \cellcolor{white} 0.25 & \cellcolor{white} 0.22 & \cellcolor{white} 0.51 & \cellcolor{white} 0.21 & \cellcolor{white} 0.29\\
+
+                               & \cellcolor{white} ASVD & \cellcolor{white} 984.03 & \cellcolor{white} NaN & \cellcolor{white} NaN & \cellcolor{white} 0.15 & \cellcolor{white} 0.27 & \cellcolor{white} 0.51 & \cellcolor{white} 0.26 & \cellcolor{white} 0.22 & \cellcolor{white} 0.53 & \cellcolor{white} 0.20 & \cellcolor{white} 0.31\\
+        
+                               & \cellcolor{white} SVD-LLM & \cellcolor{white} 10.66 & \cellcolor{white} 292.90 & \cellcolor{white} 34.96 & \cellcolor{white} 0.21 & \cellcolor{white} 0.42 & \cellcolor{white} 0.55 & \cellcolor{white} 0.34 & \cellcolor{white} 0.22 & \cellcolor{white} 0.60 & \cellcolor{white} \underline{0.23} & \cellcolor{white} 0.37\\
+
+                               & \cellcolor{white} Basis Sharing & \cellcolor{white} \textbf{9.69} & \cellcolor{white} \underline{101.22} & \cellcolor{white} \underline{25.45} & \cellcolor{white} \underline{0.23} & \cellcolor{white} \textbf{0.54} & \cellcolor{white} \underline{0.59} & \cellcolor{white} \underline{0.38} & \cellcolor{white} \underline{0.27} & \cellcolor{white} \underline{0.64} & \cellcolor{white} \underline{0.23} & \cellcolor{white} \underline{0.41} \\
+        \cmidrule{2-13}      
+                               & \cellcolor{cyan!10} \textbf{ERC-SVD} & \cellcolor{cyan!10} \underline{10.32} & \cellcolor{cyan!10} \textbf{73.04} & \cellcolor{cyan!10} \textbf{23.28} & \cellcolor{cyan!10} \textbf{0.23} & \cellcolor{cyan!10} \underline{0.51} & \cellcolor{cyan!10} \textbf{0.62} & \cellcolor{cyan!10} \textbf{0.42} & \cellcolor{cyan!10} \textbf{0.29} & \cellcolor{cyan!10} \textbf{0.68} & \cellcolor{cyan!10} \textbf{0.24} & \cellcolor{cyan!10} \textbf{0.43} \\
+    \midrule
+        \multirow{6}{*}{40\%}  & \cellcolor{white} SVD & \cellcolor{white} 39524.00 & \cellcolor{white} 68829.98 & \cellcolor{white} 56518.95 & \cellcolor{white} 0.13 & \cellcolor{white} 0.26 & \cellcolor{white} 0.50 & \cellcolor{white} 0.25 & \cellcolor{white} 0.21 & \cellcolor{white} 0.52 & \cellcolor{white} 0.18 & \cellcolor{white} 0.29\\
+
+                               & \cellcolor{white} ASVD & \cellcolor{white} NaN & \cellcolor{white} NaN & \cellcolor{white} NaN & \cellcolor{white} 0.15 & \cellcolor{white} 0.25 & \cellcolor{white} 0.50 & \cellcolor{white} 0.26 & \cellcolor{white} 0.22 & \cellcolor{white} 0.52 & \cellcolor{white} 0.18 & \cellcolor{white} 0.30\\
+        
+                               & \cellcolor{white} SVD-LLM & \cellcolor{white} 16.11 & \cellcolor{white} 717.34 & \cellcolor{white} 61.96 & \cellcolor{white} 0.16 & \cellcolor{white} 0.35 & \cellcolor{white} 0.55 & \cellcolor{white} 0.30 & \cellcolor{white} 0.20 & \cellcolor{white} 0.57 & \cellcolor{white} \underline{0.23} & \cellcolor{white} 0.34\\
+
+                               & \cellcolor{white} Basis Sharing & \cellcolor{white} \underline{14.66} & \cellcolor{white} \underline{207.49} & \cellcolor{white} \underline{47.41} & \cellcolor{white} 0.18 & \cellcolor{white} \underline{0.43} & \cellcolor{white} \underline{0.57} & \cellcolor{white} \underline{0.33} & \cellcolor{white} 0.22 & \cellcolor{white} \underline{0.61} & \cellcolor{white} \underline{0.23} & \cellcolor{white} \underline{0.37} \\
+
+                               & \cellcolor{white} AdaSVD$^{*}$ & \cellcolor{white} 14.76 & \cellcolor{white} 304.62 & \cellcolor{white} 56.98 & \cellcolor{white} \underline{0.19} & \cellcolor{white} 0.41 & \cellcolor{white} \textbf{0.58} & \cellcolor{white} 0.32 & \cellcolor{white} \underline{0.23} & \cellcolor{white} 0.58 & \cellcolor{white} - & \cellcolor{white} -\\
+        \cmidrule{2-13}    
+                               & \cellcolor{cyan!10} \textbf{ERC-SVD} & \cellcolor{cyan!10} \textbf{14.17} & \cellcolor{cyan!10} \textbf{136.32} & \cellcolor{cyan!10} \textbf{43.19} & \cellcolor{cyan!10} \textbf{0.20} & \cellcolor{cyan!10} \textbf{0.43} & \cellcolor{cyan!10} \underline{0.57} & \cellcolor{cyan!10} \textbf{0.35} & \cellcolor{cyan!10} \textbf{0.24} & \cellcolor{cyan!10} \textbf{0.63} & \cellcolor{cyan!10} \textbf{0.23} & \cellcolor{cyan!10} \textbf{0.38} \\
+    \midrule
+        \multirow{6}{*}{50\%}  & \cellcolor{white} SVD & \cellcolor{white} 53405.48 & \cellcolor{white} 39023.05 & \cellcolor{white} 58547.82 & \cellcolor{white} 0.15 & \cellcolor{white} 0.25 & \cellcolor{white} 0.48 & \cellcolor{white} 0.25 & \cellcolor{white} \underline{0.22} & \cellcolor{white} 0.53 & \cellcolor{white} 0.18 & \cellcolor{white} 0.29\\
+
+                               & \cellcolor{white} ASVD & \cellcolor{white} NaN & \cellcolor{white} NaN & \cellcolor{white} NaN & \cellcolor{white} 0.13 & \cellcolor{white} 0.26 & \cellcolor{white} 0.50 & \cellcolor{white} 0.25 & \cellcolor{white} \textbf{0.23} & \cellcolor{white} 0.50 & \cellcolor{white} 0.20 & \cellcolor{white} 0.30\\
+              
+                               & \cellcolor{white} SVD-LLM & \cellcolor{white} 27.19 & \cellcolor{white} 1775.52 & \cellcolor{white} 129.71 & \cellcolor{white} \underline{0.14} & \cellcolor{white} 0.30 & \cellcolor{white} 0.50 & \cellcolor{white} 0.28 & \cellcolor{white} 0.20 & \cellcolor{white} 0.54 & \cellcolor{white} 0.23 & \cellcolor{white} 0.31\\
+
+                               & \cellcolor{white} Basis Sharing & \cellcolor{white} \textbf{23.78} & \cellcolor{white} 689.03 & \cellcolor{white} 115.84 & \cellcolor{white} 0.15 & \cellcolor{white} \underline{0.34} & \cellcolor{white} \underline{0.54} & \cellcolor{white} \underline{0.29} & \cellcolor{white} 0.20 & \cellcolor{white} \underline{0.56} & \cellcolor{white} \textbf{0.23} & \cellcolor{white} \underline{0.33} \\
+
+                               & \cellcolor{white} AdaSVD$^{*}$ & \cellcolor{white} 25.58 & \cellcolor{white} \underline{593.14} & \cellcolor{white} \underline{113.84}  & \cellcolor{white} \textbf{0.15} & \cellcolor{white} \underline{0.34} & \cellcolor{white} \underline{0.54} & \cellcolor{white} \underline{0.29} & \cellcolor{white} 0.20 & \cellcolor{white} \underline{0.56} & \cellcolor{white} - & \cellcolor{white} -\\
+        \cmidrule{2-13}      
+                               & \cellcolor{cyan!10} \textbf{ERC-SVD} & \cellcolor{cyan!10} \underline{24.26} & \cellcolor{cyan!10} \textbf{286.24} & \cellcolor{cyan!10} \textbf{100.34} & \cellcolor{cyan!10} \underline{0.14} & \cellcolor{cyan!10} \textbf{0.35} & \cellcolor{cyan!10} \textbf{0.55} & \cellcolor{cyan!10} \textbf{0.31} & \cellcolor{cyan!10} \underline{0.22} & \cellcolor{cyan!10} \textbf{0.59} & \cellcolor{cyan!10} \underline{0.22} & \cellcolor{cyan!10} \textbf{0.34} \\
+    \midrule
+        \multirow{6}{*}{60\%}  & \cellcolor{white} SVD & \cellcolor{white} 65240.23 & \cellcolor{white} 79002.21 & \cellcolor{white} 70659.74 & \cellcolor{white} \underline{0.14} & \cellcolor{white} 0.25 & \cellcolor{white} 0.50 & \cellcolor{white} 0.25 & \cellcolor{white} 0.23 & \cellcolor{white} 0.52 & \cellcolor{white} 0.19 & \cellcolor{white} \underline{0.30}\\
+
+                               & \cellcolor{white} ASVD & \cellcolor{white} NaN & \cellcolor{white} 19581.17 & \cellcolor{white} NaN & \cellcolor{white} \textbf{0.15} & \cellcolor{white} 0.25 & \cellcolor{white} 0.50 & \cellcolor{white} 0.25 & \cellcolor{white} \textbf{0.23} & \cellcolor{white} 0.52 & \cellcolor{white} 0.12 & \cellcolor{white} 0.29\\
+        
+                               & \cellcolor{white} SVD-LLM & \cellcolor{white} \underline{54.19} & \cellcolor{white} 3442.74 & \cellcolor{white} \underline{263.02} & \cellcolor{white} \underline{0.14} & \cellcolor{white} 0.26 & \cellcolor{white} 0.50 & \cellcolor{white} \underline{0.27} & \cellcolor{white} 0.20 & \cellcolor{white} \underline{0.53} & \cellcolor{white} \underline{0.21} & \cellcolor{white} \underline{0.30}\\
+
+                               & \cellcolor{white} Basis Sharing & \cellcolor{white} \textbf{50.59} & \cellcolor{white} \underline{2055.63} & \cellcolor{white} 299.36 & \cellcolor{white} \underline{0.14} & \cellcolor{white} \underline{0.29} & \cellcolor{white} \underline{0.51} & \cellcolor{white} \underline{0.27} & \cellcolor{white} 0.20 & \cellcolor{white} 0.52 & \cellcolor{white} \underline{0.21} & \cellcolor{white} \underline{0.30} \\
+
+                               & \cellcolor{white} AdaSVD$^{*}$ & \cellcolor{white} 60.08 & \cellcolor{white} 2137.28 & \cellcolor{white} 294.26 & \cellcolor{white} 0.12 & \cellcolor{white} \underline{0.27} & \cellcolor{white} 0.50 & \cellcolor{white} 0.27 & \cellcolor{white} 0.20 & \cellcolor{white} \underline{0.53} & \cellcolor{white} - & \cellcolor{white} -\\
+        \cmidrule{2-13}    
+                               & \cellcolor{cyan!10} \textbf{ERC-SVD} & \cellcolor{cyan!10} 68.59 & \cellcolor{cyan!10} \textbf{991.48} & \cellcolor{cyan!10} \textbf{255.70} & \cellcolor{cyan!10} 0.13 & \cellcolor{cyan!10} \textbf{0.29} & \cellcolor{cyan!10} \textbf{0.52} & \cellcolor{cyan!10} \textbf{0.28} & \cellcolor{cyan!10} \underline{0.21} & \cellcolor{cyan!10} \textbf{0.55} & \cellcolor{cyan!10} \textbf{0.22} & \cellcolor{cyan!10} \textbf{0.31} \\
+    \bottomrule
+\end{tabular}
+}
+\end{table}
+
+\paragraph{Performance under different compression ratios.} 
+We evaluate the performance of LLaMA-2-7B~\cite{touvron2023llama2} compressed by ERC-SVD, conventional SVD, and existing post-training baselines under compression ratios ranging from 20\% to 60\% across ten benchmark datasets. 
+The results for LLaMA-2-7B are presented in Table~\ref{llama2_result_table}. 
+Across three language modeling datasets, WikiText-2~\cite{merity2016pointer}, PTB~\cite{marcus1993building}, and C4~\cite{raffel2020exploring}, ERC-SVD consistently outperforms all baselines across most evaluated compression ratios, with only slight suboptimalities observed in specific cases. 
+In particular, on PTB and C4, the improvements are more pronounced, suggesting that ERC-SVD exhibits stronger generalization capability. In addition, across seven common sense reasoning datasets, ERC-SVD outperforms the strongest existing baseline on most datasets, achieving the highest average accuracy across all evaluated compression ratios and further demonstrating its robustness and overall effectiveness.
+
+\begin{figure}[h]
+    \centering
+    \begin{minipage}[t]{0.49\textwidth}
+        \vspace{0pt}
+        \normalsize
+        \paragraph{Performance on Multiple LLM families.}
+        To evaluate the generalization ability of ERC-SVD, we apply it to three LLMs from different families, including OPT-6.7B~\cite{zhang2022opt}, Mistral-7B~\cite{jiang2023mistral}, and Vicuna-7B~\cite{chiang2023vicuna}. 
+        As shown in Table~\ref{different_llm_families}, under 30\% compression ratio, ERC-SVD consistently outperforms all baselines on three language modeling benchmarks across these architectures. 
+        Notably, the largest overall improvements are observed on Mistral-7B, with perplexity reductions of 71\% on WikiText-2, 45\% on PTB, and 46\% on C4. 
+        We reproduce ASVD and SVD-LLM using their public codebases. While ASVD fails in certain cases due to numerical instability (denoted as NaN in the table), ERC-SVD consistently maintains stable and reliable performance. Additional zero-shot accuracy results comparison about these LLMs are provided in Table~\ref{multiple-llm-acc}.
+    \end{minipage}%
+    \hfill
+    \begin{minipage}[t]{0.455\textwidth}
+        \vspace{0pt}
+        \centering
+        \captionof{table}{Perplexity (\textcolor{blue}{$\downarrow$}) of different LLM structures under 30\% compression ratio.}
+        % NaN denotes evaluation failure as numerical instability.
+        % \vspace{-6pt}
+        \vspace{-8pt}
+        \label{different_llm_families}
+        \small
+        \resizebox{\linewidth}{!}{%
+        \begin{tabular}{c|c|ccc}
+        \toprule
+        \textsc{Model} & \textsc{Method} & WikiText-2\textcolor{blue}{$\downarrow$} & PTB\textcolor{blue}{$\downarrow$} & C4\textcolor{blue}{$\downarrow$} \\
+        \midrule
+            \multirow{4}{*}{OPT-6.7B} & \cellcolor{white} SVD & \cellcolor{white} 116067.28 & \cellcolor{white} 86760.50 & \cellcolor{white} 168165.89\\
+    
+                                              & \cellcolor{white} ASVD & \cellcolor{white} \underline{26.67} & \cellcolor{white} 71.36 & \cellcolor{white} 44.51\\
+                  
+                                              & \cellcolor{white} SVD-LLM & \cellcolor{white} 28.03 & \cellcolor{white} \underline{37.46} & \cellcolor{white} \underline{40.35} \\
+        \cmidrule{2-5} 
+                                              & \cellcolor{cyan!10} \textbf{ERC-SVD} & \cellcolor{cyan!10} \textbf{17.10} (\textcolor{blue}{$\downarrow$36\%}) & \cellcolor{cyan!10} \textbf{27.24} (\textcolor{blue}{$\downarrow$27\%}) & \cellcolor{cyan!10} \textbf{38.40} (\textcolor{blue}{$\downarrow$5\%}) \\
+        \midrule
+            \multirow{4}{*}{Mistral-7B} & \cellcolor{white} SVD & \cellcolor{white} 59569.54 & \cellcolor{white} 57830.63 & \cellcolor{white} 78168.24\\
+    
+                                                & \cellcolor{white} ASVD & \cellcolor{white} 221.66 & \cellcolor{white} 927.15 & \cellcolor{white} 266.04\\
+                  
+                                                & \cellcolor{white} SVD-LLM & \cellcolor{white} \underline{48.94} & \cellcolor{white} \underline{193.22} & \cellcolor{white} \underline{56.55}\\
+        \cmidrule{2-5}  
+                                                & \cellcolor{cyan!10} \textbf{ERC-SVD} & \cellcolor{cyan!10} \textbf{14.09} (\textcolor{blue}{$\downarrow$71\%}) & \cellcolor{cyan!10} \textbf{105.37} (\textcolor{blue}{$\downarrow$45\%}) & \cellcolor{cyan!10} \textbf{30.72} (\textcolor{blue}{$\downarrow$46\%})\\
+        \midrule
+            \multirow{4}{*}{Vicuna-7B} & \cellcolor{white} SVD & \cellcolor{white} 24835.33 & \cellcolor{white} 24510.90 & \cellcolor{white} 29368.55\\
+    
+                                               & \cellcolor{white} ASVD & \cellcolor{white} 106.32 & \cellcolor{white} NaN & \cellcolor{white} NaN\\
+                  
+                                               & \cellcolor{white} SVD-LLM & \cellcolor{white} \underline{12.42} & \cellcolor{white} \underline{104.27} & \cellcolor{white} \underline{39.55}\\
+        \cmidrule{2-5}
+                                               & \cellcolor{cyan!10} \textbf{ERC-SVD} & \cellcolor{cyan!10} \textbf{11.57} (\textcolor{blue}{$\downarrow$7\%}) & \cellcolor{cyan!10} \textbf{69.28} (\textcolor{blue}{$\downarrow$34\%}) & \cellcolor{cyan!10} \textbf{27.24} (\textcolor{blue}{$\downarrow$31\%})\\
+        \bottomrule
+    \end{tabular}
+    }
+    \vspace{-2pt}
+    \captionof{table}{Perplexity (\textcolor{blue}{$\downarrow$}) of larger-scale LLMs under 20\% compression ratio on PTB~\cite{marcus1993building}.}
+    \vspace{1pt}
+    \label{larger_scale_llms}
+    \small
+    \resizebox{\linewidth}{!}{
+    \begin{tabular}{c|cc|c|cc}
+        \toprule
+        \textsc{Method} & LLaMA-13B & LLaMA-30B & LLaMA-2-13B & OPT-13B & OPT-30B \\
+        \midrule
+        SVD       & 1878.04 & 555.55 & 5464.57 & 1552.55 & 250.49 \\
+        ASVD      & 12.42   & 31.36  & \underline{81.00}   & 36.47   & 30.95  \\
+        SVD-LLM   & \underline{12.17}   & \underline{9.10}   & 88.13   & \underline{14.86}   & \underline{12.94}  \\
+        \cmidrule{1-6}
+        \rowcolor{cyan!10} \textbf{ERC-SVD} 
+                   & \textbf{9.70} & \textbf{8.41} & \textbf{66.47} & \textbf{13.22} & \textbf{12.89} \\
+        \bottomrule
+    \end{tabular}
+        }
+    \end{minipage}
+\end{figure}
+
+\paragraph{Performance on larger-scale LLMs.} 
+To examine the scalability of ERC-SVD, we evaluate its performance on larger-scale LLMs from two representative families: LLaMA and OPT (13B and 30B).
+% (including LLaMA-13B, LLaMA-30B, and LLaMA-2-13B) and OPT (OPT-13B and OPT-30B). 
+As presented in Table~\ref{larger_scale_llms}, ERC-SVD consistently achieves superior performance over existing baselines under 20\% compression ratio, demonstrating robust effectiveness across varying model scales. Additional zero-shot accuracy results about these larger-scale LLMs are provided in Table~\ref{larger-llm-acc}.
+
+\begin{table}[ht]
+\centering
+\caption{Ablation results of REC and PLC on LLaMA-2-7B under 30\% and 40\% compression ratios.}
+% \vspace{1mm}
+% \vspace{-5pt}
+\label{ablation_study}
+\small
+\resizebox{\textwidth}{!}{
+\begin{tabular}{c|c|cc|c|cccccccc}
+    \toprule
+     \textsc{Ratio} & \textsc{Method} & REC & PLC & C4\textcolor{blue}{$\downarrow$} & Openb.$\uparrow$  & ARC\_e$\uparrow$ & WinoG.$\uparrow$ & HellaS.$\uparrow$ & ARC\_c$\uparrow$ & PIQA$\uparrow$ & MathQA$\uparrow$ & Average\textcolor{green!60!black}{$\uparrow$}\\
+    \midrule
+        \multirow{5}{*}{30\%} 
+                               & ASVD & \cellcolor{white} - & \cellcolor{white} - & \cellcolor{white} NaN & \cellcolor{white} 0.15 & \cellcolor{white} 0.27 & \cellcolor{white} 0.51 & \cellcolor{white} 0.26 & \cellcolor{white} 0.22 & \cellcolor{white} 0.53 & \cellcolor{white} 0.20 & \cellcolor{white} 0.31\\
+        
+                               & SVD-LLM & \cellcolor{white} - & \cellcolor{white} - & \cellcolor{white} 34.96 & \cellcolor{white} 0.21 & \cellcolor{white} 0.42 & \cellcolor{white} 0.55 & \cellcolor{white} 0.34 & \cellcolor{white} 0.22 & \cellcolor{white} 0.60 & \cellcolor{white} 0.23 & \cellcolor{white} 0.37\\
+
+        \cmidrule{2-13}
+        & \multirow{3}{*}{\textbf{ERC-SVD}}
+                               & \cellcolor{white} \ding{51} & \cellcolor{white} \ding{55} & \cellcolor{white} 30.68 & \cellcolor{white} 0.22 & \cellcolor{white} 0.42 & \cellcolor{white} 0.58 & \cellcolor{white} 0.35 & \cellcolor{white} 0.23 & \cellcolor{white} 0.61 & \cellcolor{white} 0.24 & \cellcolor{white} 0.38\\
+
+                               & & \cellcolor{white} \ding{55} & \cellcolor{white} \ding{51} & \cellcolor{white} 24.77 & \cellcolor{white} 0.22 & \cellcolor{white} 0.48 & \cellcolor{white} 0.60 & \cellcolor{white} 0.38 & \cellcolor{white} 0.25 & \cellcolor{white} 0.65 & \cellcolor{white} 0.22 & \cellcolor{white} 0.40\\
+                               
+                               & & \cellcolor{cyan!10} \ding{51} & \cellcolor{cyan!10} \ding{51} & \cellcolor{cyan!10} \textbf{23.28}  & \cellcolor{cyan!10} 0.23 & \cellcolor{cyan!10} 0.51 & \cellcolor{cyan!10} 0.62 & \cellcolor{cyan!10} 0.42 & \cellcolor{cyan!10} 0.29 & \cellcolor{cyan!10} 0.68 & \cellcolor{cyan!10} 0.24 & \cellcolor{cyan!10} \textbf{0.43} \\
+    \bottomrule
+\end{tabular}
+}
+\end{table}
+
+\begin{table}[ht]
+\centering
+\caption{Perplexity (\textcolor{blue}{$\downarrow$}) and zero-shot individual and average accuracy (\textcolor{green!60!black}{$\uparrow$}) of LLaMA-2-7B 30\% compressed by ERC-SVD with different residual compensation factors ($\beta$).}
+\label{tab:residual_compensation_factor}
+% \vspace{1mm}
+% \vspace{-5pt}
+\small
+\resizebox{\textwidth}{!}{
+\begin{tabular}{c|c|cccccccc}
+    \toprule
+     $\beta$ & WikiText-2\textcolor{blue}{$\downarrow$} & Openb.$\uparrow$  & ARC\_e$\uparrow$ & WinoG.$\uparrow$ & HellaS.$\uparrow$ & ARC\_c$\uparrow$ & PIQA$\uparrow$ & MathQA$\uparrow$ & Average\textcolor{green!60!black}{$\uparrow$}\\
+    \midrule
+        \cellcolor{white} 0.025 & \cellcolor{white} 10.38 & \cellcolor{white} 0.23 & \cellcolor{white} 0.51 & \cellcolor{white} 0.62 & \cellcolor{white} 0.41 & \cellcolor{white} 0.28 & \cellcolor{white} 0.67 & \cellcolor{white} 0.23 & \cellcolor{white} 0.42 \\
+              
+        \cellcolor{cyan!10} 0.050 & \cellcolor{cyan!10} 10.32 & \cellcolor{cyan!10} 0.23 & \cellcolor{cyan!10} 0.51 & \cellcolor{cyan!10} 0.62 & \cellcolor{cyan!10} 0.42 & \cellcolor{cyan!10} 0.29 & \cellcolor{cyan!10} 0.68 & \cellcolor{cyan!10} 0.24 & \cellcolor{cyan!10} \textbf{0.43} \\
+
+        \cellcolor{white} 0.075 & \cellcolor{white} \textbf{10.11} & \cellcolor{white} 0.22 & \cellcolor{white} 0.49 & \cellcolor{white} 0.61 & \cellcolor{white} 0.39 & \cellcolor{white} 0.28 & \cellcolor{white} 0.66 & \cellcolor{white} 0.23 & \cellcolor{white} 0.41 \\
+
+        \cellcolor{white} 0.010 & \cellcolor{white} 10.46 & \cellcolor{white} 0.23 & \cellcolor{white} 0.47 & \cellcolor{white} 0.60 & \cellcolor{white} 0.38 & \cellcolor{white} 0.26 & \cellcolor{white} 0.66 & \cellcolor{white} 0.23 & \cellcolor{white} 0.40 \\
+    \bottomrule
+\end{tabular}
+}
+\end{table}
+
+
+\subsection{Ablation Study}
+We present several ablation studies to assess the robustness of ERC-SVD. 
+\ding{172} \textbf{Effectiveness of residual compensation (REC) and partial-layer compression (PLC):} We assess the individual contributions of REC and PLC.
+\ding{173} \textbf{Impact of residual compensation factor:} We conduct experiments to examine how the choice of $\beta$ influences the performance.
+\ding{174} \textbf{Impact of calibration data:} We analyze the effects of calibration dataset selection on compressed model performance in Appendix~\ref{calibration-data}.
+
+\paragraph{Effectiveness of residual compensation and partial-layer compression.} 
+We present results on C4~\cite{raffel2020exploring} and seven zero-shot reasoning and understanding tasks, as shown in Table~\ref{ablation_study}. It can be observed that either applying REC or PLC alone has already improved performance. Combining them leads to further improvements, making the performance gap even more significant. Results of other compression ratios are presented in Table~\ref{more_ablation_study}.
+
+\paragraph{Impact of residual compensation factor.} 
+\label{residual_compensation_factor}
+The residual compensation factor $\beta$ is a hyperparameter in this work, we set $\beta = 0.05$ across all experiments. To examine its impact on model performance, we compress LLaMA-2-7B under 30\% compression ratio while varying the value of $\beta$. The results in Table~\ref{tab:residual_compensation_factor} show that the compressed models achieve comparable performance across different $\beta$ values, demonstrating the robustness of our method with respect to this hyperparameter.
+
+\subsection{Compatibility with Quantization}
+SVD-based LLM compression methods and quantization are two orthogonal techniques. To demonstrate that our method can be integrated with quantization, we adopt GPTQ~\cite{frantar2022gptq} to quantize LLaMA-2-7B compressed by our method and SVD-LLM. As shown in Table~\ref{quantization}, our method integrates seamlessly with quantization, achieving superior performance compared to SVD-LLM.
+
+\subsection{Efficiency Results}
+ERC-SVD not only preserves competitive model performance but also achieves substantial inference speedup on hardware. We evaluate the throughput of compressed models on an NVIDIA A100 GPU, shown in Figure~\ref{throughput_comparison}. Models compressed by ERC-SVD consistently deliver faster inference than the original model. The speedup grows more pronounced as the batch size grows, indicating that ERC-SVD scales more efficiently under larger workloads. 
+

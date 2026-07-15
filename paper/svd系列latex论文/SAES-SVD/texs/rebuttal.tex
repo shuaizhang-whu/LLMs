@@ -1,0 +1,203 @@
+\newpage
+\subsection{Performance on more architectures and more challenging tasks}
+
+\begin{table*}[h]
+\centering
+\caption{{Performance comparison of different compression methods on LLaMA3.1 and Qwen2.5 architectures at 0.2 compression rate across multiple benchmarks. Results are reported for 7 zero-shot tasks (ZeroShot\textsuperscript{7}), long-context understanding (LongEval), code generation (HumanEval), and mathematical reasoning (GSM8K).}}
+\label{tab:qwen}
+\begin{tabular}{l|l|cccc}
+\hline
+\textbf{Model} & \textbf{Method} & \textbf{ZeroShot\textsuperscript{7}} & \textbf{LongEval} & \textbf{HumanEval} & \textbf{GSM8K} \\
+\hline
+\multirow{4}{*}{LLaMA3.1-8B}
+ & FP & 0.61 & 0.41 & 0.35 & 0.15 \\
+ & ASVD & 0.49 & 0.33 & 0.15 & 0.06 \\
+ & SVD-LLM & 0.57 & 0.37 & 0.27 & 0.10 \\
+ & \textbf{Ours} & \textbf{0.59} & \textbf{0.39} & \textbf{0.33} & \textbf{0.13} \\
+\hline
+\multirow{4}{*}{LLaMA3.1-70B}
+ & FP & 0.67 & 0.49 & 0.55 & 0.37 \\
+ & ASVD & 0.54 & 0.39 & 0.32 & 0.26 \\
+ & SVD-LLM & 0.63 & 0.45 & 0.47 & 0.32 \\
+ & \textbf{Ours} & \textbf{0.66} & \textbf{0.48} & \textbf{0.52} & \textbf{0.35} \\
+\hline
+\multirow{4}{*}{Qwen2.5-7B}
+ & FP & 0.60 & 0.58 & 0.66 & 0.71 \\
+ & ASVD & 0.50 & 0.49 & 0.41 & 0.42 \\
+ & SVD-LLM & 0.56 & 0.55 & 0.55 & 0.64 \\
+ & \textbf{Ours} & \textbf{0.58} & \textbf{0.57} & \textbf{0.63} & \textbf{0.69} \\
+\hline
+\multirow{4}{*}{Qwen2.5-32B}
+ & FP & 0.65 & 0.79 & 0.55 & 0.72 \\
+ & ASVD & 0.52 & 0.61 & 0.37 & 0.44 \\
+ & SVD-LLM & 0.61 & 0.73 & 0.46 & 0.63 \\
+ & \textbf{Ours} & \textbf{0.64} & \textbf{0.76} & \textbf{0.51} & \textbf{0.68} \\
+\hline
+\end{tabular}
+\end{table*}
+
+Table\ref{tab:qwen} reports the performance of LLaMA3.1 and Qwen2.5 families under a 0.2 compression ratio, comparing three representative low-rank decomposition approaches (ASVD, SVD-LLM, and our proposed SAES-SVD). Across all model scales and tasks, SAES-SVD consistently achieves the best reconstruction fidelity among compressed variants, demonstrating strong robustness in both general-purpose reasoning (ZeroShot$^{7}$), long-context understanding (LongEval), code generation (HumanEval), and mathematical reasoning (GSM8K).
+
+Notably, SAES-SVD narrows the performance gap to the FP baseline much more effectively than existing SVD-based methods. For example, on LLaMA3.1-8B, SAES-SVD retains 96.7\% of FP performance on ZeroShot$^{7}$ and preserves near-lossness on LongEval. Similar trends hold for larger models: on LLaMA3.1-70B and Qwen2.5-32B, SAES-SVD significantly outperforms ASVD and SVD-LLM across all tasks, highlighting its superior scalability to high-capacity architectures.
+These results collectively demonstrate that SAES-SVD is a more faithful and stable low-rank approximation method, enabling high compression rates while minimizing degradation across diverse benchmarks.
+
+\subsection{The effect of introducing the mixed-rank configuration}
+
+\begin{table}[h]
+\centering
+\caption{{Performance of SAES after incorporating the mixed-rank configuration derived from ASVD on the LLaMA-7B model. ZeroShot$^7$ denotes the averaged accuracy over seven zero-shot tasks consistent with the main evaluation protocol.}}
+\label{tab:mixrank}
+\begin{tabular}{c l c c}
+\toprule
+\textbf{Compression Ratio} & \textbf{Method} & \textbf{Wiki PPL} & \textbf{ZeroShot$^7$} \\
+\midrule
+\multirow{3}{*}{0.2}
+& ASVD          & 11.14     & 0.43 \\
+& SAES-SVD      & 7.17      & 0.50 \\
+& SAES+mixrank  & \textbf{6.19} & \textbf{0.51} \\
+\midrule
+\multirow{3}{*}{0.4}
+& ASVD          & 1.00E+03  & 0.30 \\
+& SAES-SVD      & 10.42     & 0.41 \\
+& SAES+mixrank  & \textbf{7.48} & \textbf{0.47} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Table \ref{tab:mixrank} summarizes the effect of introducing the mixed-rank configuration into the SAES framework for the LLaMA-7B model. The mixed-rank strategy is obtained by reusing the adaptive rank distribution discovered by ASVD, while the reconstruction and optimization procedure remains governed by our SAES architecture.
+Across both compression ratios(0.2 and 0.4), incorporating mixed rank consistently improves over standard SAES-SVD. At a 0.2 compression ratio, SAES+mixrank achieves the lowest Wiki perplexity(6.19) and the highest zero-shot accuracy (ZeroShot@7 = 0.51), outperforming both ASVD and SAES-SVD. A similar pattern holds at the more aggressive 0.4 compression ratio, where ASVD collapses severely in language modeling, but SAES+mixrank maintains stable performance with a substantial gain in AvgAcc@7(0.47).
+These results indicate that adaptive rank allocation and SAES's weight reconstruction are complementary: the mixed-rank configuration provides better structural flexibility, while SAES preserves semantic fidelity during compression. The combination yields a more robust low-rank approximation that scales effectively to higher compression budgets. 
+
+
+\subsection{Comparison with structured pruning methods}
+
+\begin{table}[t]
+\centering
+\caption{{Perplexity comparison of SAES-SVD and three representative structured compression methods---LLM-Pruner, SliceGPT, and BlockPruner---on LLaMA-7B under various memory budgets. Lower perplexity indicates better language modeling quality.}}
+\label{tab:pruning}
+\begin{tabular}{c c c c c}
+\toprule
+\textbf{Memory} & \textbf{LLM-Pruner} & \textbf{SliceGPT} & \textbf{BlockPruner} & \textbf{SAES-SVD (Ours)} \\
+\midrule
+10GB & 9.88 & 8.78 & 9.40 & \textbf{7.17} \\
+9GB  & 12.21 & 12.73 & 12.76 & \textbf{8.22} \\
+8GB  & 18.94 & 16.39 & 19.78 & \textbf{8.96} \\
+7GB  & 21.68 & 27.41 & 43.05 & \textbf{10.15} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Table \ref{tab:pruning} presents the perplexity of LLaMA-7B compressed using three widely adopted structured pruning and slicing techniques—LLM-Pruner, SliceGPT, and BlockPruner—together with our SAES-SVD method under progressively tighter memory budgets. Across all settings from 10GB down to 7GB, SAES-SVD consistently achieves the lowest perplexity, indicating superior retention of language modeling capability.
+When memory reduces to 10GB, SAES-SVD reaches a perplexity of 7.17, surpassing SliceGPT (8.78) and outperforming LLM-Pruner and BlockPruner by a clear margin. As compression becomes more aggressive, the gap further widens: at 8GB and 7GB budgets, structured pruning baselines degrade sharply—BlockPruner even collapsing to a perplexity above 40—while SAES-SVD maintains stable performance with perplexity 8.96 and 10.15, respectively.
+This demonstrates that SAES-SVD provides stronger parameter preservation under stringent memory constraints, largely due to its ability to reconstruct informative subspaces without relying on brittle structural sparsity assumptions. As a result, SAES-SVD serves as a more robust alternative to traditional structured compression pipelines, especially in low-memory deployment scenarios.
+
+
+
+\subsection{Combination Capability of SAES-SVD and GPTQ}
+
+\begin{table}[h]
+\centering
+\caption{{Comparison between pure GPTQ-3bit quantization and the equivalent 3bit configuration obtained by combining SAES-SVD with GPTQ on LLaMA2-7B and Qwen2.5-7B. WikiText2 perplexity and ZeroShot@7 represent language modeling quality and the averaged accuracy across seven zero-shot tasks, respectively.}}
+\label{tab:gptq}
+\begin{tabular}{l l c c}
+\toprule
+\textbf{Model} & \textbf{Method} & \textbf{Wiki PPL} & \textbf{AvgAcc@7} \\
+\midrule
+\multirow{2}{*}{\textbf{LLaMA2-7B}}
+& GPTQ (3bit)            & 10.17 & 0.39 \\
+& SAES+GPTQ (equal 3bit) & \textbf{7.64} & \textbf{0.44} \\
+\midrule
+\multirow{2}{*}{\textbf{Qwen2.5-7B}}
+& GPTQ (3bit)            & 12.29 & 0.51 \\
+& SAES+GPTQ (equal 3bit) & \textbf{9.87} & \textbf{0.57} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+Table \ref{tab:gptq} compares the standard GPTQ 3-bit quantization with our equivalent 3-bit configuration that integrates SAES-SVD into the GPTQ pipeline. The evaluation covers both perplexity on WikiText2 and the averaged accuracy across seven zero-shot tasks for two representative models: LLaMA2-7B and Qwen2.5-7B.
+Across both architectures, the combined SAES+GPTQ strategy achieves a substantial improvement over pure GPTQ. For LLaMA2-7B, SAES+GPTQ reduces perplexity from 10.17 to 7.64 and increases AvgAcc@7 from 0.39 to 0.44. A similar trend is observed for Qwen2.5-7B, where perplexity improves from 12.29 to 9.87, accompanied by an accuracy gain from 0.51 to 0.57.
+These results demonstrate that SAES-SVD provides a complementary compression effect to GPTQ. By reconstructing a more informative low-rank subspace before quantization, SAES effectively smooths weight distributions and reduces quantization sensitivity, enabling GPTQ to operate at lower bit-widths without incurring substantial performance degradation. Consequently, the SAES+GPTQ pipeline offers a stronger alternative to pure 3-bit quantization while maintaining the same effective model size.
+
+
+
+
+\subsection{The theoretical complexity analysis and comparison of compression time}
+
+We provide a systematic evaluation from two perspectives—(1) \textbf{theoretical complexity analysis} and (2) \textbf{empirical runtime breakdown}—and compare our method (SAES-SVD) with the SVD-LLM baseline.
+
+\subsubsection{Theoretical Complexity Analysis}
+
+\paragraph{Statistics Collection Phase.}
+For each layer with input dimension $d_{\mathrm{in}}$, the unfolded calibration set contains $N$ tokens. We maintain only two second-order matrices:
+\[
+H_\ell = X_\ell X_\ell^\top \in \mathbb{R}^{d_{\mathrm{in}} \times d_{\mathrm{in}}}, 
+\quad
+\Delta_\ell = (X_\ell^f - X_\ell) X_\ell^\top \in \mathbb{R}^{d_{\mathrm{in}} \times d_{\mathrm{in}}}.
+\]
+For each mini-batch with $b$ tokens, we perform two matrix multiplications with complexity $\mathcal{O}(d_{\mathrm{in}}^2 b)$, and update the statistics via exponential moving averages. The total complexity over $L$ layers is:
+\[
+\mathcal{O}\!\left( 2 L d_{\mathrm{in}}^2 N \right),
+\]
+which matches the order of GPTQ and other second-order methods, and is comparable to the statistics collection cost of SVD-LLM.
+
+\paragraph{Closed-form CEALC Solution for a Single Layer.}
+For a linear layer $W_\ell \in \mathbb{R}^{d_{\mathrm{out}} \times d_{\mathrm{in}}}$ with target rank $r_\ell$, the main computational costs of CEALC are:
+
+\begin{itemize}
+    \item \textbf{Whitening matrix construction:} Compute $L_\ell = (H_\ell + \lambda I)^{-1/2}$ using a Cholesky-based procedure, with cost $\mathcal{O}(d_{\mathrm{in}}^3)$. This cost is shared by all second-order compression methods.
+    \item \textbf{Target matrix construction:} Build $G_\ell = W_\ell(H_\ell + \beta_\ell \Delta_\ell)L_\ell$, requiring several matrix multiplications with total complexity $\mathcal{O}(d_{\mathrm{out}} d_{\mathrm{in}}^2)$.
+    \item \textbf{Truncated SVD:} Perform a rank-$r_\ell$ truncated SVD on $G_\ell$, with complexity $\mathcal{O}(d_{\mathrm{out}} d_{\mathrm{in}} r_\ell)$.
+\end{itemize}
+
+\paragraph{ACES Adaptive Coefficient Selection.}
+During compression, ACES introduces additional computations:
+
+\begin{itemize}
+    \item \textbf{Shared whitened matrices:} Construct
+    \[
+    S_\ell = W_\ell H_\ell L_\ell, \quad D_\ell = W_\ell \Delta_\ell L_\ell,
+    \]
+    each requiring $\mathcal{O}(d_{\mathrm{out}} d_{\mathrm{in}}^2)$.
+    \item \textbf{Subspace extraction:} Perform a rank-$r_\ell$ truncated SVD on $S_\ell$ with complexity $\mathcal{O}(d_{\mathrm{out}} d_{\mathrm{in}} r_\ell)$.
+    \item \textbf{Closed-form $\beta_\ell$ selection:} Using Theorem~4.2, compute a small number of Frobenius norms and inner products $(a,b,c,A,B,C)$ within the fixed subspace and solve a univariate quadratic equation in closed form. This step is negligible relative to the matrix operations.
+\end{itemize}
+
+Thus, compared with CEALC alone, ACES introduces only one extra truncated SVD per layer and inexpensive scalar operations.
+
+\paragraph{Fine-tuning Phase.}
+SVD-LLM requires approximately 3.5 hours of fine-tuning for LLaMA-7B, and even more for larger models. In contrast, \textbf{SAES-SVD requires no fine-tuning} and operates purely as a post-hoc compression method.
+
+\paragraph{Summary.}
+SAES-SVD and SVD-LLM share the same order of complexity in statistics collection and SVD-based factorization. However, by eliminating the fine-tuning phase, SAES-SVD substantially reduces the overall compression time.
+
+\subsubsection{Empirical Runtime Breakdown and Comparison with the Baseline}
+
+\begin{table}[h]
+\centering
+\caption{{Comparison of SAES-SVD and SVD-LLM regarding statistics time, compression time, and fine-tuning time on LLaMA-7B.}}
+\begin{tabular}{lccccc}
+\toprule
+\textbf{Method} & \textbf{Data Collection} & \textbf{Compression} & \textbf{Fine-tuning} & \textbf{Total} & \textbf{Reduction} \\
+\midrule
+SVD-LLM  & 0.45h & 0.15h & 3.5h & 4.1h & -- \\
+SAES-SVD & 0.30h & 0.20h & 0    & \textbf{0.5h} & \textbf{-88\%} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+We further provide in Table~R3-1 an empirical breakdown of the compression time for SAES-SVD and SVD-LLM on LLaMA-7B, measured on an NVIDIA A6000 GPU. The results show:
+
+\begin{itemize}
+    \item \textbf{More efficient statistics collection.}  
+    Although the theoretical complexity is similar, SAES-SVD uses a smaller calibration set (128 vs.\ 256 samples), reducing statistics collection time to about 67\% of that of SVD-LLM.
+    \item \textbf{Controlled compression overhead.}  
+    The SVD compression phase of SAES-SVD is slightly more expensive due to ACES, but remains within the same complexity order.
+    \item \textbf{Elimination of fine-tuning.}  
+    SAES-SVD is a post-training method and does not rely on any fine-tuning, whereas SVD-LLM requires more than 3.5 hours of fine-tuning.
+\end{itemize}
+
+Overall, on LLaMA-7B, SAES-SVD achieves a total compression wall-clock time less than one-eighth of that of SVD-LLM, while obtaining better accuracy retention across multiple tasks. This combination of higher accuracy and lower end-to-end compression time highlights the practical efficiency of SAES-SVD for real-world deployment.
+
+
+\color{black}

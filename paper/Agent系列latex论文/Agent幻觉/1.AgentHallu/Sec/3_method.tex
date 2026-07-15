@@ -1,0 +1,100 @@
+\section{Task Formulation}
+In this section, we formulate the task of automated hallucination judgment and attribution. 
+
+\begin{figure*}[!t]
+  \centering
+    \includegraphics[width=1.0\linewidth]{Fig/dataset_illustration.pdf}
+    % \vspace{-2.0em}
+    \caption{ Overview of hallucination taxonomy in AgentHallu. The dataset includes 5 hallucination categories and 14 subcategories, where each trajectory step interleaves a thought step, an action step, and an observation step.
+    }
+    \label{fig:dataset_ills}
+\end{figure*}
+
+\paragraph{Background.} 
+LLM-based agents perform complex tasks with structured reasoning, where each interaction unit $u_t$ interleaves a thought step $c_t$, an action step $a_t$, and an observation step $o_t$. The trajectory $\tau$ can be written as:
+\begin{equation}
+    \tau = (u_1, u_2, \ldots, u_t),
+\end{equation}
+\begin{equation}
+    u_t = (c_t, a_t, o_t),
+\end{equation}
+where $c_t$ denotes the internal reasoning state, $a_t$ specifies the invoked tool action, and $o_t$ captures feedback from the tool responses.
+Distinct from prior analyses of non-hallucination failures~\cite{zhang2025agent,cemri2025multi,rahardja2025can}, we restrict our study to trajectories that yield coherent and seemingly plausible answers.
+
+\paragraph{Hallucination Judgment Objective.}
+We classify a trajectory as hallucinated by determining whether its produced answer diverges from the ground-truth solution corresponding to the task:
+\begin{equation}
+    \mathrm{is\_hallucination}(\tau) = \mathbbm{1}_{\left\{ y(\tau) \neq y^{\mathrm{gt}} \right\}},
+\end{equation}
+where $y(\tau)$ denotes the result of a trajectory $\tau$, $y^{\mathrm{gt}}$ denotes the task-specific ground-truth answer, and $\mathbbm{1}_{\left\{ \cdot \right\}}$ is the indicator function.
+
+\paragraph{Hallucination Attribution Objective.}
+Motivated by~\cite{zhang2025agent}, we identify a hallucinated step $u_{t}$ as the step whose correction is causally sufficient to transform an incorrect result into a correct one. Specifically, we replace $u_{t}$ with its correct counterpart and roll out the subsequent steps to obtain the counterfactual trajectory $\tau^{(t)}$. The set of hallucinated steps $\mathcal{H}(\tau)$ of a trajectory $\tau$ is then defined as:
+\begin{equation}
+    \mathcal{H}(\tau) = \{\, t \mid y(\tau) \neq y^{\mathrm{gt}} \land y(\tau^{(t)}) = y^{\mathrm{gt}} \,\}, 
+\end{equation}
+where $y(\tau^{(t)})$ denotes the result produced by the counterfactual trajectory $\tau^{(t)}$.
+To address scenarios with multiple hallucinated steps, we follow a \textbf{causality-aligned principle} and treat the initial error as the primary source of hallucination. We thus define an objective to determine:
+\begin{equation}
+    t^{\star}= \arg\min_{\, t \in \mathcal{H}(\tau)} \; t .
+\end{equation}
+In this study, we address the problem of automatically identifying the step $t^{\star}$ and providing an associated open-ended explanation.
+
+\section{AgentHallu Dataset}
+\label{sec:dataset}
+In this section, we first present an overview of our AgentHallu dataset in Sec.~\ref{overview}. Then, we detail the dataset development involving query collection in Sec.~\ref{query_collection}, trajectory construction in Sec.~\ref{trajectory_construction}, and hallucination annotation in Sec.~\ref{hallucination_annotation}.
+
+\subsection{Overview}
+\label{overview}
+As shown in Table~\ref{dataset_comparison} and Figure~\ref{fig:dataset_ills}, AgentHallu comprises 693 annotated agent trajectories, including 443 hallucinated instances and 250 non-hallucinated instances. Each instance in AgentHallu includes the following entries: \textbf{(1) Query:} A real-world question from 8 datasets, covering domains spanning world knowledge, science, math, general assistant, and tool use. \textbf{(2) Trajectory:} A trajectory generated to address the query, with each step standardized into a triplet of thought, action, and observation. These trajectories are collected from 7 mainstream LLM-based agents. \textbf{(3) Annotation:} Multi-level annotations curated by human labelers, comprising a binary label, a hallucination-responsible step, and a causal explanation. Detailed dataset statistics are provided in Appendix~\ref{appendix_data_statis}.
+
+\subsection{Query Collection}
+\label{query_collection}
+To ensure comprehensive coverage of factuality, we curate a diverse set of queries spanning five realistic domains, as detailed below.
+\begin{itemize}[noitemsep,left=2pt, itemsep=0pt, topsep=0pt]
+    \item \textit{World Knowledge}: We incorporate queries from the SimpleQA dataset~\cite{wei2024measuring}, spanning ten topics such as politics, art, and sports to represent general world knowledge.
+    \item \textit{Science}: We include graduate-level scientific queries from the GPQA dataset~\cite{rein2024gpqa}, involving the disciplines of physics, chemistry, and biology.
+    \item \textit{Math}: We filter out difficulty Level 1 and Level 2 questions from MATH-500~\cite{hendrycks2021measuring}, retaining the harder subset. To integrate frontier-level challenges, we also include questions from the American Invitational Mathematics Examination (AIME) 2024 and AIME 2025.
+    \item \textit{General Assistant}: We include queries from the GAIA validation set~\cite{mialon2023gaia}, which provides diverse and realistic instructions reflecting general assistant use.
+    \item \textit{Tool Use}: To mimic complex tool-use sequences in agentic workflows, we incorporate multi-turn and multi-step function-calling queries from BFCL V3~\cite{patilberkeley}.
+\end{itemize}
+To extend coverage toward cutting-edge human knowledge, we also include a small subset of questions from HLE~\cite{phan2025humanity}, spanning mathematics, humanities, and the natural sciences.
+
+\subsection{Trajectory Construction}
+\label{trajectory_construction}
+Given the collected queries, we generate diverse and realistic trajectories by executing 7 widely used LLM-based agents (SmolAgents~\cite{roucher2025smolagents}, OpenDeepSearch~\cite{alzubi2025open}, OpenManus~\cite{openmanus2025}, OctoTools~\cite{lu2025octotools}, Magentic-One~\cite{fourney2024magentic}, OWL~\cite{hu2025owl}, and Function-calling Agents~\cite{patilberkeley}). Specifically, we partition queries from the four knowledge-intensive domains into six subsets and instantiate trajectories using the first six agents. In parallel, we utilize BFCL V3 to construct function-calling agent trajectories. These agents are primarily built on the GPT series (GPT-4o and GPT-4.1). Details on agent configuration are provided in Appendix~\ref{appendix_agent_descrip}. 
+
+To enhance the robustness and quality of our benchmark, we apply a three-stage filtering criterion to the collected trajectories: 
+\begin{itemize}[noitemsep,left=2pt, itemsep=0pt, topsep=0pt]
+    \item \textit{(1) Exclude Failure Trajectories}: Since non-deceptive failures are easy to identify, we manually exclude trajectories that terminate without a task-completing response (e.g., early termination due to turn limits, token overflows, or tool-permission restrictions).
+    \item \textit{(2) Exclude Short Trajectories}: Excessively short agent trajectories degrade into native LLM responses, lacking sufficient reasoning depth for step localization. Therefore, we exclude trajectories with only one or two valid steps.
+    \item \textit{(3) Exclude Trivial Trajectories}: To select plausible and difficult samples, we retain trajectories with disagreement among LLM judges. Specifically, we use four independent LLMs (\texttt{GPT-5}, \texttt{Gemini-2.5-Pro}, \texttt{DeepSeek-V3.1}, and \texttt{Qwen3-32B}) to assign a binary label and a hallucination-responsible step for each trajectory. Then we exclude trajectories with full agreement across all four judges.
+\end{itemize}
+
+\subsection{Hallucination Annotation}
+\label{hallucination_annotation}
+Through the multi-step filtering described above, we retain 693 agent trajectories. To ensure consistent and reproducible annotations across heterogeneous agent systems, we establish both an empirically grounded hallucination taxonomy and a standardized annotation protocol.
+
+\input{Table/category_defination}
+
+% A: We develop an empirical taxonomy using grounded theory~\cite{glaser2017discovery}, which allows hallucination modes to emerge from empirical data. Specifically, we first curate a pilot set of 140 trajectories sampled from 7 agent frameworks. Then we conduct iterative open coding on the trajectory data to label observed hallucinated behaviors. Throughout this phase, we apply constant comparative analysis to refine the boundaries between different hallucination types. By merging and linking relevant behaviors, we organize the open codes into a structured taxonomy of hallucination categories. The taxonomy is further refined through discuss and review until consensus is reached. The resulting taxonomy is presented in Table~\ref{category_description}.
+\noindent\textbf{Empirically Grounded Taxonomy.}
+To allow hallucination modes to emerge from empirical data, we apply grounded theory~\cite{glaser2017discovery} to analyze a pilot set of 140 trajectories sampled from seven agent frameworks. Specifically, we first perform open coding~\cite{khandkar2009open} on the trajectory data to label observed hallucinated behaviors. Then we apply constant comparative analysis to refine the boundaries between different hallucination types. By merging and linking relevant behaviors, we organize the open codes into a structured taxonomy of hallucination categories. The taxonomy is finally refined through discussion and review until consensus is reached. The resulting taxonomy is presented in Table~\ref{category_description}.
+
+\input{Table/agreement}
+
+\input{Table/model_performance}
+
+\noindent\textbf{Standardized Annotation Protocol.}
+We introduce a hallucination annotation protocol, which progresses from binary judgment to fine-grained attribution and taxonomy classification. To ensure annotation rigor, we employ ten graduate-level annotators with specialized expertise in AI to perform iterative labeling and refinement.
+\begin{itemize}[noitemsep,left=2pt, itemsep=0pt, topsep=0pt]
+    \item \textit{(1) Construction of Oracle-guided Reasoning Paths}. Considering that hallucination attribution often requires domain-specific expertise, we leverage LLMs to 
+    construct detailed reasoning paths for question solving. Specifically, we condition the LLM on the question, the ground-truth answer, and, when available, dataset-provided solution annotations. Compared with question-only prompting, providing this additional information yields more faithful reasoning paths. To mitigate model-specific bias, each path is independently drafted by two different LLMs, GPT-5-Thinking and Gemini-2.5-Pro.   
+    \item \textit{(2) Human Annotation}. Annotators first make a binary judgment of whether the agent trajectory is hallucinated by comparing it with the ground truth. For hallucinated cases, they further annotate the category, hallucination-responsible step, and causal explanation. To facilitate this process, LLMs are prompted with the reasoning path to generate attribution references, which are subsequently verified by annotators. Validation relies on two criteria: whether the candidate step introduces a factual error that directly distorts the outcome, or whether it propagates an error seeded in an earlier step. Upon detecting such propagation, annotators trace the error chain backward and reassign attribution to the root cause.
+    \item \textit{(3) Consensus Resolution}. Inter-annotator agreement statistics are reported in Table~\ref{agreement}. For disagreements, annotations are resolved through collaborative discussion, requiring all annotators to be convinced by the final rationale. For agreed cases, we employ a cross-validation protocol in which each annotator reviews peer annotations to ensure adherence to shared standards. Any detected inconsistency triggers discussion and re-annotation until consensus is achieved.    
+\end{itemize}
+
+
+
+
+

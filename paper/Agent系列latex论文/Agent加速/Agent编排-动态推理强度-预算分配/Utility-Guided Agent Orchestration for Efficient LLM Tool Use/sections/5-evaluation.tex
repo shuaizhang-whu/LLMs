@@ -1,0 +1,105 @@
+\section{Evaluation}
+
+\subsection{Experimental Setup}
+
+We evaluate all methods on a fixed sample of 200 HotpotQA development examples, using the same base model, the same local BM25 retriever, and the same sampled question set throughout. This controlled setup is important because our goal is not only to compare answer quality, but also to isolate how orchestration policy changes the quality--cost trade-off under matched retrieval and model conditions. We report F1, token consumption, wall-clock time, and the derived efficiency score $F1 / \text{tokens}$.
+
+The compared methods include \texttt{direct} answering, fixed \texttt{workflow} baselines, a \texttt{threshold} controller, \texttt{ReAct}, and our utility-guided \texttt{policy}. For the proposed policy, \texttt{expected\_gain} and \texttt{uncertainty} are treated as LLM self-estimated heuristic signals clipped to $[0,1]$, rather than calibrated probabilities. The default cost term is \texttt{step\_cost}, a normalized step-level proxy. We further validate this choice against token-based and latency-based cost variants in the final-defense experiments.
+
+\subsection{Main Results}
+
+Figures~\ref{fig:main-pareto} and \ref{fig:latency-pareto} summarize the global quality--cost trade-off from both token and latency perspectives, and the exact main-table numbers are reported below.
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=0.82\linewidth]{figures/figure1_pareto_tokens.pdf}
+    \caption{Main quality--cost trade-off measured by F1 versus tokens on the shared HotpotQA sample.}
+    \label{fig:main-pareto}
+\end{figure}
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=0.82\linewidth]{figures/figure2_pareto_latency.pdf}
+    \caption{Main quality--cost trade-off measured by F1 versus wall-clock time. This complements Figure~\ref{fig:main-pareto} by showing the latency-side frontier.}
+    \label{fig:latency-pareto}
+\end{figure}
+
+\input{tables/table_main_results.tex}
+
+Several observations are clear. First, \texttt{direct} answering is cheapest but performs poorly ($F1=0.0719$). Second, fixed workflows improve over \texttt{direct}, but remain limited by the lack of adaptive stopping and retrieval choice. Third, \texttt{ReAct} achieves the strongest overall F1 in the main comparison ($0.2662$), confirming the strength of flexible multi-step reasoning. Our \texttt{policy(step\_cost)} reaches $F1=0.2360$ with substantially more explicit control over why it continues, stops, or avoids redundant retrieval.
+
+The evidence supports a more precise conclusion: utility-guided orchestration provides a competitive and interpretable alternative to purely prompt-driven multi-step behavior, and its internal trade-offs can be inspected and modified directly through utility design.
+
+\subsection{Reasoning Depth Analysis}
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=0.88\linewidth]{figures/figure3_step_analysis.pdf}
+    \caption{Effect of reasoning depth on answer quality and cost. Increasing the maximum number of reasoning steps improves F1 at first, but also increases token usage and latency, illustrating diminishing marginal returns.}
+    \label{fig:step-analysis}
+\end{figure}
+
+Figure~\ref{fig:step-analysis} makes the reasoning-depth trade-off explicit. Allowing more reasoning steps initially improves answer quality, but the gains are not linear: token usage and latency rise steadily, while the marginal F1 improvement gradually shrinks. This trend is important for our argument because it shows that orchestration is not only about selecting actions, but also about deciding when additional reasoning is no longer worth the execution cost.
+
+\subsection{Cost Definition Analysis}
+
+\input{tables/table_cost_definition.tex}
+
+A central methodological question is whether \texttt{step\_cost} is meaningful or merely arbitrary. The final-defense comparison shows that the proxy-based version is not the strongest variant, but it remains directionally consistent with the real-cost versions. Specifically, \texttt{policy(token\_cost)} improves F1 to $0.2562$, and \texttt{policy(latency\_cost)} reaches $0.2447$, both above \texttt{policy(step\_cost)} at $0.2360$. At the same time, all three variants occupy the same rough cost regime, rather than producing contradictory behavior.
+
+This is the right scope for our claim. We do not argue that the default policy internally optimizes exact runtime or exact token count. Instead, we show that a lightweight normalized step proxy induces behavior that is broadly aligned with real execution cost, which is sufficient for a practical and interpretable controller. This comparison clarifies that our default policy uses a control-oriented proxy, while token- and latency-based variants are included as analysis-oriented references rather than replacements for the main formulation.
+\subsection{Workflow Fairness Analysis}
+
+\input{tables/table_workflow_fairness.tex}
+
+To address the concern that the original workflow baseline might be too weak, we add two stronger fixed pipelines: \texttt{workflow-search-twice} and \texttt{workflow-search-verify}. The first slightly improves over the minimal workflow ($0.1698$ vs.\ $0.1625$ F1), but nearly doubles wall time ($0.902$ vs.\ $0.461$). The second performs substantially worse ($F1=0.0630$) while also becoming the most expensive workflow baseline.
+
+These results strengthen the fairness of the comparison. The limitation of fixed workflows does not arise simply because we selected an unrealistically trivial pipeline. Even stronger fixed pipelines fail to approach the adaptive behavior of \texttt{ReAct} or the utility-guided policy.
+
+\subsection{Redundancy Analysis}
+
+\begin{table}[t]
+\centering
+\small
+\caption{Exact vs.\ semantic redundancy control}
+\begin{tabular}{lrrrrr}
+\hline
+Method & F1 & Tokens & Wall Time & Tool Calls & Redundant Tool Calls \\
+\hline
+policy (step\_cost) & 0.2360 & 1294.2 & 1.138 & 1.56 & 0.44 \\
+policy (semantic redundancy) & 0.2370 & 1156.6 & 1.346 & 1.40 & 0.43 \\
+\hline
+\end{tabular}
+\end{table}
+
+We further compare exact-match redundancy control against a semantic redundancy variant. The semantic version preserves answer quality almost exactly ($0.2370$ vs.\ $0.2360$ F1), while reducing token usage and average tool calls. Concretely, token usage drops from $1294.2$ to $1156.6$, and average tool calls fall from $1.56$ to $1.40$. The remaining caveat is that latency does not improve in the current implementation; wall time rises from $1.138$ to $1.346$.
+
+This makes the redundancy story more precise. The redundancy term is not merely decorative, because it measurably changes the agent's trajectory. However, its current benefit is primarily token and trajectory compactness, not raw runtime acceleration.
+
+\subsection{Heuristic Signal Analysis}
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=0.92\linewidth]{figures/figure6_heuristic_signals.pdf}
+    \caption{Relationship between heuristic signals and continuation behavior. Continue-rate is much lower in low expected-gain buckets and substantially higher in mid/high-gain buckets, supporting the interpretation of these signals as decision heuristics rather than decorative outputs.}
+    \label{fig:heuristic-signals}
+\end{figure}
+
+We also inspect whether the internal heuristic signals are behaviorally meaningful. The continue-rate is near zero in the lowest expected-gain bucket, and rises sharply in the mid/high expected-gain range. This is the qualitative pattern we want from a decision heuristic. By contrast, uncertainty is informative but less cleanly monotonic in the current setup. Quantitatively, the Pearson correlation between expected-gain and final F1 is $0.1479$, whereas the correlation for uncertainty is only $0.0131$.
+
+These results support a careful interpretation. We do not present \texttt{expected\_gain} or \texttt{uncertainty} as calibrated probabilities. Rather, they are useful self-estimated control signals whose value lies in shaping action choice and making continuation decisions analyzable.
+
+\subsection{Ablation Analysis}
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=0.80\linewidth]{figures/figure5_policy_ablation.pdf}
+    \caption{Policy ablation results. Removing gain-, uncertainty-, redundancy-, or stop-related control generally pushes the agent toward a less favorable quality--cost regime.}
+    \label{fig:policy-ablation}
+\end{figure}
+
+\input{tables/table_ablation.tex}
+
+Ablation results reinforce the value of explicit utility components. Figure~\ref{fig:policy-ablation} provides the high-level pattern, while the table gives exact numbers. Removing \texttt{expected\_gain}, uncertainty control, redundancy, or stop-related control generally increases cost more than it improves quality. For example, removing the gain term or stop policy pushes average token usage above $2700$ tokens while only reaching $F1=0.2621$, which is a worse efficiency regime than the full policy. The full policy itself is therefore not the highest-scoring row in absolute terms, but it is the most balanced controlled version.
+
+Overall, the evaluation supports the central claim of the paper: explicit utility-guided orchestration is valuable not only because of final-answer quality, but because it makes the agent's path to that answer controllable, inspectable, and experimentally defensible.

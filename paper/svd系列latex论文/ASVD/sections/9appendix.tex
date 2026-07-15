@@ -1,0 +1,227 @@
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% APPENDIX
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newpage
+\appendix
+\onecolumn
+\section{Appendix}
+\label{sec:appendix}
+
+% \begin{algorithm}[h]
+%    \caption{Binary Search for Truncation Ranks (performance target)}
+%    \label{alg:optimal_rank}
+% \begin{algorithmic}
+%    \STATE {\bfseries Input:} List of tuples (layer, truncation rank, sensitivity), perplexity target and calibration dataset
+%    \STATE {\bfseries Output:} Optimal rank configuration for each layer
+
+%    \STATE Sort the list by sensitivity in ascending order
+%    \STATE Initialize pointers: \(p_L = 0\), \(p_H = \text{length of list} - 1\)
+%    \STATE \(p_M = \left\lfloor \frac{p_L + p_H}{2} \right\rfloor\)
+
+%    \WHILE{\(p_L \neq p_H\)}
+%       \FOR{each layer in the list}
+%          \STATE Initialize \(r = \infty\)
+%          \FOR{each tuple in the list starting from \(p_M\) to the end}
+%             \IF{tuple's layer is the same as the current layer}
+%                \STATE \(r = \min(r, \text{tuple's truncation rank})\)
+%             \ENDIF
+%          \ENDFOR
+%          \IF{\(r = \infty\)}
+%             \STATE Not decompose the layer
+%          \ELSE
+%             \STATE Decompose the layer with truncation rank \(r\)
+%          \ENDIF
+%       \ENDFOR
+%       \STATE Evaluate network performance (perplexity) on calibration dataset
+%       \IF{perplexity $\leq$ perplexity target}
+%          \STATE \(p_H = p_M\)
+%       \ELSE
+%          \STATE \(p_L = p_M+1\)
+%       \ENDIF
+%       \STATE Update \(p_M = \left\lfloor \frac{p_L + p_H}{2} \right\rfloor\)
+%    \ENDWHILE
+% \end{algorithmic}
+% \end{algorithm}
+
+% \subsection{Codes}
+% Our codebase is anonymously available in the Supplementary Materials. 
+% For implementation details, we have added on readme documentation in the codebase. 
+
+\subsection{Impact Statements and Limitations}
+In this study, we propose a technique that improves the efficiency of Large Language Models (LLMs), making them more accessible. This approach helps to democratize LLMs by lowering deployment costs and hardware barriers, facilitating their use in edge computing. However, it does not mitigate the potential misuse of LLMs by malicious actors.
+
+Despite the remarkable achievements of the ASVD method in compressing large language models (LLMs), several limitations persist. One limitation arises when ASVD is combined with quantization techniques, which can lead to a decline in model performance. While 8-bit weight quantization has minimal effects on both original and ASVD-compressed networks, switching to 4-bit quantization can result in a slight decrease in predictive accuracy. Additionally, ASVD faces difficulties in compressing multi-layer perceptron (MLP) in LLMs, as these layers typically contain more parameters than self-attention mechanisms, resulting in increased computational burdens due to their high-dimensional feature mappings. Although ASVD effectively compresses the weights in multi-head attention (MHA) with fewer parameters, it struggles with MLP. Furthermore, the need to evaluate the sensitivity of each layer requires a forward propagation step to calculate perplexity, demanding significant computational resources. 
+
+\subsection{Release Safeguards}
+While ASVD itself does not release new pretrained models, the compression capabilities it provides could enable easier sharing and deployment of powerful models that have risks of misuse. 
+To mitigate risks of misuse, we have implemented access control. Users must agree to terms prohibiting unethical applications.
+
+\subsection{Inference Cost with Decomposed LLMs}
+% \label{sec_inference_cost}
+Regarding the computational aspect, let's consider the input matrix $\mathbf{X} \in \mathbb{R}^{n \times t}$ and the weight matrix $\mathbf{W} \in \mathbb{R}^{m \times n}$. In the original linear layer, the matrix multiplication is represented as $\mathbf{Y} = \mathbf{W}\mathbf{X}$. The number of Multiply-Accumulate (MAC) operations, denoted as $C$, in the original linear layer can be computed as: $C = tmn$.
+After the \asvd~decomposition, the matrix multiplication transforms into $\mathbf{Y} \approx \mathbf{U}_k^{\prime} \mathbf{\Sigma}_k^{\prime} \mathbf{V}_k^{\prime\prime} \mathbf{X} $. We can fuse the $\mathbf{\Sigma}_k$ into $\mathbf{U}_k^{\prime}$ and $\mathbf{V}_k^{\prime\prime}$. Then we have:
+\begin{align}
+    \mathbf{Y} & \approx \mathbf{U}_k^{\prime} \mathbf{\Sigma}_k^{\prime} \mathbf{V}_k^{\prime\prime} \mathbf{X} \\
+    & = (\mathbf{U}_k^{\prime} \sqrt{\mathbf{\Sigma}_k^{\prime}} )(\sqrt{\mathbf{\Sigma}_k^{\prime}}\mathbf{V}_k^{\prime\prime}) \mathbf{X} \\
+    & = \mathbf{A}\mathbf{B} \mathbf{X}
+\end{align}
+    
+To analyze the computational efficiency, we calculate the MAC operations, denoted as $C_k$, for this decomposed form. The computation for $C_k$ is given by:
+$C_k = tkm+tkn$
+
+This computation ratio can be expressed as the ratio of $C_k$ to $C$, which is equivalent to the parameter ratio:
+\begin{equation}
+    \frac{C_k}{C} = \frac{km + kn}{nm}
+\end{equation}
+Remarkably, this computation ratio mirrors the weight number compression ratio, highlighting the efficient use of computational resources achieved through \asvd. 
+In summary, \asvd~can not only reduce the weight storage and weight transferring overheads in LLM deployment but also reduce the computation required by LLM inference. 
+
+
+\subsection{Binary Search for Truncation Ranks}
+
+We have the option to employ either a performance target or parameters target for our search. 
+In the case of a performance target, our objective is to identify the truncation rank configuration that ensures the compressed network attains the desired performance, such as achieving a specific perplexity. 
+Alternatively, in the pursuit of a parameters target, our goal is to identify the truncation ranks that result in the network attaining the specified target parameters.
+
+The algorithm of performance target:
+Initially, the low pointer (\(p_L\)) is positioned at the start of the list, while the high pointer (\(p_H\)) is set at the list's end. The middle pointer (\(p_M\)), as the name suggests, is placed midway between \(p_L\) and \(p_H\), calculated as $p_M = \left\lfloor \frac{p_L + p_H}{2} \right\rfloor$.
+During each iteration of the binary search, we adjust the truncation rank for each layer. Specifically, for a given layer, its truncation rank is set to the smallest rank found to the right of the middle pointer (\(p_M\)) in our list.
+
+Following this adjustment, we evaluate the network's performance using the updated configuration on a calibration dataset. The primary metric for assessment is perplexity. Should the perplexity fall within or below a pre-established threshold, we move the high pointer (\(p_H\)) to the middle position (\(p_M\)). This action indicates our search for a configuration with a potentially lower rank that still adheres to performance standards.
+Conversely, if the perplexity exceeds our maximum acceptable threshold, we shift the low pointer (\(p_L\)) to (\(p_M+1\)). This adjustment signifies the need to increase the truncation ranks to maintain or enhance performance levels. 
+The binary searching will converge to an optimal configuration of truncation ranks for each layer that balances compression ratio and perplexity.
+
+\begin{algorithm}[tb]
+   \caption{Binary Search for Truncation Ranks (parameters target)}
+   \label{alg:binary_search_parameters}
+\begin{algorithmic}
+   \STATE {\bfseries Input:} List of tuples (layer, truncation rank, sensitivity) and parameters target
+   \STATE {\bfseries Output:} Optimal truncation rank configuration for each layer
+
+   \STATE Sort the list by sensitivity in ascending order
+   \STATE Initialize pointers: \(p_L = 0\), \(p_H = \text{length of list} - 1\)
+   \STATE \(p_M = \left\lfloor \frac{p_L + p_H}{2} \right\rfloor\)
+
+   \WHILE{\(p_L \neq p_H\)}
+      \FOR{each layer in the list}
+         \STATE Initialize \(r = \infty\)
+         \FOR{each tuple in the list starting from \(p_M\) to the end}
+            \IF{tuple's layer is the same as the current layer}
+               \STATE \(r = \min(r, \text{tuple's truncation rank})\)
+            \ENDIF
+         \ENDFOR
+         \IF{\(r = \infty\)}
+            \STATE Do not modify the truncation rank for the layer
+         \ELSE
+            \STATE Set the truncation rank for the layer to \(r\)
+         \ENDIF
+      \ENDFOR
+      \STATE Calculate the parameters after compression
+      \IF{parameters $\leq$ parameters target}
+         \STATE \(p_H = p_M\)
+      \ELSE
+         \STATE \(p_L = p_M+1\)
+      \ENDIF
+      \STATE Update \(p_M = \left\lfloor \frac{p_L + p_H}{2} \right\rfloor\)
+   \ENDWHILE
+\end{algorithmic}
+\end{algorithm}
+
+
+The algorithm of parameters target is shown in Algorithm~\ref{alg:binary_search_parameters}.
+It doesn't need calibration dataset.
+
+
+\subsection{Difference with TensorGPT.} 
+
+In the content of LLM compression via decomposition,
+the most related work is the concurrent TensorGPT~\cite{xu2023tensorgpt,zhu2023survey},
+in which the embedding layer of LLMs is compressed through Tensor-Train Decomposition (TTD)~\cite{oseledets2011tensor} in order to store large embeddings in a low-rank tensor format,
+with much fewer parameters. 
+However, there are several differences between those two methods: 
+(1) Unlike TensorGPT which focuses solely on the token embedding matrix, \asvd aims to compress the entire weight spectrum of LLMs. This holistic approach addresses a more critical aspect of LLM compression, as highlighted in recent studies~\cite{lin2023awq,kim2023squeezellm}; 
+(2) From the perspective of low-rank decomposition categorization, our method can realize the low-rank decomposition in a rank-adaptive manner, contrasting with the fixed or predetermined ranks used in TensorGPT. 
+
+\subsection{Empirical Comparison with FWSVD}
+We also compare ASVD with FWSVD~\cite{hsu2022language}, which uses Fisher information to weigh the importance of parameters affecting the model prediction. Note that FWSVD is training-required. 
+As shown in Table~\ref{tab_compare_fwsvd}, our method can outperform FWSVD comprehensively. 
+
+\begin{table}[!h]
+\centering
+\caption{Comparing with FWSVD on LLaMA-7b. FWSVD* denotes Fisher information weighted SVD.}
+\label{tab_compare_fwsvd}
+\resizebox{0.5\linewidth}{!}{
+\begin{tabular}{@{}cccccc@{}}
+\toprule
+\multicolumn{2}{c}{param ratio}    & 0.95  & 0.9   & 0.85   & 0.8    \\ \midrule
+\multicolumn{6}{c}{LLaMA-7b}                                         \\ \midrule
+FWSVD+STRS & \multirow{2}{*}{wiki} & 5.86  & 6.32  & 7.48   & 10.70  \\
+ASVD       &                       & 5.78  & 6.09  & 6.80   & 8.89   \\ \midrule
+FWSVD+STRS & \multirow{2}{*}{ptb}  & 34.33 & 38.05 & 58.75  & 125.80 \\
+ASVD       &                       & 32.64 & 37.80 & 52.11  & 88.09  \\ \midrule
+\multicolumn{6}{c}{LLaMA-2-7b}                                       \\ \midrule
+FWSVD+STRS & \multirow{2}{*}{wiki} & 5.59  & 6.12  & 8.01   & 13.07  \\
+ASVD       &                       & 5.64  & 5.93  & 6.74   & 8.91   \\ \midrule
+FWSVD+STRS & \multirow{2}{*}{ptb}  & 25.06 & 36.58 & 105.53 & 222.03 \\
+ASVD       &                       & 23.98 & 32.63 & 59.84  & 114.70 \\ \bottomrule
+\end{tabular}
+}
+% \vspace{-0.25in}
+\end{table}
+
+\subsection{Hyper-parameters Exploration}
+
+\begin{table}[!h]
+\centering
+\caption{Perplexity on Wikitext2 for exploring hyper-parameters on OPT-125m.}
+\label{tab_explore_param}
+\resizebox{0.5\linewidth}{!}{
+\begin{tabular}{@{}cccccc@{}}
+\toprule
+$\alpha$         & 0.1     & 0.25    & 0.5     & 1       & 2       \\ \midrule
+SVD+STRS      & \multicolumn{5}{c}{103.39}                      \\
+ASVD abs mean & 47.54 & 37.12 & \textbf{36.89} & 41.53 & 43.81 \\
+ASVD abs max  & 52.63 & 47.17 & 40.14 & 41.94 & 52.55 \\ \bottomrule
+\end{tabular}
+}
+\vspace{-0.15in}
+\end{table}
+
+In our study, we initiate an exploration of hyper-parameters in \asvd, focusing on the activation channel significance metric and the control factor $\alpha$. This exploration is conducted on OPT-125m, a relatively small network that facilitates rapid evaluation.
+
+We rigorously explored the control factor $\alpha$ at various settings: 0.1, 0.25, 0.5, 1, and 2. This exploration aimed to understand how varying $\alpha$ influences the performance and parameter efficiency of the network. Additionally, we investigated two methods for quantifying activation significance: Absolute Mean Value of Input Activation and Absolute Maximum Value of Input Activation. These methods are crucial in determining the most effective approach for activation channel significance evaluation.
+We set a target parameters ratio of 0.9. Utilizing the binary search approach for truncation ranks, we report the perplexity on Wikitext2 test set after compression. The results of our experiments are summarized in Table~\ref{tab_explore_param}. 
+
+From the data presented in the table, we observe that both activation-aware methods show superior performance compared to standard SVD+STRS.
+We also notice that Lower and higher values of $\alpha$ (0.1 and 2) exhibit lower performance, while mid-range values (0.5) lead to better performance, and the Absolute Mean Value method consistently outperforms the Absolute Max Value method.
+Therefore, based on our observations, we chose $\alpha=0.5$ and the Absolute Mean Value method for setting the transform matrix $\mathbf{S}$ in the ASVD process in the following experiments.
+
+\subsection{Absorbing Singular Values}
+\label{sec_efficeint_inference}
+
+\begin{table}[!h]
+\centering
+\caption{Perplexity on Wikitext-2 under different absorbing strategies after \asvd~on OPT-125m.}
+\label{tab_fusion}
+\resizebox{0.7\linewidth}{!}{
+\begin{tabular}{@{}cc@{\hspace{0.5em}}c@{\hspace{0.5em}}c@{\hspace{0.5em}}c@{}}
+\toprule
+param ratio & weight quant & absorbed by UV & absorbed by U & absorbed by V \\ \midrule
+0.9         & INT6         & \textbf{37.58}      & 39.67     & 40.62     \\
+0.85        & INT6         & \textbf{60.44}    & 64.19   & 61.02   \\ \bottomrule
+\end{tabular}
+}
+% \vspace{-0.3in}
+\end{table}
+
+After we decompose a matrix via \asvd, we can represent the weight matrix as a product of three matrices, i.e., $\mathbf{W} \approx \mathbf{U}_k \mathbf{\Sigma}_k \mathbf{V}_k^T$. 
+Thanks to the diagonal nature of matrix $\mathbf{\Sigma}_k$, we can further optimize the inference process. 
+Specifically, we can efficiently absorb the singular values in $\mathbf{\Sigma}_k$ into the matrices $U_k$ and $V_k^T$. We achieve this fusion using the following strategy: $\mathbf{A}_k = \mathbf{U}_k\sqrt{\mathbf{\Sigma}_k}$ and $\mathbf{B}_k = \sqrt{\mathbf{\Sigma}_k}\mathbf{V}_k^T$. Consequently, we obtain a more computationally efficient matrix operation: 
+\begin{equation}
+    \mathbf{Y}=\mathbf{W}\mathbf{X} \approx \mathbf{A}_k (\mathbf{B}_k\mathbf{X})
+\end{equation}
+% Comparing with only fuse sigma into U or V, our proposed fusion method is benefit to quantization as shown in Table~\ref{tab_fusion}, as it can reduce the difference across different channels
+Compared to the methods of fusing the singular values $\mathbf{\Sigma}_k$ solely into either $\mathbf{U}$ or $\mathbf{V}$ matrices, our proposed fusion technique offers significant advantages in terms of weight quantization, as demonstrated in Table~\ref{tab_fusion}. Our approach involves evenly distributing the singular values from the diagonal matrix $\mathbf{\Sigma}_k$ into both $\mathbf{U}_k$ and $\mathbf{V}_k^T$ matrices. This ensures a more uniform distribution of $\mathbf{A}_k$ and $\mathbf{B}_k$, leading to a reduction in the disparity across different channels and reducing the quantization error.

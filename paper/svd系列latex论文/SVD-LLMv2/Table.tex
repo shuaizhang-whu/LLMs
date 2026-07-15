@@ -1,0 +1,299 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\newcommand{\losscomparisonTable}{{
+\centering
+\captionof{table}{Comparison of the normalized truncation loss ($\downarrow$) between SVD-LLM and \sysname on two randomly selected weight matrices in LLaMA-3 8B using 256 calibration data on C4 under 20\% and 60\% compression ratios. \textcolor{red}{Fail} means the algorithm raises an error during the SVD compression.}
+\resizebox{0.48\textwidth}{!}{%
+\begin{tabular}{c|cc|cc}
+\midrule
+& \multicolumn{2}{c}{\textsc{Matrix A}}    & \multicolumn{2}{c}{\textsc{Matrix B}}         \\\midrule
+\textsc{Ratio}     & 20\%    & 60\%      & 20\%    & 60\%     \\ \midrule
+\color[HTML]{9B9B9B}Theoretical                 & \color[HTML]{9B9B9B}0.5982        & \color[HTML]{9B9B9B}2.3251           & \color[HTML]{9B9B9B}0.7351         & \color[HTML]{9B9B9B}3.5245 \\\midrule
+SVD-LLM               & \textcolor{red}{Fail}         & \textcolor{red}{Fail}          & 0.8961         & 5.9834            \\\midrule
+\sysname            &  \textbf{0.5982}         & \textbf{2.3251}        &\textbf{0.7351} (\textcolor{mygreen}{$\downarrow$18\%})             & \textbf{3.5245} (\textcolor{mygreen}{$\downarrow$41\%})          \\ \midrule
+\end{tabular}
+}
+\label{tab:loss_comparison}
+}}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\newcommand{\accuracyTable}{{
+\begin{table*}[t]
+\centering
+\captionof{table}{Performance of OPT-6.7B, LLaMA-7B, and LLaMA-3 8B compressed by \sysname and baselines under 20\% compression ratio on two language modeling datasets (measured by perplexity  (\textcolor{mygreen}{$\downarrow$})), six classification datasets (measured by both individual and average accuracy (\textcolor{mygreen}{$\uparrow$})), two generation datasets (TruthfulQA measured by BLEU score (\textcolor{mygreen}{$\uparrow$}), and GSM8K measured by Exact Match Accuracy (\textcolor{mygreen}{$\uparrow$})). The best performance is marked in bold. The relative performance gain compared to the best-performing baseline is marked in green inside bracket.
+}
+\resizebox{1\textwidth}{!}{%}
+\begin{tabular}{l|cccccccccccc}
+\midrule
+ &\multicolumn{1}{c|}{\textsc{Method}}    & WikiText-2\textcolor{mygreen}{$\downarrow$} & \multicolumn{1}{c|}{C4\textcolor{mygreen}{$\downarrow$}} & Openb. & ARC\_e & WinoG. & HellaS.  & PIQA & MathQA & \textbf{Average\textcolor{mygreen}{$\uparrow$}}  & TruthfulQA\textcolor{mygreen}{$\uparrow$} & GSM8K\textcolor{mygreen}{$\uparrow$}      \\ \midrule
+ \multirow{5}{*}{\rotatebox[origin=c]{90}{\textbf{LLaMA-7B}}}& \multicolumn{1}{c|}{\color[HTML]{9B9B9B}Original}  & {\color[HTML]{9B9B9B}5.68}     & \multicolumn{1}{c|}{\color[HTML]{9B9B9B}7.34}      & {\color[HTML]{9B9B9B} 0.34} & {\color[HTML]{9B9B9B} 0.75} & {\color[HTML]{9B9B9B} 0.70} & {\color[HTML]{9B9B9B} 0.57} & {\color[HTML]{9B9B9B} 0.79} & {\color[HTML]{9B9B9B} 0.27} & {\color[HTML]{9B9B9B} 0.57}    & {\color[HTML]{9B9B9B}0.30}  & {\color[HTML]{9B9B9B}0.09}\\ \cmidrule{2-13} 
+& \multicolumn{1}{c|}{FWSVD}     & 1727                     & \multicolumn{1}{c|}{1511}                      & 0.09  & 0.11  & 0.05  & 0.08  & 0.10  & 0.05  & 0.08  & 0.00   & 0.00\\
+&\multicolumn{1}{c|}{ASVD}       & 11.14                   & \multicolumn{1}{c|}{15.93}                      & 0.29  & 0.53  & 0.64  & 0.41  & 0.68  & 0.17  & 0.45  & 0.21   & 0.04\\
+&\multicolumn{1}{c|}{SVD-LLM}      & 7.94                   & \multicolumn{1}{c|}{15.84}                     & 0.31  & 0.71  & 0.68  & 0.49  & 0.71  & 0.22  & 0.52  & 0.24   & 0.06\\ \cmidrule{2-13} 
+&\multicolumn{1}{c|}{\sysname}  & \textbf{7.12} (\textcolor{mygreen}{$\downarrow$10\%}) & \multicolumn{1}{c|}{\textbf{10.47} (\textcolor{mygreen}{$\downarrow$34\%})}        & \textbf{0.32}  & \textbf{0.72}  & \textbf{0.70}  & \textbf{0.52}  & \textbf{0.75}  & \textbf{0.24}  & \textbf{0.54} (\textcolor{mygreen}{$\uparrow$4\%})  & \textbf{0.27} (\textcolor{mygreen}{+0.03})   & \textbf{0.07} (\textcolor{mygreen}{+0.01})\\ \midrule
+ \multirow{5}{*}{\rotatebox[origin=c]{90}{\textbf{OPT-6.7B}}}& \multicolumn{1}{c|}{\color[HTML]{9B9B9B}Original}  & {\color[HTML]{9B9B9B}10.87}     & \multicolumn{1}{c|}{\color[HTML]{9B9B9B}12.50}      & {\color[HTML]{9B9B9B} 0.28} & {\color[HTML]{9B9B9B} 0.66} & {\color[HTML]{9B9B9B} 0.65} & {\color[HTML]{9B9B9B} 0.50} & {\color[HTML]{9B9B9B} 0.76} & {\color[HTML]{9B9B9B} 0.25} & {\color[HTML]{9B9B9B} 0.52}    & {\color[HTML]{9B9B9B}0.29}  & {\color[HTML]{9B9B9B}0.01}\\ \cmidrule{2-13} 
+&\multicolumn{1}{c|}{FWSVD}     & 14559                     & \multicolumn{1}{c|}{17898}                    & 0.03  & 0.08  & 0.02  & 0.01  & 0.05  & 0.01  & 0.03  & 0.01   & 0.00 \\
+&\multicolumn{1}{c|}{ASVD}      & 82                   & \multicolumn{1}{c|}{102}                           & 0.16  & 0.41  & 0.30  & 0.36  & 0.61  & 0.07  & 0.32  & 0.09   & 0.00\\ 
+&\multicolumn{1}{c|}{SVD-LLM}   & 16.04                   & \multicolumn{1}{c|}{21.27}                      & 0.21  & 0.56  & 0.59  & 0.47  & 0.73  & 0.21  & 0.46  & 0.22   & 0.00\\ \cmidrule{2-13} 
+&\multicolumn{1}{c|}{\sysname}  & \textbf{13.46} (\textcolor{mygreen}{$\downarrow$16\%})  & \multicolumn{1}{c|}{\textbf{17.72} (\textcolor{mygreen}{$\downarrow$17\%})}       & \textbf{0.25}  & \textbf{0.61}  & \textbf{0.62} & \textbf{0.49}  & \textbf{0.74}  & \textbf{0.22}  & \textbf{0.49} (\textcolor{mygreen}{$\uparrow$7\%})  & \textbf{0.24} (\textcolor{mygreen}{+0.02})  & \textbf{0.01} (\textcolor{mygreen}{+0.01})\\ \midrule
+\multirow{5}{*}{\rotatebox[origin=c]{90}{\textbf{LLaMA-3 8B}}}& \multicolumn{1}{c|}{\color[HTML]{9B9B9B}Original}  & {\color[HTML]{9B9B9B}6.14}     & \multicolumn{1}{c|}{\color[HTML]{9B9B9B}9.47}      & {\color[HTML]{9B9B9B} 0.35} & {\color[HTML]{9B9B9B} 0.80} & {\color[HTML]{9B9B9B} 0.73} & {\color[HTML]{9B9B9B} 0.60} & {\color[HTML]{9B9B9B} 0.80} & {\color[HTML]{9B9B9B} 0.40} & {\color[HTML]{9B9B9B} 0.61}    & {\color[HTML]{9B9B9B}0.49}  & {\color[HTML]{9B9B9B}0.45}\\ \cmidrule{2-13} 
+&\multicolumn{1}{c|}{FWSVD}     & 4782                     & \multicolumn{1}{c|}{8195}                    & 0.01  & 0.04  & 0.01  & 0.02  & 0.02  & 0.01  & 0.02  & 0.00   & 0.00\\
+&\multicolumn{1}{c|}{ASVD}      & 17.55                  & \multicolumn{1}{c|}{28.41}                     & 0.20  & 0.59  & 0.61  & 0.41  & 0.69  & 0.30  & 0.47  & 0.37   & 0.28\\ 
+&\multicolumn{1}{c|}{SVD-LLM}   & 11.82                   & \multicolumn{1}{c|}{20.05}                    & 0.29  & 0.77  & 0.64  & 0.51  & 0.72  & 0.30  & 0.54  & 0.45   & 0.31\\ \cmidrule{2-13} 
+&\multicolumn{1}{c|}{\sysname}  & \textbf{8.01} (\textcolor{mygreen}{$\downarrow$32\%}) & \multicolumn{1}{c|}{\textbf{11.72} (\textcolor{mygreen}{$\downarrow$42\%})}       & \textbf{0.33}  & \textbf{0.79}  & \textbf{0.70}  & \textbf{0.58}  & \textbf{0.77}  & \textbf{0.36}  & \textbf{0.59} (\textcolor{mygreen}{$\uparrow$9\%})  & \textbf{0.46} (\textcolor{mygreen}{+0.01})   & \textbf{0.40} (\textcolor{mygreen}{+0.09})\\ \midrule
+\end{tabular}
+}
+\label{tab:dataset_acc}
+\end{table*}
+}}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\newcommand{\differntllmaccuracyTable}{{
+\begin{table}[t]
+\centering
+\captionof{table}{Perplexity ($\downarrow$) on WikiText-2 and the average accuracy ($\uparrow$) of the six common sense reasoning datasets of four different LLMs -- OPT-6.7B, LLaMA 2-7B, Mistral-7B, and Vicuna-7B -- under 20\% compression ratio. The relative performance gain compared to the best-performing baseline is marked in green color inside bracket.}
+% \vspace{-2mm}
+\resizebox{1\textwidth}{!}{%
+\begin{tabular}{c|cc|cc|cc|cc}
+% \toprule[0.01pt]
+\midrule
+& \multicolumn{2}{c}{OPT-6.7B}   & \multicolumn{2}{c}{\textsc{LLaMA 2-7B}}    & \multicolumn{2}{c}{\textsc{Mistral-7B}}        & \multicolumn{2}{c}{\textsc{Vicuna-7B}} \\\midrule
+\textsc{Method} & Perplexity\textcolor{mygreen}{$\downarrow$}    & Accuracy\textcolor{mygreen}{$\uparrow$}    & Perplexity\textcolor{mygreen}{$\downarrow$}    & Accuracy\textcolor{mygreen}{$\uparrow$}  & Perplexity\textcolor{mygreen}{$\downarrow$}    & Accuracy\textcolor{mygreen}{$\uparrow$}  & Perplexity\textcolor{mygreen}{$\downarrow$}    & Accuracy\textcolor{mygreen}{$\uparrow$} \\ \midrule
+\color[HTML]{9B9B9B}Original       & \color[HTML]{9B9B9B}10.86          & \color[HTML]{9B9B9B}0.52         & \color[HTML]{9B9B9B}5.47            & \color[HTML]{9B9B9B}0.57      & \color[HTML]{9B9B9B}5.25          & \color[HTML]{9B9B9B}0.61         & \color[HTML]{9B9B9B}6.78            & \color[HTML]{9B9B9B}0.56    \\\midrule
+SVD       & 66275      & 0.03         & 18192             & 0.09      & 159627        & 0.03         & 18644            & 0.05    \\
+FWSVD     & 14559      & 0.06         & 2360              & 0.12      & 6357         & 0.08          & 2758              & 0.09 \\
+ASVD      & 82.00      & 0.32         & 10.10             & 0.36      & 13.72         & 0.32         & 16.23             & 0.33     \\ \midrule
+\sysname  & \textbf{11.61} (\textcolor{mygreen}{$\downarrow$86\%})         & \textbf{0.48} (\textcolor{mygreen}{$\uparrow$50\%})           &  \textbf{6.07} (\textcolor{mygreen}{$\downarrow$40\%})          & \textbf{0.56} (\textcolor{mygreen}{$\uparrow$56\%})      & \textbf{6.01} (\textcolor{mygreen}{$\downarrow$56\%})         & \textbf{0.59} (\textcolor{mygreen}{$\uparrow$84\%})           &  \textbf{7.43} (\textcolor{mygreen}{$\downarrow$54\%})          & \textbf{0.54} (\textcolor{mygreen}{$\uparrow$64\%})   \\ \midrule
+% \bottomrule[0.01pt]
+\end{tabular}
+}
+\label{tab:different_llm_acc}
+\end{table}
+}}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\newcommand{\largellmaccuracyTable}{{
+\centering
+\captionof{table}{Perplexity ($\downarrow$) on WikiText-2 and average accuracy ($\uparrow$) of six classification datasets of LLaMA-13B and LLaMA-30B under 20\% compression ratio.}
+\resizebox{0.48\textwidth}{!}{%
+\begin{tabular}{c|cc|cc}
+\midrule
+& \multicolumn{2}{c}{\textsc{LLaMA-13B}}    & \multicolumn{2}{c}{\textsc{LLaMA-30B}}         \\\midrule
+\textsc{Method}     & Perplexity\textcolor{mygreen}{$\downarrow$}    & Accuracy\textcolor{mygreen}{$\uparrow$}       & Perplexity\textcolor{mygreen}{$\downarrow$}    & Accuracy\textcolor{mygreen}{$\uparrow$}    \\ \midrule
+\color[HTML]{9B9B9B}Original                 & \color[HTML]{9B9B9B}5.09        & \color[HTML]{9B9B9B}0.59           & \color[HTML]{9B9B9B}4.10         & \color[HTML]{9B9B9B}0.61 \\\midrule
+FWSVD               & 15.98         & 0.43           & 20.54         & 0.42             \\
+ASVD                & 6.74          & 0.54           & 22.71         & 0.44             \\
+SVD-LLM             & 6.61          & 0.55           & 5.63          & 0.57             \\\midrule
+\sysname            &  \textbf{5.46} (\textcolor{mygreen}{$\downarrow$17\%})         & \textbf{0.56} (\textcolor{mygreen}{$\uparrow$2\%})       &\textbf{4.71} (\textcolor{mygreen}{$\downarrow$16\%})             & \textbf{0.60} (\textcolor{mygreen}{$\uparrow$5\%})          \\ \midrule
+\end{tabular}
+}
+\label{tab:large_llm_acc}
+}}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\newcommand{\loraTable}{{
+\centering
+\captionof{table}{Perplexity of LLaMA-7B compressed by \sysname under 20\% to 80\% compression ratio on WikiText-2 with different updating order.}
+\vspace{1mm}
+\resizebox{1\textwidth}{!}{%
+\begin{tabular}{c|cccc}
+\midrule
+\textsc{Updating Order}     & 20\%      & 40\%      & 60\%   & 80\%   \\ \midrule
+$V$ first, then $U$         & 6.85     & 8.32        & \textbf{13.20} (\textcolor{mygreen}{$\downarrow$1\%})  & \textbf{31.67}(\textcolor{mygreen}{$\downarrow$1\%}) \\ \midrule
+$U$ first, then $V$          & \textbf{6.73} (\textcolor{mygreen}{$\downarrow$2\%})      & \textbf{8.18} (\textcolor{mygreen}{$\downarrow$2\%})         & 13.31    & 31.79  \\ \midrule
+\end{tabular}
+}
+\label{tab:lora_acc}
+}}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newcommand{\sensitivityTable}{{
+\centering
+\captionof{table}{Perplexity ($\downarrow$) of compressed LLaMA-7B by SVD-LLM and \sysname with individual / both components under 20\% compression ratio on WikiText-2.}
+\resizebox{0.48\textwidth}{!}{%
+% \tiny
+\begin{tabular}{c|c|c|c}
+% \toprule[0.01pt]
+\midrule
+SVD-LLM  & \sysname (A)  &\sysname (T)   &\sysname  \\ \midrule          
+7.94                 & 7.91 (\textcolor{mygreen}{$\downarrow$1\%})            & 7.43 (\textcolor{mygreen}{$\downarrow$6\%})  & 7.12  (\textcolor{mygreen}{$\downarrow$10\%})                      \\ \midrule
+% \bottomrule[0.01pt]
+\end{tabular}
+}
+\label{tab:sensitivity}
+}}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\newcommand{\svdquantTable}{{
+\centering
+\captionof{table}{Perplexity ($\downarrow$) of LLaMA-7B compressed by 1-bit post-training quantization methods and \sysname on WikiText-2.}
+% \vspace{2.5mm}
+\resizebox{0.48\textwidth}{!}{%
+\begin{tabular}{c|c|c|c}
+\midrule
+\textsc{Method}         & \textsc{Data Type}         &\textsc{Weight Memory} & \textsc{Perplexity}\\ \midrule
+PB-LLM                  & 1-bit         & 1.9 GB            & 104.83 \\
+BiLLM                   & 1-bit         & 1.5 GB            & 47.67           \\\midrule
+\sysname                 & 16-bit        & 1.5 GB            & 99.64 \\\midrule
+\sysname                  & 2-bit         & 1.5 GB             & \textbf{14.73} (\textcolor{mygreen}{$\downarrow$69\%})        \\\midrule
+\end{tabular}
+}
+\label{tab:svd_quant}
+}}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\newcommand{\svdquanthighTable}{{
+\centering
+\captionof{table}{Perplexity ($\downarrow$) of LLaMA-7B compressed by GPTQ and \sysname on WikiText-2.}
+% \vspace{2.5mm}
+\resizebox{0.48\textwidth}{!}{%
+\begin{tabular}{c|c|c}
+\midrule
+\textsc{Method}                 &\textsc{Weight Memory} & \textsc{Perplexity}\\ \midrule
+GPTQ-3bit                        & 2.8 GB            & 16.28 \\\midrule
+\sysname                          & 2.8 GB            & 119 \\\midrule
+\sysname + GPTQ-4bit                        & 2.8 GB             & \textbf{9.97} (\textcolor{mygreen}{$\downarrow$39\%})        \\\midrule
+\end{tabular}
+}
+\label{tab:svd_quant_4bit}
+}}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\newcommand{\svdprunepplTable}{{
+\centering
+\captionof{table}{Perplexity ($\downarrow$) of LLaMA-7B compressed by structured pruning methods and \sysname under various weight memory budgets on WikiText-2.}
+% \vspace{-2mm}
+\resizebox{0.48\textwidth}{!}{%
+\begin{tabular}{c|c|c|c|c}
+\midrule
+& \multicolumn{4}{c}{\textsc{Perplexity ($\downarrow$) under weight memory budget}}\\ \midrule
+\textsc{Method}       & 10 GB       & 9 GB      & 8 GB    & 7 GB \\ \midrule
+LLM-Pruner            & 9.88        & 12.21      & 18.94     & 21.68 \\
+SliceGPT              & 8.78        & 12.73      & 16.39     & 27.41           \\
+BlockPruner           & 9.40         & 12.76      & 19.78     & 43.05        \\\midrule
+\sysname              & \textbf{7.84} (\textcolor{mygreen}{$\downarrow$17\%})        & \textbf{8.48} (\textcolor{mygreen}{$\downarrow$34\%})      & \textbf{10.17} (\textcolor{mygreen}{$\downarrow$49\%})     & \textbf{15.62} (\textcolor{mygreen}{$\downarrow$28\%})        \\\midrule
+\end{tabular}
+}
+% \vspace{2mm}
+\label{tab:svd_prune_ppl}
+}}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\newcommand{\svdpruneaccTable}{{
+\centering
+\captionof{table}{Average accuracy ($\uparrow$) of LLaMA-7B compressed by structured pruning methods and \sysname under various weight memory budgets.}
+% \vspace{-2mm}
+\resizebox{0.48\textwidth}{!}{%
+\begin{tabular}{c|c|c|c|c}
+\midrule
+& \multicolumn{4}{c}{\textsc{Average Accuracy ($\uparrow$) under weight memory budget}}\\ \midrule
+\textsc{Method}       & 10 GB       & 9 GB      & 8 GB    & 7 GB \\ \midrule
+LLM-Pruner            & 0.49	& 0.47	& 0.35	& 0.31 \\
+SliceGPT              & 0.51	& 0.46	& 0.38	& 0.29           \\
+BlockPruner           & 0.48	& 0.46	& 0.33	& 0.20        \\\midrule
+\sysname              & \textbf{0.52} (\textcolor{mygreen}{$\uparrow$2\%})        & \textbf{0.50} (\textcolor{mygreen}{$\uparrow$6\%})      & \textbf{0.42} (\textcolor{mygreen}{$\uparrow$11\%})     & \textbf{0.35} (\textcolor{mygreen}{$\uparrow$13\%})        \\\midrule
+\end{tabular}
+}
+\vspace{2mm}
+\label{tab:svd_prune_acc}
+}}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\newcommand{\timeTable}{{
+\centering
+\captionof{table}{Compression time of \sysname and ASVD on LLaMA-7B under 20\% compression ratio. The relative speedup is marked in green color inside bracket.}
+\vspace{-2mm}
+\resizebox{0.7\textwidth}{!}{%
+\begin{tabular}{ccc|ccc}
+\midrule
+ \multicolumn{3}{c|}{\sysname} & \multicolumn{3}{c}{ASVD}       \\ \cmidrule{1-6} 
+                         \makecell{Truncation-Aware \\Data Whitening}  & \makecell{Parameter Update with Sequential \\ Low-rank Approximation}  & \textbf{Total} & Normalize & Search & \textbf{Total} \\ \midrule
+                   10min      & 3.5h    & \textbf{3.5h} (\textcolor{mygreen}{$\downarrow$36\%}) & 5min          & 5.5h   & \textbf{5.5h}  \\ \midrule
+\end{tabular}
+}
+\vspace{-4mm}
+\label{tab:time}
+}}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newcommand{\datasetTable}{{
+\centering
+\captionof{table}{Performance of LLaMA-7B compressed by \sysname under 20\% compression ratio using calibration data sampled from WikiText-2 (by default in our paper) and C4 datasets. The performance on WikiText-2 and C4 are reported by perplexity ($\downarrow$), while the performance on six downstream datasets are reported by average accuracy ($\uparrow$). The performance on TruthfulQA and GSM8K are reported by BLEU score($\uparrow$) and Exact Match Accuracy ($\uparrow$) respectively. 
+The relative performance gain for data sampled from one dataset compared to another is marked in green color inside bracket.
+}
+\vspace{-2.5mm}
+\resizebox{1\textwidth}{!}{%
+% \tiny
+\begin{tabular}{cc|c|cc}
+\midrule
+WikiText-2\textcolor{mygreen}{$\downarrow$} & C4\textcolor{mygreen}{$\downarrow$} & Average\textcolor{mygreen}{$\uparrow$}  & TruthfulQA\textcolor{mygreen}{$\uparrow$}  & GSM8K\textcolor{mygreen}{$\uparrow$}\\ \midrule
+\multicolumn{5}{c}{Calibration data sampled from WikiText-2 } \\ \midrule
+ \textbf{6.73} (\textcolor{mygreen}{$\downarrow$1\%})       & 9.81      & \textbf{0.55} (\textcolor{mygreen}{$\uparrow$2\%})     & 0.28   & 0.08               \\\midrule
+\multicolumn{5}{c}{Calibration data sampled from C4} \\ \midrule
+     6.79      & \textbf{9.62} (\textcolor{mygreen}{$\downarrow$2\%})      & 0.54     & 0.28   & 0.08               \\\midrule
+\end{tabular}
+}
+\label{tab:different_ds_acc}
+}}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\newcommand{\scalingTable}{{
+\begin{table*}[t]
+\centering
+\vspace{6mm}
+\captionof{table}{Comparison of LLaMA-3B (compressed from LLaMA-7B by \sysname) and original StableLM-3B~\citep{StableLM-3B-4E1T} trained from scratch. Both the throughput and the peak memory footprint during the inference are measured with batch size=32, sequence length = 128 on single A100 GPU. }
+% \vspace{-2mm}
+\resizebox{1\textwidth}{!}{%}
+\begin{tabular}{c|c|c|cccccc|c|c|c}
+\midrule
+\textsc{Model}      & Throughput        & Peak Mem. & Openb.  & Arc\_e  & WinoG. & HellaS.   & PIQA      & MathQA    & \textbf{Average\textcolor{mygreen}{$\uparrow$}}  & TruthfulQA\textcolor{mygreen}{$\uparrow$} & GSM8K\textcolor{mygreen}{$\uparrow$} \\ \midrule
+StableLM-3B         & 8463 Tokens/sec             &  9.41 GB     & 0.19   & 0.51   & 0.55    & 0.37      & 0.69      & 0.21      & 0.44  & 0.22  & 0.02                  \\ \midrule
+LLaMA-3B            & 9254 Tokens/sec             &  7.43 GB     & \textbf{0.27}      & \textbf{0.54}    & \textbf{0.58}    & \textbf{0.46}      & 0.68      & \textbf{0.23}      & \textbf{0.46} (\textcolor{mygreen}{$\uparrow$5\%})   & \textbf{0.23} (\textcolor{mygreen}{+ 0.01})   & \textbf{0.04} (\textcolor{mygreen}{+ 0.02})                  \\ \midrule
+\end{tabular}
+}
+\label{tab:scaling}
+% \vspace{-4mm}
+\end{table*}
+}}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+\newcommand{\exampleLoraTable}{{
+\begin{table}[ht]
+    \centering
+    \vspace{-3mm}
+    \caption{An example of contents generated by the fine-tuned LLaMA-7B with LoRA after being compressed by \sysname and ASVD under different compression ratios. The input is marked in bold and the normal texts are the generated sentences.} \label{tab:visualization_lora}
+    \resizebox{\linewidth}{!}{
+    \tiny
+    \begin{tabular}{p{0.8cm}|p{5cm}|p{4.8cm}}
+        \midrule
+        \textsc{Ratio} & \textsc{\sysname} & \textsc{ASVD} \\
+        \midrule
+        Original & \multicolumn{2}{p{10.2cm}}{\textbf{What is the responsibility of the AI assistant?} The responsibility of an AI assistant is to complete the job without any hesitation. Also, the AI assistant has no problem with taking a decision and executing it. An AI assistant is responsible to complete the task and it needs to learn from his past experience to take the best possible decision without any hesitation...} \\
+        \midrule
+         20\% & \textbf{What is the responsibility of the AI assistant?} The AI assistant's role and responsibilities are often ambiguous and can vary depending on the context and the type of assistant being used. Some AI assistants may have preset responses to common queries, but their behavior can also depend on the user's interaction and expectations...  & \textbf{What is the responsibility of the AI assistant?} 1. To act in the same way as the programmer intended. 2. To make a value assessment of the user's intentions and offer an appropriate response. 3. To help the user carry out specific tasks or follow a strict script. 4. To make the system as independent of the user as possible...\\
+        \midrule
+        40\% & \textbf{What is the responsibility of the AI assistant?} 1. The AI assistant is responsible for performing tasks that can only be done by AI technology such as scheduling appointments, setting reminders and making suggestions, while also providing quick and accurate responses. 2. The AI assistant is also responsible for learning and updating its knowledge base through continuous improvement, thus making it more efficient and effective. 3. The AI assistant is responsible for handling and managing user-generated and customer-oriented input... 
+        & \textbf{What is the responsibility of the AI assistant?}  1. Define the definition of the job specification. 2. Define the role of the AI assistant for the job. 3. Define the skills necessary in order to carryout the tasks assigned to the job to do the work of the same capacity in the market. 4. Determine the evaluation of the job competence of the AI assistant to ensure their professional integrity. 5. What type of AI assistant jobs are available? 6. What industries require technology assistance work to complete the tasks that it own personnel cannot perform...\\
+        \midrule
+        60\% & \textbf{What is the responsibility of the AI assistant?} In a nutshell, the responsibility of the AI assistant could vary depending on the task, but generally, the focus would be on automatic tasks, without the need for human intervention. Some common tasks could include setting reminders, scheduling appointments, and making routine household or productivity tasks. The AI assistant also serves as a backup or a relief system, taking on responsibilities when the user is not available ... 
+        & \textbf{What is the responsibility of the AI assistant?}  2.3. ?? Brush for a discussion I wonder is it worth doing is important.2- It isn't useful just reducing labor costs; it helps employees feel a sense of connected to your attention which leads to better workplace values among staffers and leads to long relationships among org...\\
+        \midrule
+        80\% & \textbf{What is the responsibility of the AI assistant?}  Our Design is based on our understanding of the world, and we are actively learning, adapting and adapting, so we're always evolving new ideas, which we see to be most unique and relevant in our community... 
+        & \textbf{What is the responsibility of the AI assistant?} ygua AIeltemperaturen/2, (64mbz/.3/.1/, 7.kbld.org.0/2/ In these  puthebout les bnvols n merginels ...\\
+        \midrule
+        % \bottomrule
+    \end{tabular}
+    }
+\end{table}
+}}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

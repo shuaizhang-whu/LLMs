@@ -1,0 +1,100 @@
+\section{IdleSpec: Exploiting Idle Time via Speculative Planning for LLM Agents}
+\label{sec:method}
+In this section, we propose IdleSpec, a novel inference framework that exploits idle time in LLM agents via speculative planning. We design a two-phase strategy: it drafts two complementary types (\ie \textit{progressive} and \textit{recovery}) of plan candidates during idle periods (Section~\ref{subsec:drafting}), and aggregates them once observations arrive and uses them for subsequent reasoning (Section~\ref{subsec:verification}). To ensure effective drafting under observation uncertainty, we propose adaptive drafting strategy sampling with posterior updates (Section~\ref{subsec:adaptive}). The overall framework is illustrated in Figure~\ref{fig:concept}.
+\subsection{Drafting during Idle Time}
+\label{subsec:drafting}
+
+\paragraph{Progressive Drafting.}
+The agent assumes that the forthcoming observation will be successfully obtained and will contribute to task success. Under this assumption, the agent proactively drafts the next plan to be executed once the observation becomes available, 
+focusing on forward progress.
+
+\begin{tcolorbox}[title=Progressive Drafting Prompt, fontupper=\small, width=\linewidth]
+You are an expert AI assistant tasked with generating the most effective and efficient NEXT ACTION STEP to take after the current action step completes and its observation becomes available.
+
+The current action step is running in parallel.
+You will not see the observation yet; assume it will arrive and will be used to decide the next step.
+\end{tcolorbox}
+
+\paragraph{Recovery Drafting.}
+The agent prepares for the case in which the forthcoming observation shows no progress (e.g., the tool returns an empty or off-target result). Under this assumption, the agent drafts an alternative plan that pursues the same sub-goal from a different angle.
+
+\begin{tcolorbox}[title=Recovery Drafting Prompt, fontupper=\small, width=\linewidth]
+You are an expert AI assistant tasked with generating a RECOVERY strategy while the current action step is executing.
+
+Assume that the current action step fails to make progress or gets stuck.
+Propose EXACTLY one distinct recovery plan that takes a different approach from what has already been tried.
+\end{tcolorbox}
+
+
+\paragraph{Idle-aware Iterative Drafting.}
+As shown in Figure~\ref{fig:observation-source}, idle time varies across tools and environments,
+making the appropriate number of plan candidates highly variable.
+To address this, we design drafting as an iterative procedure that runs concurrently with tool execution and terminates immediately once the tool response becomes available.
+While waiting for the observation, the agent repeatedly generates plan candidates at each iteration.
+These drafts are accumulated over time and fed back into the prompt at each iteration, allowing the model to condition on previously generated plans.
+This design enables the agent to generate diverse plan candidates, while reducing unnecessary drafting cost. Once the tool execution completes, drafting halts and the accumulated candidates are finalized.
+As a result, the final candidate set $\mathcal{D}_\text{final}$ is given by:
+\begin{equation}
+\mathcal{D}_\text{final} = \mathcal{D}_\text{prog} \cup \mathcal{D}_\text{rec}, 
+\end{equation}
+where $\mathcal{D}_\text{prog}$ is the candidate set from progressive drafting and $\mathcal{D}_\text{rec}$ is from recovery drafting. 
+
+
+\subsection{Draft Aggregation at Test Time}
+\label{subsec:verification}
+
+Once the observation becomes available, the agent proceeds to the next reasoning step by aggregating the candidate set $\mathcal{D}_\text{final}$ for guidance.
+
+\textbf{Aggregation.}
+Given the plan candidate set $\mathcal{D}_\text{final}$, the agent aggregates the generated drafts by conditioning its next reasoning step on the entire set. 
+Importantly, the agent is not required to strictly follow any individual candidate; the plans are treated as \textit{reference points} that may guide the next reasoning step. 
+This careful design is crucial because drafts generated during idle time are produced under observation uncertainty; we observe that directly forcing such raw plans can lead to suboptimal performance (see Table~\ref{tab:aggregation} in Section~\ref{sec:ablation}).
+
+\begin{tcolorbox}[title=Aggregation Prompt, fontupper=\small, width=\linewidth]
+The following are candidate plans generated for the next step:
+
+\textbf{Plan 1:} \textbf{\{candidate plan 1\}} \\[2pt]
+\textbf{Plan 2:} \textbf{\{candidate plan 2\}} \\[2pt]
+$\vdots$ \\[2pt]
+\textbf{Plan N:} \textbf{\{candidate plan N\}}
+
+Based on the observation, you may use these plans as starting points, but you are free to synthesize a different or improved next step if none of them fit well.
+\end{tcolorbox}
+
+
+\subsection{Strategy Sampling with Posterior Updates}
+\label{subsec:adaptive}
+
+We now describe how the agent decides which drafting strategy (i.e., progressive and recovery) to use at each idle-time iteration. 
+Effective drafting under observation uncertainty requires covering a diverse set of plausible future situations, while still concentrating computation on the strategy most likely to be useful for the current trajectory. 
+To balance these two objectives, we propose a simple yet effective strategy-selection mechanism based on Thompson sampling~\cite{shipra2012thompson}: we derive a forecast signal from each observation and use posterior sampling to adaptively select the strategies.
+
+\paragraph{Forecast.}
+At the end of each step, once the observation is available, the agent produces a forecast for the subsequent idle period. The forecast outputs a binary signal $\ell \in \{\textsc{Prog}, \textsc{Rec}\}$, 
+indicating which drafting strategy is more promising: progressive (continuing along the current trajectory) or recovery (mitigating potential future failures). 
+The forecast prompt is provided in Appendix~\ref{sec:appendix_prompt_templates} (Figure~\ref{fig:prompt_forecast}).
+
+\paragraph{Probabilistic Model.}
+Let $p \in [0,1]$ denote the probability that the forecast favors the progressive strategy,
+\begin{equation}
+p = \Pr(\ell = \textsc{Prog}),
+\end{equation}
+and place a Beta prior over $p$,
+\begin{equation}
+p \sim \mathrm{Beta}(\alpha, \beta),
+\end{equation}
+where $\alpha$ and $\beta$ count past forecast signals corresponding to \textsc{Prog} and \textsc{Rec}, respectively. 
+We initialize $\alpha = \beta = 1$ to reflect a uniform prior in the absence of any forecast feedback. After each forecast signal $\ell$, we update the posterior by incrementing the count corresponding to $\ell$:
+\begin{equation}
+(\alpha, \beta) \leftarrow
+\begin{cases}
+(\alpha + 1, \beta), & \text{if } \ell = \textsc{Prog}, \\
+(\alpha, \beta + 1), & \text{if } \ell = \textsc{Rec}.
+\end{cases}
+\label{eq:posterior-update}
+\end{equation}
+
+\paragraph{Adaptive Strategy Sampling.}
+At each drafting iteration, we draw a preference value $\hat{p} \sim \mathrm{Beta}(\alpha, \beta)$ and select the drafting strategy as $\mathbf{s} = \textsc{Prog}$ if $\hat{p} > 0.5$ and $\mathbf{s} = \textsc{Rec}$ otherwise. The posterior is held fixed throughout the upcoming idle period and updated again once the next observation arrives.
+This procedure naturally allocates more idle-time computation to the strategy that the forecast favors, while retaining stochastic exploration to handle uncertainty and preference shifts during execution.
+

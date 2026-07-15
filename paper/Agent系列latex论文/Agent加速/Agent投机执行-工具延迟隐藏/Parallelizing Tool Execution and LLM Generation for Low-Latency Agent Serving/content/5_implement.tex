@@ -1,0 +1,24 @@
+\section{Implementation}
+\label{sec:impl}
+
+\sys is implemented as a non-invasive control plane around existing agent runtimes and a vLLM-based serving backend.
+The prototype consists of 5k lines of TypeScript for agent-side integration and 2k lines of Python for vLLM-side integration.
+On the agent side, \sys runs as a middleware/proxy on the tool-dispatch path and lightly wraps the LLM client for timing and session metadata.
+Agents keep their original tool APIs; gemini-cli, Qwen Deep Research, and Virtual-Lab only require a small dispatch wrapper.
+
+\noindent\textbf{Pattern Analyzer.}
+The proxy records LLM turns, tool calls, outputs, timing signals, and session identifiers as an online event stream.
+The analyzer normalizes events into compact signatures plus payloads, matches recent signatures against validated patterns, and binds matched patterns to current payloads.
+Only fully instantiated predictions are forwarded; incomplete predictions remain preparation hints and never modify authoritative state.
+
+\noindent\textbf{Tool Speculation Scheduler.}
+The scheduler sends authoritative and speculative work through the same executor interface, so existing tools require no API changes.
+Authoritative calls follow the normal path, while predictions enter a bounded speculative path.
+\sys canonicalizes invocations so a later authoritative call can reuse a completed match, promote an in-flight match, or fall back to normal execution.
+Misses expire outside authoritative state, while reuse and promotion events are reported to the LLM--Tool Co-Scheduler.
+
+\noindent\textbf{LLM--Tool Co-Scheduler.}
+The LLM-side component is a Python startup hook inside an unmodified vLLM server.
+Task context is piggybacked on existing request metadata, including session progress, tool-wait information, and token estimates.
+The hook updates per-session state and adjusts the order and admission of waiting LLM turns before native scheduling.
+\sys does not change vLLM source code, serving APIs, or native execution paths; it only shapes which ready turns enter the engine.

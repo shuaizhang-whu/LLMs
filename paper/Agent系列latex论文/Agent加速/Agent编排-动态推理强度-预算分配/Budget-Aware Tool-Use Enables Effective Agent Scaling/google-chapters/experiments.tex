@@ -1,0 +1,20 @@
+\section{Experiments}\label{sec:exp}
+
+
+
+\subsection{Setup}
+
+\paragraph{Datasets.}To evaluate web search agents, we use three challenging information-seeking benchmarks: BrowseComp~\citep{DBLP:journals/corr/abs-2504-12516}, a dataset of 1,266 difficult web-browsing questions requiring persistent retrieval; BrowseComp-ZH~\citep{DBLP:journals/corr/abs-2504-19314}, a 289-question Chinese benchmark designed to test agents’ performance in region-specific web environments; and HLE-Search~\citep{DBLP:journals/corr/abs-2507-16075}, a curated 200-question subset of Human’s Last Exam~\citep{DBLP:journals/corr/abs-2501-14249} focusing on queries that explicitly require search rather than pure reasoning. 
+
+
+\paragraph{Baselines.}
+We compare \method against a range of models and agentic frameworks, including both general-purpose base models~\citep{DBLP:journals/corr/abs-2410-21276, DBLP:journals/corr/abs-2412-16720, gemini25, anthropic2025claude37sonnet, anthropic2025claude4} and those specifically fine-tuned for agentic search tasks~\citep{DBLP:journals/corr/abs-2507-02592, Liu2025WebExplorerEA, DBLP:journals/corr/abs-2508-07976,lu2025deepdiveadvancingdeepsearch}.
+To evaluate the final answer accuracy, we use Gemini-2.5-Flash as the judge model and adopt the evaluation prompt from~\citet{DBLP:journals/corr/abs-2501-14249}. Baseline results for HLE-Search are scraped from~\citet{DBLP:journals/corr/abs-2507-16075}.
+
+For scaling methods, we evaluate sequential and parallel scaling approaches applied to the ReAct~\citep{DBLP:conf/iclr/YaoZYDSN023} baseline.
+For \textbf{sequential scaling}, to encourage the agent to use more tools during its iterative execution, we follow the approach from textual reasoning~\citep{DBLP:journals/corr/abs-2501-19393} and append the instruction that encourages it to rethink and use more tools whenever the agent provides an answer. This process is repeated until the agent's tool budget is exhausted, after which it is prompted to produce the final answer.
+For \textbf{parallel scaling}, we use temperature sampling to generate diverse reasoning paths. To aggregate the results, by default, we use Gemini-2.5-Flash to select the most common answer via a majority vote~\citep{DBLP:conf/iclr/0002WSLCNCZ23} (see Appendix~\ref{app:pass@n} for details). For experiments in \method, to enforce the budget constraint for each question, we continue sampling new sequences until the budget is fully consumed. Thus the number of sampled sequences may differ across questions.
+
+
+\subsection{Implementation Details}\label{sec:implementation}
+We use Gemini-2.5-Flash, Gemini-2.5-Pro~\citep{gemini25} and Claude-Sonnet-4~\citep{anthropic2025claude4} as the backbone models in our framework. By default, we disable the thinking mode by setting the thinking budget as 0 for Gemini-2.5-Flash and 1024 for Gemini-2.5-Pro models. The maximum number of new tokens for generation was set to 65,536 for Gemini models and 64,000 for Claude. We use a temperature of 0.7 during agent execution to encourage exploration, and use a deterministic temperature of 0.0 for final answer selection and answer evaluation. We use the Google Custom Search JSON API\footnote{\url{https://developers.google.com/custom-search/v1/overview}} for search tools, Jina.ai\footnote{\url{https://jina.ai/}} and Crawl4AI~\citep{crawl4ai2024} for web browsing.

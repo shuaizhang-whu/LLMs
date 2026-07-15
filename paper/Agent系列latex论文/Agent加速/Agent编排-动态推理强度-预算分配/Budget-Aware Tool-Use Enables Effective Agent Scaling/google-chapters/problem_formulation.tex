@@ -1,0 +1,51 @@
+\section{Problem Formulation}
+
+\subsection{Agent Test-time Scaling}
+
+We formulate agent test-time scaling as how an agent's performance scales with its budget for external tool-call interaction, refining the broader concept of test-time interaction scaling as discussed in~\citet{DBLP:journals/corr/abs-2506-07976}. To make agent test-time scaling cost-effective, an ideal agent should be able to achieve its best possible performance under an arbitrary budget constraint on the scaling curve. To this end, our target is to design an effective and efficient agent framework, $\pi$, that maximizes answer accuracy while adhering to a strict tool-call budget. 
+
+
+Assume the agent is equipped with a set of $K$ tools as $\mathcal{T}=\{t_1, \dots, t_{K}\}$. For a given question $x \in \mathcal{X}$, the agent works under a budget $\mathbf{b}=(b_1,\dots,b_K)$, where $b_i$ is the maximum number of invocations of tool $t_i \in \mathcal{T}$.
+Let $\hat{y}_\pi(x)$ denote the agent's predicted answer for question $x$ with ground truth $y(x)$ and let $c_i(x;\pi)$ be the realized number of calls to tool $t_i$ on $x$.
+We formulate the agent test-time scaling problem as a budget-constrained optimization objective:
+\begin{equation}
+\label{eq:tts-per-tool-acc}
+\begin{aligned}
+\max_{\pi}\quad
+& \mathrm{Acc}_{\mathbf{b}}(\pi)
+\;\;=\;\; \mathbb{E}_{x}\big[\,\mathbf{1}\{\hat{y}_\pi(x)=y(x)\}\,\big] \\[2pt]
+\text{s.t.}\quad
+& c_i(x;\pi) \;\le\; b_i \quad \text{for all } i=1,\dots,K,\ \text{and every } x \in \mathcal{X}\ \ 
+\end{aligned}
+\end{equation}
+Here the objective is the expected accuracy over all questions. The constraint ensures that for any given question, the number of realized calls for each tool never exceeds its allocated budget. By evaluating the agent performance at various budget levels, we can trace the performance-cost curve, which characterizes the agent's test-time scaling behavior, showing how effectively it leverages budget resources to its problem solving capabilities.
+
+
+\textbf{Budget vs. Cost.} We distinguish between the preset budget constraint, which specifies the maximum number of tool calls available to the agent, and the realized cost, which reflects the resources actually consumed during execution. While the budget imposes a hard upper limit, the final cost depends on the agent's strategy. To facilitate a more consistent and comprehensive comparison, we introduce in Section~\ref{sec:prob_instantiation} a unified post-hoc cost metric for analyzing agents' test-time scaling.
+
+\textbf{Choice of Budget.} Among possible constraints, we prioritize a tool-call budget over a token-based budget for its \textit{relevance}, \textit{consistency}, and \textit{practicability}. A tool-call limit offers a more relevant and direct constraint on an agent's ability to acquire external knowledge than the tokens used for internal reasoning. This choice is also consistent with and justified by established practices~\citep{DBLP:journals/corr/abs-2506-07976, miromindteam2025mirothinkerpushingperformanceboundaries}. Furthermore, it offers greater practicability, as it is often non-trivial to pre-determine an appropriate token budget for complex, multi-step agentic tasks. While the budget is defined by tool calls, we still incorporate token usage into our unified cost metric (Section~\ref{sec:prob_instantiation}) to ensure a more fair and transparent comparison.
+
+
+\subsection{Problem Instantiation with Search Agent}
+\label{sec:prob_instantiation}
+In our work, we instantiate the test-time scaling problem with search agent, a setting selected for its broad applicability and the presence of established benchmarks.
+
+A search agent is an LLM that answers an information-seeking question $x$ by retrieving external evidence and reasoning over it. The agent follows an iterative ReAct-style loop~\citep{DBLP:conf/iclr/YaoZYDSN023}, alternating between internal thinking and external actions. The agent has access to two primary tools for interacting with the world:
+\begin{itemize}
+    \item \textbf{Search.} This tool helps perform a standard search engine query. Given a text query, it returns a list of search results, each including a title, a brief snippet, and a URL.
+    \item \textbf{Browse.} Given a specific URL, this tool scrapes the full content of the corresponding webpage, providing detailed information that is often unavailable in a search snippet.
+\end{itemize}
+
+
+\textbf{Unified Cost Metric.} We model the agent's total cost as the sum of consumed resources along two dimensions: tokens and tool calls. To create a unified metric, we map both to their corresponding economic costs.
+\begin{itemize}
+    \item \textbf{Token cost.} This represents the agent's internal cognitive effort, including its reasoning, planning, and parametric knowledge processing. Token costs are calculated based on the pricing of the model provider, distinguishing among input, output, and cache hit tokens. In multi-round iterative frameworks, the output of iteration $i$ becomes part of the input for iteration $i+1$. Any overlap is a cache hit, thereby lowering the token consumption cost. 
+    \item \textbf{Tool call cost.} This represents the agent's active interaction with the external environment through information-seeking actions. Each invocation of an external service (e.g., a search query or a browsing request) incurs a cost determined by the pricing of the corresponding API or third-party provider. 
+\end{itemize}
+The total unified cost, $C_{\textit{unified}}(x;\pi)$, for solving a given question $x$ under policy $\pi$ is the sum of the token cost and the tool call cost. Let $c_i(x;\pi)$ be the number of actual invocations to tool $t_i$ and $P_i$ be the economic cost per invocation of $t_i$. The unified cost metric is then defined as:
+\begin{equation}
+\label{eq:unified-cost-definition}
+C_{\textit{unified}}(x;\pi) = \underbrace{c_{\textit{token}}(x;\pi)}_{\text{Token Cost}} + \underbrace{\sum_{i=1}^{K} c_i(x;\pi) \cdot P_i}_{\text{Total Tool Cost}}
+\end{equation}
+Here, $c_{\textit{token}}(x;\pi)$ represents the total cost incurred from token consumption during the agent's reasoning process for question $x$. This formulation allows us to uniformly analyze the actual incurred costs for each execution. These two dimensions are inherently coupled: additional tool calls generally increase token consumption, as the agent must process and reason over the retrieved external information. Measuring this unified cost under varying budget constraints, $\mathbf{b}$, enables a more comprehensive and consistent analysis across different policies.
+

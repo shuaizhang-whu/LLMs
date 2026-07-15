@@ -1,0 +1,33 @@
+\section{Related Work}
+\subsection{Techniques for Large Language Model Compression}
+The growing size of large language models (LLMs) has raised increasing concerns over their computational and memory demands. 
+To address these challenges, a variety of model compression techniques have been proposed. 
+Conventional approaches often require computationally expensive retraining, which is generally impractical due to the substantial computational cost associated with the massive size of LLMs. 
+Consequently, recent efforts have shifted toward more resource-friendly post-training compression techniques~\cite{frantar2022gptq,frantar2023sparsegpt,zhu2024survey}. 
+Typically employed approaches include network pruning and weight quantization. And pruning techniques can be classified into unstructured and structured methods.
+Unstructured pruning removes individual weights based on importance scores. 
+For example, SparseGPT~\cite{frantar2023sparsegpt} performs one-shot pruning using second-order approximations without retraining.  
+However, since unstructured pruning retains the original matrix shape, it offers limited inference acceleration and requires specialized hardware. 
+In contrast, structured pruning eliminates entire blocks or channels, enabling compatibility with conventional hardware platforms. 
+LLM-Pruner~\cite{ma2023llm} groups dependent linear projections into coupled structures, assigns each group a loss‑aware importance score, prunes the least important groups, and applies LoRA fine‑tuning to restore performance. Additionally, ZipLM~\cite{kurtic2023ziplm} prioritizes pruning components that yield the worst trade-off between latency and loss, but this often causes notable performance degradation. 
+Quantization provides another mainstream solution. 
+GPTQ~\cite{frantar2022gptq} gradually quantizes and updates each weight using the Hessian matrix to minimize the quantization error. 
+AWQ~\cite{lin2024awq} preserves important weight channels by selecting reparameterization coefficients via grid search. Furthermore, BiLLM~\cite{huang2024billm} and ARB-LLM~\cite{li2024arb} push quantization to the 1-bit level, while still delivering impressive downstream task accuracy. 
+However, these techniques still cause significant performance degradation, especially at low bit-widths, due to the lack of weight and activation adaptation. 
+
+\subsection{SVD-based Techniques for Compressing LLMs}
+Singular value decomposition (SVD) is a commonly employed technique for reducing matrix dimensionality by representing the original matrix as the product of two low-rank factor matrices. 
+Recent research has demonstrated the potential of SVD-based LLM compression methods, yet comprehensive exploration remains limited. 
+Hsu et al.~\cite{hsulanguage} propose FWSVD, incorporating Fisher information to weight the importance of parameters. 
+However, it relies on computationally intensive training and was originally applied only to small language models (e.g., BERT~\cite{devlin2019bert}, ALBERT~\cite{lan2019albert}). 
+LoRD~\cite{kaushal2023lord} first applies SVD to LLMs by grouping layers to improve efficiency. 
+However, LoRD overlooks the importance of input activations.
+To address this limitation, Yuan et al.~\cite{yuan2023asvd} introduce ASVD, which mitigates the impact of activation outliers by reshaping the weight matrix based on activation distribution, thereby enhancing the precision of the low-rank decomposition. 
+CALDERA~\cite{saha2024compressing} exploits the inherent low-rank structure of weight matrices by approximating them through a low-rank, low-precision decomposition.
+Additionally, SVD-LLM~\cite{wang2024svd} establishes a direct mapping between singular values and truncation loss, which means that truncating the smallest singular values leads to minimal truncation loss.
+Basis Sharing~\cite{wang2024basis} achieves more effective LLM compression through sharing parameters across different layers. 
+More recently, AdaSVD~\cite{li2025adasvd} proposes an adaptive compensation method, iteratively updating matrices during truncation. 
+
+Despite these advances, all existing methods ignore the residual matrix produced during SVD truncation, which can significantly compensate for the SVD truncation loss. 
+Moreover, compressing only the last few layers of the model under a fixed target compression ratio can provide better performance for compressed models. 
+However, existing methods compress all layers, either apply a uniform compression ratio across all layers or assign variable ratios based on layer-wise importance, which often results in sub-optimal performance.

@@ -1,0 +1,67 @@
+\section{Experiments}
+\label{sec:experiments}
+\input{tables/main1}
+\input{tables/main2}
+
+
+We design experiments to answer the following questions:
+\begin{itemize}[leftmargin=*,itemsep=0mm]
+\item \textbf{RQ1:} Does \mname improve task performance on general agentic benchmarks (GAIA, FRAMES) across diverse LLM backbones? (Table~\ref{tab:main1} in Section~\ref{sec:main-results})
+\item \textbf{RQ2:} Does \mname generalize to execution-heavy environments with substantial tool-execution times (MLE-Bench)? (Table~\ref{tab:main2} in Section~\ref{sec:main-results})
+\item \textbf{RQ3:} How efficiently does \mname utilize idle time, is it compatible with other test-time scaling methods, and which design choices matter? (Figure~\ref{fig:latency-vs-acc} and Tables~\ref{tab:token-analysis}, \ref{tab:planning_composition}, \ref{tab:ultra-short-impact}, \ref{tab:ablation} in Section~\ref{sec:ablation})
+\end{itemize}
+
+\textbf{Datasets.}
+We evaluate \mname on three benchmarks: GAIA~\cite{mialon2023gaia} (general agent, full 165-task validation split), FRAMES~\cite{krishna2024frames} (multi-hop QA, 50 samples), 
+and MLE-Bench Lite~\cite{chan2024mle-bench} (ML engineering, 24-hour budget per task).
+
+\textbf{Models.}
+Our experiments primarily use the proprietary model Gemini-2.5-Flash.
+In addition, we consider Gemma4-E4B and Qwen3.5-4B to validate \mname with recent small open-source models.
+
+\textbf{Baselines.}
+To evaluate the effect of idle-time utilization, we include a vanilla
+baseline that performs no additional computation during idle time. Additionally, we include Sequential Revision \cite{zhu2025scaling}, which performs revision step after each new observation.
+To compare against approaches that utilize idle time, we consider Sleep-Time Compute \cite{lin2025sleeptime}, which generates auxiliary contexts during idle periods via naive prompting and reuses them at test time.\footnote{More details including implementation details, evaluation protocols are provided in Appendix~\ref{sec:appendix_details}.}
+
+
+\subsection{Main Results}\label{sec:main-results}
+
+\textbf{Results on General Agent Benchmarks.}
+We evaluate \methodname{} on the GAIA and FRAMES benchmarks, which involve a diverse tool suite (e.g., text and audio processing, search agents) to solve complex multi-hop reasoning problems.
+As shown in Table~\ref{tab:main1}, \methodname{} consistently improves task success rates over all baselines across both benchmarks and across all three GAIA difficulty levels. \methodname{} achieves the highest average accuracy on every backbone, improving over Vanilla by 4.6\% on Gemma4-E4B (30.9 $\rightarrow$ 35.5), 6.8\% on Qwen3.5-4B (33.2 
+$\rightarrow$ 40.0), and 5.1\% on Gemini-2.5-Flash (50.5
+$\rightarrow$ 55.6). The gains are most pronounced on the harder Levels~2 and~3, suggesting that idle-time speculation is most beneficial when the underlying reasoning task is difficult.
+In contrast, Sleep-Time Compute exhibits limited or inconsistent improvements and, in some cases, even degrades performance. In particular, this degradation is especially pronounced with smaller open-source models such as Qwen3.5-4B: because Sleep-Time Compute freely pre-generates auxiliary context based on assumed future queries, hallucinations introduced at this stage mislead subsequent reasoning. \methodname{} avoids this failure mode through dual drafting that covers both progressive and recovery scenarios, guiding the agent toward correct trajectories. We provide qualitative examples of both behaviors in Appendix~\ref{sec:appendix_qualitative}. 
+
+
+\textbf{Results on MLE-Bench.} We further evaluate \methodname{} on MLE-Bench, which features long-horizon interactions and execution-heavy steps involving repeated code execution and model training. As shown in Table~\ref{tab:main2}, Sleep-Time Compute matches \methodname{} on the Above-Median metric but lowers the Gold-medal rate relative to Vanilla (13.6\% vs.\ 18.2\%) and yields no improvement in total medals --- consistent with our earlier observation that naively pre-generated context can mislead reasoning under observation uncertainty. In contrast, \methodname{} achieves the best results across nearly all metrics, raising the submission rate from 86.4\% to 95.5\%, the valid submission rate from 77.3\% to 86.4\%, and the overall medal rate from 36.4\% to 45.5\%, with consistent gains across Bronze, Silver, and Gold tiers.
+Because MLE-Bench involves long-running tool calls such as model training, a non-trivial portion of the 24-hour wall-clock budget is otherwise spent waiting. \methodname{} converts this wasted idle time into useful LLM computation, generating diverse solution paths that translate into more valid submissions and more medal-tier solutions within the same time budget, highlighting that \methodname{} generalizes to execution-heavy agentic workloads.
+\input{tables/efficiency}
+
+\subsection{More Analysis}\label{sec:ablation}
+%We further analyze the effectiveness and efficiency of \methodname{} in utilizing idle time, its compatibility with existing test-time scaling methods, and the contribution of its individual design components.
+
+\textbf{Efficiency Analysis.}
+We analyze the efficiency of \methodname{} by comparing it against the original baselines (Sequential Revision and Sleep-Time Compute) and an additional test-time scaling baseline, \emph{Planning}, which generates a new plan after each tool-call observation before the next step.
+As shown in Figure~\ref{fig:latency-vs-acc}, Sequential Revision and Planning improve accuracy by spending more tokens at test time, but this directly inflates end-to-end latency: Sequential Revision and Planning are about $1.30\times$ and $1.33\times$ slower than Vanilla, respectively.
+\methodname{}, in contrast, achieves a Pareto improvement: it outperforms Sequential Revision and matches Planning's accuracy while keeping latency close to Vanilla, as most of its additional token computation is carried out during idle periods (Table~\ref{tab:token-analysis}).
+
+\input{tables/planning_composition}
+\textbf{Compatibility with Test-Time Scaling.}
+We investigate whether \methodname{} is complementary to existing test-time scaling methods, under the hypothesis that the two operate along orthogonal axes and can be seamlessly combined: \methodname{} scales computation along the \emph{idle-time} axis, while existing test-time scaling methods scale along the \emph{test-time} axis.
+Since \methodname{} leaves the test-time procedure itself untouched, it can be layered on top of any such method without modification.
+To verify this, we combine \methodname{} with the two test-time scaling baselines introduced above Sequential Revision and Planning,  while leaving each baseline's test-time procedure unchanged. As shown in Table~\ref{tab:planning_composition}, \methodname{} yields consistent gains on top of both baselines, improving Sequential Revision from 27.9\% to 32.2\% and Planning from 32.2\% to 35.3\%.
+This gain likely arises because the progressive and recovery drafts generated during idle periods pre-expand the search space available at test time, which the test-time scaling method leverages to produce better-informed revisions and plan updates.
+
+\textbf{Effect of Idle-Time Length.}
+We analyze how the available idle time per step affects \methodname{}.
+We define the \emph{ultra-short ratio} of a sample as the fraction of its tool calls whose execution time is shorter than a single LLM reasoning step. On GAIA, this ratio averages 25--27\% across the three difficulty levels (Appendix~\ref{sec:appendix_idle_length}, Table~\ref{tab:ultra-short-ratio}), indicating that most tool calls leave enough idle time for speculative drafting. Binning GAIA samples by ultra-short ratio into High (>0.75, least idle time), Medium (0.25--0.75), and Low (<0.25, most idle time) groups (Table~\ref{tab:ultra-short-impact}), we find that \methodname{} matches the vanilla baseline on the High group, where little usable idle time is available,  but delivers gains of 6.0 \% and 7.0 \% on the Medium and Low groups, respectively.
+
+\input{tables/selection}
+
+\textbf{Ablation Study.}
+We ablate the three key design choices of \methodname{} --- drafting strategy, aggregation scheme, and selection rule.
+First, Table~\ref{tab:strategy} shows that using only progressive or only recovery drafts underperforms, with recovery-only being especially harmful as the agent keeps switching plans without sufficient forward progress; sampling between the two yields the best results by balancing exploitation and exploration.
+Second, Table~\ref{tab:aggregation} shows that simple aggregation schemes such as \emph{Best-of-N} (selecting a single plan) and \emph{Mandatory Selection} (enforcing all drafted plans) yield limited gains, whereas treating draft candidates as \emph{references} rather than strict constraints significantly improves accuracy.
+Third, Table~\ref{tab:selection} shows that other selection rules (Random and Forecast-Direct) underperform, while the proposed adaptive selection achieves the highest accuracy.

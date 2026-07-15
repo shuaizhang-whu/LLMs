@@ -1,0 +1,431 @@
+论文阅读分析汇总
+
+目录：C:\Users\yh\Desktop\server\研究方向2调研\latex格式论文
+范围：Agent 投机执行/工具延迟隐藏 9 篇，动态推理强度/预算分配/Agent 编排 5 篇，Agent-X 1 篇，共 15 篇。
+
+总体结论
+
+这 15 篇论文主要覆盖三类方向：
+
+1. Agent 投机执行与工具延迟隐藏
+   核心目标是在不改变最终任务语义的前提下，把工具调用、搜索、访问网页、下一步动作等提前执行或并行执行，从而减少 Agent 长轨迹中的等待时间。这类方向最贴近“推理加速”，也最适合围绕已有开源 baseline 做系统或算法改进。
+
+2. 动态推理强度、预算分配与 Agent 编排
+   核心目标不是单纯让每一步更快，而是减少不必要的推理、工具调用和验证，让 Agent 根据任务难度、预算、收益和不确定性自适应地决定“是否继续、用多少推理、调用什么工具、何时停止”。这类方向更容易讲成“质量-成本最优控制”，但如果只用启发式方法，顶会创新性可能偏弱，需要更强的问题定义、理论或系统支撑。
+
+3. 端侧 Agent 全流水线加速
+   Agent-X 代表这一类，关注端侧设备上 Agent 的 prefill 和 decode 双瓶颈，用 prompt 重构、KV cache 复用和轻量投机解码做全链路加速。这类方向系统性强、实验扎实，但实现门槛和硬件/平台绑定较明显。
+
+从短期可完成、开源可复现、能基于已有 baseline 改进的角度看，最值得继续深入的是 Agent 投机执行与工具延迟隐藏方向，其次是动态推理强度/预算分配方向。端侧 Agent-X 方向有很强系统价值，但如果没有对应端侧平台和工程基础，短期复现实验成本会更高。
+
+
+一、Agent 投机执行/工具延迟隐藏方向
+
+1. B-PASTE: Beam-Aware Pattern-Guided Speculative Execution for Resource-Constrained LLM Agents
+
+研究问题：
+B-PASTE 试图在资源受限的边缘环境中扩展 PASTE 的思想，不只预测一条未来工具调用路径，而是维护多个可能的未来分支，用 beam-aware 的方式选择哪些候选工具调用值得提前执行。
+
+核心方法：
+论文把未来可能出现的工具调用组织成有界分支假设或子图，用预期关键路径缩短作为优化目标。它考虑了重叠收益、下游解锁收益、并行资源冲突、预占优先级、copy-on-write 状态隔离和不同安全等级的工具调用策略。
+
+实验与可复现性：
+当前更像系统设计与早期评估方案，实验结果以内部 Thor-class 边缘环境观测为主，报告 normalized latency 0.71、speedup 1.40 左右。可复现基础相对弱，适合作为想法参考，不适合作为直接 baseline。
+
+优点：
+问题设定清晰，明确把资源约束、分支选择和工具调用安全性纳入 Agent 投机执行。
+
+不足：
+工程和实验公开程度不够，很多机制偏设计稿。若作为研究起点，需要自己补大量实现和实验。
+
+启发：
+可以借鉴它的“多分支投机”和“资源感知选择”思想，但短期不建议直接以它为主要复现对象。
+
+
+2. Cost-Aware Speculative Execution for LLM-Agent Workflows
+
+研究问题：
+论文关注 Agent 工作流中的投机执行是否值得做。它不是简单地提前执行所有可能步骤，而是考虑延迟收益、额外成本和用户对成本的敏感程度。
+
+核心方法：
+论文提出成本感知的投机执行框架。它定义了 latency value、speculation cost、用户偏好参数 alpha 和成本-延迟权衡参数 lambda，并用类似期望收益的规则判断是否投机：
+EV = P * L_value - (1 - P) * C_spec。
+同时用 Beta-Binomial 后验、结构先验和置信下界做投机门控。
+
+实验与可复现性：
+主要是框架和合成验证，没有看到成熟开源系统和真实大规模实验。复现价值偏理论/启发，直接落地做 baseline 较难。
+
+优点：
+把“投机是否划算”讲得很清楚，适合作为不确定性/风险感知投机执行的理论动机。
+
+不足：
+缺少真实系统实验，方法还停留在概念层。
+
+启发：
+如果后续做“不确定性/风险感知的自适应投机执行”，这篇可以作为动机和公式基础，但需要接到一个真实可运行的 Agent 投机系统上。
+
+
+3. DualSpec: Accelerating Deep Research Agents via Dual-Process Action Speculation
+
+研究问题：
+DualSpec 面向 deep research agent，试图加速搜索和访问网页等长链路操作。它区分高不确定性的 Search 行为和低熵的 Visit 行为，对两类动作采用不同投机策略。
+
+核心方法：
+论文借鉴 dual-process 认知思想：Search 属于 System 2，需要显式推理；Visit 属于 System 1，通常可以更快地预测。它并行使用小模型加推理草稿和大模型无推理草稿，再用语义 verifier 判断草稿能否接受。
+
+实验与可复现性：
+在 GAIA-Text、XBench、Seal 等 deep research benchmark 上报告 1.33 到 3.28 倍加速。但依赖 MiroMind、A100、Bing/Jina 等环境，复现实验成本偏高。
+
+优点：
+任务场景新，和 deep research agent 结合紧密，投机对象是动作层而不是 token 层。
+
+不足：
+工程依赖较重，复现门槛高；如果没有可用 API 和算力，很难短期做完整实验。
+
+启发：
+可以借鉴“按动作类型区分投机策略”的思想，例如把工具调用分为高风险/低风险、高熵/低熵，再做自适应投机。
+
+
+4. Dynamic Speculative Agent Planning
+
+研究问题：
+固定投机深度容易浪费成本，也可能投机不足。DSP 研究如何让 Agent 在线决定 speculative planning 的深度 k。
+
+核心方法：
+它用在线 RL 学习动态 speculation depth。系统用 DistilBERT 回归器预测当前状态下合适的 k，并通过 TD(lambda)、expectile regression 和 offset 机制控制成本-延迟权衡。
+
+实验与可复现性：
+论文在 OpenAGI 和 TravelPlanner 上，用 GPT-4.1-mini、DeepSeek 等模型评估。报告动态 k 优于固定 k 的成本-延迟前沿，冗余成本最高降低约 60%，总体成本降低约 30%。给出了 GitHub 地址：
+https://github.com/guanyilin428/Dynamic-Speculative-Planning
+
+优点：
+有明确开源地址，问题聚焦，适合做 baseline。动态深度控制也很适合继续改进。
+
+不足：
+方法复杂度相对较高，涉及在线 RL 和预测器训练；如果复现环境不顺，短期实现可能有一定风险。
+
+启发：
+这是较值得优先复现的 baseline。可以考虑把动态 k 选择从 RL 改成更轻量的不确定性估计、风险约束、任务阶段识别或成本预算控制。
+
+
+5. IdleSpec: Exploiting Idle Time via Speculative Planning for LLM Agents
+
+研究问题：
+Agent 在等待工具返回时，LLM 可能处于空闲状态。IdleSpec 利用这段 idle time 生成候选后续计划，从而提高任务表现或减少后续等待。
+
+核心方法：
+它在工具执行期间做 speculative planning，生成候选计划。包括 progressive drafting 和 recovery drafting 两种策略，并用 Thompson sampling 根据历史效果选择策略。候选计划不会直接强制执行，而是作为后续决策参考。
+
+实验与可复现性：
+在 GAIA、FRAMES、MLE-Bench 上评估。Gemini-2.5-Flash 平均表现从 50.5% 提升到 55.6%，MLE-Bench medals 从 36.4 提升到 45.5。它强调利用空闲时间，因此额外 wall-clock 成本较低。
+
+优点：
+想法直观，和工具等待延迟天然相关，适合与投机执行方向结合。
+
+不足：
+它更多提升任务质量，不一定直接显著降低延迟；同时依赖是否存在足够 idle time。
+
+启发：
+可以把它与 PASTE/SPAgent 结合：等待工具时不只是生成候选计划，还可以根据风险判断提前执行部分低风险工具。
+
+
+6. PASTE: Parallelizing Tool Execution and LLM Generation for Low-Latency Agent Serving
+
+研究问题：
+PASTE 关注 Agent serving 中 LLM generation 与工具执行串行等待导致的高延迟问题，目标是在 LLM 生成过程中预测未来工具调用并提前执行。
+
+核心方法：
+系统包括 pattern analyzer、tool speculation scheduler 和 LLM-tool co-scheduler。它从历史轨迹中学习常见工具调用模式，预测未来具体工具调用，把可安全执行的工具提前运行，并在真实调用到来时复用结果。
+
+实验与可复现性：
+它围绕 agent runtime 和 vLLM 构建完整系统，评估 VirtualLab、Qwen Deep Research、gemini-cli 等工作负载，在 DeepResearchBench、SWE-bench、ScholarQA 上平均任务完成时间降低 43.5%，观测工具延迟降低 1.8 倍。预测 top1 为 27.8%，top3 为 43.9%，overall hit 为 93.8%。
+
+优点：
+系统完整，问题明确，实验充分，是 Agent 工具投机执行方向的重要 baseline。
+
+不足：
+如果完整复现，工程工作量较大；同时依赖 agent runtime、工具环境和 vLLM 结合。
+
+启发：
+非常适合作为主线 baseline。可以在它的 scheduler 上加入不确定性、风险、预算、工具副作用等级或多分支策略。
+
+
+7. SPAgent: Reducing Latency of LLM Search Agent via Speculation-based Algorithm-System Co-Design
+
+研究问题：
+SPAgent 面向 ReAct search agent，目标是降低搜索 Agent 的 LLM 思考和搜索动作等待延迟。
+
+核心方法：
+它分为 Aggressive 和 Verified 两个阶段。早期简单证据收集阶段直接采样并执行动作，跳过显式推理；后期正常推理，同时并行执行 speculative action。阶段切换由 self-reflection score 和阈值 beta 控制。系统还有 Action Server 缓冲复用结果，并设计了两级调度器：请求内选择最有价值的投机动作，请求间采用短作业优先。
+
+实验与可复现性：
+在 HotpotQA、2Wiki、TriviaQA 等搜索问答任务上评估，工具是 Wikipedia API，模型包括 Qwen/Gemma。报告最高 1.65 倍加速，平均 LLM 时间降低 23.8%，未重叠 action execution 降低 29.4%，准确率基本保持。
+
+优点：
+任务简单清晰，搜索 Agent 可复现性通常比 deep research 低门槛。算法和系统协同设计比较完整。
+
+不足：
+主要场景是搜索问答，泛化到复杂多工具 Agent 还需要扩展。
+
+启发：
+这是短期可做的强 baseline 候选。可以围绕 self-reflection 阈值、动作风险、预测置信度、预算自适应等做改进。
+
+
+8. Skim: Profile-Guided Speculation for Fast Web Agents
+
+研究问题：
+Skim 研究 Web Agent 中大量网页导航和信息抽取过程的加速。它不是完全在线猜测，而是利用离线 profiling 获得网站结构与操作模式。
+
+核心方法：
+离线阶段构建 profile，包括 URL 模板、搜索语义、分页规则、答案 schema 和能力元数据。在线阶段根据 profile 直接合成 URL 或选择 fast path，并用 verifier 检查结果；失败时回退到 ReAct。
+
+实验与可复现性：
+在 WebVoyager、WebShop 等环境中评估，结合 WebVoyager、AgentOccam、BrowserUse 等框架。Accelerate mode 中 median cost 降低 1.9 倍，latency 降低 33.4%；aggregate mode 可用省下的预算做更多 trials，提升 oracle/majority 表现。
+
+优点：
+适合结构化网站，profile-guided 的故事清楚，工程上也比较有落点。
+
+不足：
+依赖网站 profile，通用性受限；离线 profiling 成本和 profile 失效问题需要处理。
+
+启发：
+可以把 profile-guided speculation 与风险感知结合：只有 profile 置信度高、schema 匹配稳定时才走 fast path。
+
+
+9. Speculative Actions: A Lossless Framework for Faster Agentic Systems
+
+研究问题：
+Speculative Actions 提出一个通用框架，把 Agent 系统中的 API 调用、工具调用、MCP 调用、甚至人类响应都看成异步 API 调用，并通过投机提前执行来减少等待。
+
+核心方法：
+快 speculator 预测未来 API 响应或动作，系统提前发起后续调用，缓存 pending futures。只有预测和真实结果匹配时才提交，因此主张 lossless。论文还给出 breadth-k 分支投机的成本-延迟分析、confidence-aware selective speculation 定理和深度优先投机分析。
+
+实验与可复现性：
+实验包括 chess、tau-bench retail、HotpotQA、OS tuning 等。Chess 上 3 predictions 平均节省 19.5% 时间，预测准确率 54.7%；e-commerce API prediction 约 22% 到 38%；HotpotQA top3 API call prediction 最高 46%；OS tuning 是 lossy extension。
+
+优点：
+理论框架通用，概念影响力强，适合作为“动作级投机”的总背景。
+
+不足：
+具体任务和系统较分散，若要做改进，需要选择一个落地场景重新实现或接到其它 baseline。
+
+启发：
+适合作为论文故事的上位框架，但不一定是最好的直接复现 baseline。可将它的 lossless/future/cache 思想接到 PASTE、SPAgent 或 DSP 上。
+
+
+二、动态推理强度/预算分配/Agent 编排方向
+
+10. Ares: Adaptive Reasoning Effort Selection for Efficient LLM Agents
+
+研究问题：
+Ares 研究 Agent 每一步应该用低、中、高哪种 reasoning effort，而不是所有步骤都使用高强度推理。
+
+核心方法：
+它用同一个 backbone 的低/中/高 thinking level，训练一个 Qwen3-1.7B router，根据历史、观察和当前状态预测最低足够的推理强度。数据构建先收集高 effort 成功轨迹，再对每一步采样不同 effort，用功能等价或 LLM judge 标注最低可用 effort，最后 SFT router，并可选 GRPO 强化学习。
+
+实验与可复现性：
+在 TAU-Bench retail/airline、BrowseComp-Plus、WebArena 等任务上评估，backbone 包括 gpt-oss-20b，并测试迁移到 gpt-oss-120b。Ares 通常接近 high effort 的效果，同时显著减少 tokens；RL 在 TAU Retail 和 Airline 上进一步提升效果和降低成本。
+
+优点：
+方向很贴近“动态推理强度”，故事清楚，任务层面有实际意义。
+
+不足：
+训练 router 和构建 step-level 标注成本较高，且依赖不同 reasoning effort 模式的模型支持。
+
+启发：
+适合作为动态预算/动态推理方向参考。如果短期想做，可考虑不训练大 router，而用轻量启发式或 uncertainty estimator 做近似。
+
+
+11. Budget-Aware Tool-Use Enables Effective Agent Scaling
+
+研究问题：
+论文研究如何让工具使用 Agent 在明确预算约束下有效扩展，而不是盲目增加搜索、浏览和推理次数。
+
+核心方法：
+它提出 Budget Tracker 和 BATS。Budget Tracker 是 prompt-only 插件，在每次工具响应后插入预算状态和策略等级，让 ReAct 知道剩余资源。BATS 包含预算感知规划、自验证和答案选择，用预算约束指导探索与验证。
+
+实验与可复现性：
+在 BrowseComp、BrowseComp-ZH、HLE-Search 上评估，模型包括 Gemini-2.5 Flash/Pro、Claude-Sonnet-4，工具包括 Google Custom Search、Jina/Crawl4AI。训练免费，主要靠提示和流程控制。
+
+优点：
+实现门槛相对低，适合作为短期实验基线；预算显式化很容易讲清楚。
+
+不足：
+主要创新偏 prompt/workflow，如果没有更强机制，顶会论文贡献可能不够硬。
+
+启发：
+可以把它与投机执行结合：预算不仅控制是否继续搜索，也控制是否允许 speculative tool calls。
+
+
+12. From Efficiency to Adaptivity: A Deeper Look at Adaptive Reasoning in Large Language Models
+
+研究问题：
+这是一篇综述/框架化论文，系统讨论从高效推理到自适应推理的转变。
+
+核心内容：
+论文把 reasoning 形式化为 latent-variable conditional generation 和 resource-bounded optimization，定义 adaptive reasoning 为带控制函数的策略：
+pi_theta(.|x; phi(x))，
+目标是在性能和成本之间优化。
+它整理了训练型方法、SFT/蒸馏方法、learned controller/router、training-free inference-time control、feedback-driven control 和 modular adaptive reasoning。
+
+实验与可复现性：
+作为综述，没有直接 baseline。
+
+优点：
+适合写 related work 和问题定义，尤其适合支撑“自适应推理强度/预算控制”的研究动机。
+
+不足：
+不能直接作为实验起点。
+
+启发：
+如果我们做动态投机或预算控制，可以用这篇里的 taxonomy 来定位：我们的工作属于 agent-level adaptive computation/control，而不是 model-level early exit。
+
+
+13. The Cost of Dynamic Reasoning: Demystifying AI Agents and Test-Time Scaling from an AI Infrastructure Perspective
+
+研究问题：
+论文从系统和基础设施角度分析 Agent 与 test-time scaling 的真实成本，包括延迟、吞吐、KV cache、能耗和数据中心电力需求。
+
+核心方法：
+它比较 CoT、ReAct、Reflexion、LATS、LLMCompiler 等 agent/workflow，在 HotpotQA、WebShop、MATH、HumanEval 和 ShareGPT 上测量系统行为。后端用 vLLM、Llama-3.1-8B/70B 和 A100。
+
+主要发现：
+Agent 平均需要比 CoT 多 9.2 倍 LLM 调用。LATS 可达平均 71 次 LLM 调用。Agent 延迟中 LLM 约占 69.4%，工具约占 30.2%，GPU idle 可能很高。Prefix caching 能显著降低 prefill 延迟和 KV cache 开销。Test-time scaling 提升准确率但存在明显边际收益递减。Agent 查询的能耗可能比单轮 LLM 推理高数十到上百倍。
+
+实验与可复现性：
+论文给出代码地址：
+https://github.com/VIA-Research/AgentBench
+它更适合作为系统测量和动机来源，而不是直接算法 baseline。
+
+优点：
+系统视角强，非常适合在论文 introduction 中说明为什么 Agent 加速和成本控制重要。
+
+不足：
+主要是 measurement paper，本身不提出强加速算法。
+
+启发：
+可以用它支撑研究问题：无约束 test-time scaling 不可持续，需要 Agent-level 的自适应计算和投机控制。
+
+
+14. Utility-Guided Agent Orchestration for Efficient LLM Tool Use
+
+研究问题：
+论文把工具使用 Agent 的控制逻辑显式建模为 sequential decision problem：每一步选择 respond、retrieve、tool_call、verify 或 stop，并考虑质量和成本。
+
+核心方法：
+它定义效用函数：
+U(a|s_t) = Gain(a|s_t) - lambda1 StepCost(a|s_t) - lambda2 Uncertainty(a|s_t) - lambda3 Redundancy(a|s_t)。
+系统根据 estimated gain、step cost、uncertainty、redundancy 选择下一步动作。
+
+实验与可复现性：
+在 HotpotQA 200 个样本上评估 direct、workflow、threshold、ReAct 和 policy。ReAct F1 最高为 0.2662，policy(step-cost) 为 0.2360，但 policy 更强调可控和可解释。代码地址：
+https://github.com/kagami-kasumi/Utility-Guided-Agent-Orchestration-for-Efficient-LLM-Tool-Use
+
+优点：
+有开源地址，思想简单，容易复现和改进。效用分解适合与不确定性、预算、风险结合。
+
+不足：
+当前结果不强，policy 没有超过 ReAct；如果只做类似启发式控制，创新性和说服力不足。
+
+启发：
+可以作为轻量 baseline 或对照组。若要做顶会，需要把它升级为更强的学习型/校准型控制策略，或嵌入投机执行系统中证明真实延迟收益。
+
+
+三、端侧 Agent 全流水线加速方向
+
+15. Agent-X: Full Pipeline Acceleration of On-device AI Agents
+
+研究问题：
+Agent-X 研究端侧 AI Agent 的全流水线加速。与云端 LLM 主要 decode 瓶颈不同，端侧 Agent 中 prefill 和 decode 都占显著延迟，因此需要同时优化。
+
+核心方法：
+Agent-X 包含两个组件：
+
+1. PromptWeaver
+   针对 prefill 阶段，通过重构 Planner prompt 增强 prefix caching。它把早期动态的工具描述和 guidelines 改成 all-inclusive static prefix，并根据工具共激活 locality 聚类 tool-use examples，预计算部分 KV cache 存到 SSD。在线时重用缓存，减少未缓存 tokens。
+
+2. ExSpec
+   针对 decode 阶段，用基于 prompt few-shot examples 和用户 query 构建的 n-gram lookup table 作为无 LLM draft model。默认 trigram。它还使用 selective decoding：当 LUT 没有可用上下文时，直接回退到 autoregressive decoding，避免端侧 speculative decoding 的 multi-token tax。
+
+实验与可复现性：
+系统基于 TinyAgent、TinyAgent-7B、Apple MLX-LM/MLX-engine，在 Apple M4 Pro Mac mini 上评估。PromptWeaver 使 prefill 加速 1.97 倍，ExSpec 使 decode 加速 1.73 倍，端到端加速 1.61 倍，无任务准确率下降。
+
+优点：
+系统完整，问题定位精准，实验扎实，讲清楚了端侧 Agent 的独特瓶颈。
+
+不足：
+复现强依赖 macOS、MLX、TinyAgent 和端侧硬件。短期如果没有完全一致平台，实验成本较高。
+
+启发：
+它证明了 Agent 的输入结构和输出模板化特征可以被系统利用。即使不做端侧方向，也可以借鉴其“prompt 结构感知缓存”和“example-based draft”的思路，用于云端 Agent 或工具调用输出预测。
+
+
+四、面向后续选题的初步判断
+
+1. 最适合短期推进的 baseline 候选
+
+优先级较高：
+- Dynamic Speculative Agent Planning
+- PASTE
+- SPAgent
+- Utility-Guided Agent Orchestration
+- Budget-Aware Tool-Use/BATS
+
+这些方向相对更容易围绕已有代码或清晰系统结构做改进，并且与“Agent 推理加速/成本控制”直接相关。
+
+优先级中等：
+- Speculative Actions
+- IdleSpec
+- Skim
+- Ares
+
+这些论文的思想价值高，但直接复现或改进时需要选好具体落地场景。
+
+短期风险较高：
+- DualSpec
+- B-PASTE
+- Agent-X
+
+DualSpec 和 Agent-X 的实验依赖较重，B-PASTE 更像设计型工作，不一定适合作为短期 baseline。
+
+
+2. 更可能形成新故事的组合
+
+方向 A：风险/不确定性感知的 Agent 投机执行
+可接 PASTE、SPAgent 或 DSP。
+核心问题是：不是所有预测出来的未来工具调用都应该投机执行，需要根据预测置信度、工具副作用、执行成本、等待时间和任务阶段决定是否投机。
+对应已有基础：Speculative Actions、Cost-Aware Speculative Execution、PASTE、SPAgent、DSP。
+
+方向 B：预算约束下的动态投机深度控制
+可接 DSP 或 BATS。
+核心问题是：Agent 在不同任务、不同阶段、不同剩余预算下，应该选择多深、多宽、多激进的投机。
+对应已有基础：DSP、Budget-Aware Tool-Use、The Cost of Dynamic Reasoning、Ares。
+
+方向 C：工具类型/任务阶段感知的混合投机策略
+可接 SPAgent、PASTE 或 DualSpec。
+核心问题是：搜索、访问、验证、结构化 API、只读工具、有副作用工具的投机风险不同，应使用不同策略。
+对应已有基础：DualSpec、SPAgent、Skim、PASTE。
+
+方向 D：轻量可复现的效用控制 Agent
+可接 Utility-Guided Agent Orchestration。
+核心问题是：用更可靠的 gain/uncertainty/redundancy/cost 估计替代纯启发式控制，使 Agent 更好地决定是否继续、是否调用工具、是否验证。
+对应已有基础：Utility-Guided、Ares、Budget-Aware Tool-Use。
+
+
+3. 当前个人研究背景下的建议
+
+你近期已经做过 SVD 低秩压缩大模型参数，下一篇不需要继续模型压缩方向。因此更建议转到 Agent-level 推理加速，而不是继续 model-level compression。
+
+如果目标是短期完成代码和实验，建议优先考虑：
+
+第一选择：基于 SPAgent 或 PASTE 做风险/不确定性感知的自适应投机执行。
+理由是它直接对应 Agent 延迟加速，已有 baseline 明确，故事也比单纯预算 prompt 更强。
+
+第二选择：基于 DSP 做预算感知的动态投机深度控制。
+理由是 DSP 已经有开源地址，动态 k 的问题天然适合改进，但需要先确认代码质量和复现实验难度。
+
+第三选择：基于 Utility-Guided 做学习型或校准型效用控制器。
+理由是实现最轻，但必须显著增强实验和方法，否则顶会支撑力偏弱。
+
+短期不建议优先选择 Agent-X 作为主方向，除非你确定可以稳定使用 macOS/MLX/TinyAgent 环境并愿意做系统工程。
+

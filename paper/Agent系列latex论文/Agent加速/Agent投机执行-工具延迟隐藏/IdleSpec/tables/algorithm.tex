@@ -1,0 +1,33 @@
+\begin{algorithm}[H]
+\caption{IdleSpec: Exploiting Idle Time via Speculative Planning for LLM Agents}
+\label{alg:idlespec}
+\begin{algorithmic}[1]
+\Require Task $\mathcal{T}$, initial state $s_0$, language model $\mathcal{M}$, candidate cap $K$
+\State Initialize Beta posterior $(\alpha, \beta) \leftarrow (1, 1)$ \Comment{uniform prior over $p = \Pr(\ell{=}\textsc{Prog})$}
+\State Initialize empty draft buffer $\mathcal{D} \leftarrow \emptyset$
+\State $s \leftarrow s_0$
+\While{task not finished}
+    \State Send $(s, \mathcal{D})$ to Main API and obtain next action
+    \State Clear draft buffer $\mathcal{D} \leftarrow \emptyset$
+    \State Execute the returned action
+    \While{action execution in progress} \Comment{Drafting phase (in idle time)}
+        \State Sample preference $\hat{p} \sim \mathrm{Beta}(\alpha, \beta)$
+        \State Select drafting strategy
+        $\mathbf{s}^\ast \leftarrow \textsc{Prog}$ if $\hat{p} > 0.5$, else $\textsc{Rec}$
+        \If{$\mathbf{s}^\ast = \textsc{Prog}$}
+            \State Generate progressive draft under observation uncertainty
+        \Else
+            \State Generate recovery draft conditioned on the current action step
+        \EndIf
+        \If{$|\mathcal{D}| < K$} \State Append generated draft to $\mathcal{D}$ \EndIf
+    \EndWhile
+
+    \State Receive observation $o$
+    \State Ignore any in-flight idle draft responses and finalize $\mathcal{D}$
+    \Comment{Forecast phase}
+    \State Send $(\mathcal{T}, s, o)$ to Forecast API and obtain $\ell \in \{\textsc{Prog}, \textsc{Rec}\}$
+    \State Update posterior $(\alpha, \beta)$ with $\ell$ using Eq.~\eqref{eq:posterior-update}
+    \State $s \leftarrow s \,\Vert\, (\text{action}, o)$ \Comment{append step to trajectory}
+\EndWhile
+\end{algorithmic}
+\end{algorithm}

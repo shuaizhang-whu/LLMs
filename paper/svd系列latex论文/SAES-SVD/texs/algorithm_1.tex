@@ -1,0 +1,121 @@
+
+\providecommand{\Id}{\mathbf{I}}
+\providecommand{\clip}{\mathrm{clip}}
+
+% ---- algorithm2e helpers for functions ----
+\SetKwFunction{TruncatedSVD}{TruncatedSVD}
+\SetKwFunction{ACESBetaSelect}{ACES\_BetaSelect}
+\SetKwFunction{TopRSingularValues}{TopRSingularValues}
+\SetKwFunction{FOAQuadraticRoot}{FOA\_QuadraticRoot}
+\SetKwFunction{Energy}{Energy}
+\SetKwProg{Fn}{Function}{:}{end}
+\SetAlgoNlRelativeSize{0}
+% ============================
+% Algorithm 1: Collect second-order statistics (per layer)
+% ============================
+\begin{algorithm}[h]
+\caption{CollectSecondOrderStats-Streaming (per-layer)}
+\label{alg:collect-stats-stream}
+\DontPrintSemicolon
+\KwIn{Calibration dataset $\mathcal{D}$; layer set $\{\ell\}$; routines that expose per-layer inputs $X_\ell$ and FP references $X^f_\ell$}
+\KwOut{Per-layer second-order stats $H_\ell\in\mathbb{R}^{d_{\text{in}}\times d_{\text{in}}}$, $\Delta_\ell\in\mathbb{R}^{d_{\text{in}}\times d_{\text{in}}}$}
+\BlankLine
+\ForEach{layer $\ell$}{
+  $H_\ell \leftarrow 0$, $\Delta_\ell \leftarrow 0$, $n_\ell \leftarrow 0$ \tcp*{running matrices and sample counter}
+}
+\ForEach{mini-batch $\mathcal{B}\subset\mathcal{D}$}{
+  \tcp{Forward once to cache both compressed-path inputs $X_\ell$ and FP references $X^f_\ell$}
+  run forward; collect $\{X_\ell, X^f_\ell\}_{\ell}$\;
+  \ForEach{layer $\ell$}{
+    \tcp{Flatten to 2D and transpose to $(d_{\text{in}},\,N)$}
+    \uIf{$\mathrm{ndim}(X_\ell)=2$}{ $X \leftarrow X_\ell^\top$ }
+    \uElseIf{$\mathrm{ndim}(X_\ell)=3$}{ $X \leftarrow \mathrm{reshape}(X_\ell,\,-1,\,d_{\text{in}})^\top$ }
+    \Else{ $X \leftarrow \mathrm{flatten\_to\_2D}(X_\ell)^\top$ }
+    Do the same for $X^f_\ell$ to get $X^f$ with shape $(d_{\text{in}},\,N)$\;
+    \BlankLine
+    \tcp{Streaming reweighting (match code: scale old stats, add scaled current batch)}
+    $t \leftarrow n_\ell$,\quad $m \leftarrow N$,\quad $\gamma \leftarrow \frac{t}{t+m}$\;
+    $H_\ell \leftarrow \gamma \, H_\ell$,\quad $\Delta_\ell \leftarrow \gamma \, \Delta_\ell$,\quad $n_\ell \leftarrow t+m$\;
+    \BlankLine
+    \tcp{Batch scaling by $\sqrt{2/n_\ell}$ (as in code)}
+    $s \leftarrow \sqrt{\frac{2}{\,n_\ell\,}}$\;
+    $\widetilde{X} \leftarrow s \cdot X$,\quad $\widetilde{X}^f \leftarrow s \cdot X^f$\;
+    \BlankLine
+    \tcp{Update $H_\ell = XX^\top$ and $\Delta_\ell=(X^f-X)X^\top$ in the same metric}
+    $H_\ell \leftarrow H_\ell + \widetilde{X}\,\widetilde{X}^\top$\;
+    $dX \leftarrow \widetilde{X}^f - \widetilde{X}$\;
+    $\Delta_\ell \leftarrow \Delta_\ell + dX\,\widetilde{X}^\top$\;
+  }
+}
+\Return $\{(H_\ell,\,\Delta_\ell)\}_\ell$\;
+\end{algorithm}
+
+% ============================
+% Algorithm 2: SAES-SVD (main routine, corrected)
+% ============================
+\begin{algorithm}[h]
+\caption{SAES-SVD for layer $\ell$}
+\label{alg:saes-svd}
+\DontPrintSemicolon
+\KwIn{Weights $W_\ell\in\mathbb{R}^{d_{out}\times d_{in}}$; second-order statistics $H_\ell, \Delta_\ell$; target rank $r$; ridge $\lambda\ge 0$; (optional) $\alpha$ or $\beta$}
+\KwOut{$A_\ell\in\mathbb{R}^{d_{out}\times r}$, $B_\ell\in\mathbb{R}^{r\times d_{in}}$ s.t. $W_\ell\approx A_\ell B_\ell$}
+
+% $\lambda \leftarrow \max(\lambda,\,10^{-8})$\; \tcp*{Numerical guard}
+$L_\ell \leftarrow (H_\ell + \lambda \Id)^{-1/2}$\ \tcp*{Whitening Matrix}
+\If{$\alpha$ is given and $\beta$ is not}{ $\beta \leftarrow \alpha/(1+\alpha)$ }
+\If{$\beta$ is not given}{ $\beta \leftarrow \ACESBetaSelect(W_\ell,H_\ell,\Delta_\ell,r,\lambda)$ } \tcp*{Adaptive $\beta$}
+% $\beta \leftarrow \clip(\beta,\,0,\,1-10^{-6})$\; \tcp*{Ensure $\beta\in[0,1)$}
+$G_\ell \leftarrow W_\ell\,(H_\ell + \beta\,\Delta_\ell)\,L_\ell$\ \tcp*{Whitened objective matrix}
+$[\tilde U_\ell,\, \Sigma_\ell,\, \tilde V_\ell] \leftarrow \TruncatedSVD(G_\ell, r)$\ \tcp*{Trucated SVD Decomposition}
+$A_\ell \leftarrow \tilde U_\ell\,\Sigma_\ell^{1/2}$\;
+$B_\ell \leftarrow \Sigma_\ell^{1/2}\,\tilde V_\ell^{\top}\,L_\ell$\; 
+% \tcp*{Use $L=(H+\lambda I)^{-1/2}$}
+\KwRet $(A_\ell, B_\ell)$\;
+\end{algorithm}
+
+% ============================
+% Algorithm 3: ACES beta selection (robust, FOA + search)
+% ============================
+\begin{algorithm}[h]
+\caption{ACES\_BetaSelect (single-SVD, closed-form)} 
+\label{alg:aces-beta}
+\DontPrintSemicolon
+\KwIn{$W\in\mathbb{R}^{m\times n}$,\; $H=X X^\top$,\; $\Delta=(X^f\!-\!X)X^\top$,\; target rank $r$, damping $\lambda>0$, interval $[\beta_{\min},\beta_{\max}]$, cap $\beta_{\mathrm{cap}}<1$, shrink $\rho\in(0,1]$, objective $\in\{\texttt{ratio},\texttt{energy}\}$}
+\KwOut{$\beta^\star\in[\beta_{\min},\beta_{\max}]$ and $\alpha^\star=\beta^\star/(1-\beta^\star)$}
+
+\textbf{Whitening and decomposition}:\;
+$L \leftarrow (H+\lambda I)^{-1/2}$ (Cholesky-based)\;
+$S \leftarrow W\,H\,L,\quad D \leftarrow W\,\Delta\,L$ \tcp*{$G(\beta)=S+\beta D$}
+$[U_r,\Sigma_r,V_r] \leftarrow \texttt{TopRSVD}(S,r)$ \tcp*{only \emph{one} SVD per layer}
+
+\textbf{Projectors and FOA terms}:\;
+$P_L \leftarrow I-U_rU_r^\top,\quad P_R \leftarrow I-V_rV_r^\top$\;
+$S_\perp \leftarrow P_L S P_R,\quad D_\perp \leftarrow P_L D P_R$\;
+$a\!\leftarrow\!\|S_\perp\|_F^2,\; b\!\leftarrow\!\langle S_\perp,D_\perp\rangle,\; c\!\leftarrow\!\|D_\perp\|_F^2$\;
+$A\!\leftarrow\!\|S\|_F^2,\; B\!\leftarrow\!\langle S,D\rangle,\; C\!\leftarrow\!\|D\|_F^2$\;
+
+\textbf{Candidate generation (FOA)}:\;
+\If{$\texttt{objective}=\texttt{ratio}$}{
+\quad $p(\beta)\!\leftarrow\! (cB{-}bC)\beta^2 + (cA{-}aC)\beta + (bA{-}aB)$ \tcp*{stationary points of $\widetilde\rho(\beta)$}
+\quad $\mathcal{C}\!\leftarrow\!\{\text{real roots of }p(\beta)\}\cup\{\beta_{\min},\beta_{\max}\}$\;
+}{
+\quad $\beta_0 \leftarrow \mathrm{clip}(-b/c,\;\beta_{\min},\;\beta_{\max})$ \tcp*{minimizes tail energy $a{+}2b\beta{+}c\beta^2$}
+\quad $\mathcal{C}\!\leftarrow\!\{\beta_0\}$\;
+}
+
+\textbf{Selection with guardrails}:\;
+\ForEach{$\beta\in\mathcal{C}$}{
+\quad $\beta \leftarrow \min\{\max\{\beta,\beta_{\min}\},\beta_{\max}\}$\;
+\quad $\beta \leftarrow \rho\cdot \min\{\beta,\beta_{\mathrm{cap}}\}$ \tcp*{shrink \& cap for stability}
+\quad \uIf{$\texttt{objective}=\texttt{ratio}$}{
+\qquad score$(\beta)\leftarrow \dfrac{a+2b\beta+c\beta^2}{A+2B\beta+C\beta^2}$ \tcp*{approx. tail/total ratio $\widetilde\rho(\beta)$}
+}
+\quad \uElse{
+\qquad score$(\beta)\leftarrow a+2b\beta+c\beta^2$ \tcp*{tail energy}
+}
+}
+\If{$\texttt{objective}=\texttt{ratio}$}{ $\beta^\star \leftarrow \arg\min_{\beta\in\mathcal{C}} \text{score}(\beta)$ }
+\Else{ $\beta^\star \leftarrow \arg\min_{\beta\in\mathcal{C}} \text{score}(\beta)$ }
+
+\textbf{Return}: $\beta^\star$ and $\alpha^\star=\beta^\star/(1-\beta^\star)$\;
+\end{algorithm}

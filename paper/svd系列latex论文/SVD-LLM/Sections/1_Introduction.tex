@@ -1,0 +1,118 @@
+\section{Introduction}
+\label{sec:introduction}
+\vspace{-3mm}
+%% P1: Background on LLMs and why LLMs need compression.
+Large Language Models (LLMs) have demonstrated remarkable capabilities in a wide range of tasks such as natural language understanding and generation~\citep{DBLP:journals/corr/abs-2303-18223, DBLP:journals/corr/abs-2306-02781}. 
+%
+Despite such capabilities, the democratization of LLMs is primarily restricted by their substantial resource demands, which motivates the design of LLM compression methods~\citep{DBLP:journals/tmlr/Wan0LA0LQYZZC024, DBLP:journals/corr/abs-2401-01923, DBLP:journals/tacl/ZhuLLMW24, DBLP:journals/corr/abs-2404-14294}.
+%LLM is often compressed to alleviate its heavy resource requirements~\citep{DBLP:journals/tmlr/Wan0LA0LQYZZC024, DBLP:journals/corr/abs-2401-01923, DBLP:journals/tacl/ZhuLLMW24, DBLP:journals/corr/abs-2404-14294}. 
+These methods are often performed in a post-training manner without requiring retraining from scratch.
+%To avoid expensive retraining, LLM compression is commonly performed in a post-training manner. 
+%
+Post-training LLM compression methods based on quantization~\citep{DBLP:conf/iclr/YuanSD24, DBLP:conf/icml/HuangLQLZ0M024}, unstructured pruning~\citep{DBLP:conf/icml/FrantarA23}, and structured pruning~\citep{DBLP:conf/nips/MaFW23, DBLP:conf/iclr/AshkboosCNHH24, DBLP:journals/corr/abs-2406-10594} have been intensively studied. 
+%
+Despite their success, these methods have certain limitations, such as dependence on specific hardware and low inference speedup. In contrast, compression methods based on low-rank approximation, such as Singular Value Decomposition (SVD) are not limited by those constraints. Moreover, the KV cache of LLMs compressed via SVD at runtime can also be reduced.
+
+% Large Language Models (LLMs) have demonstrated remarkable capabilities in a wide range of tasks such as natural language understanding and generation~\citep{DBLP:journals/corr/abs-2303-18223, DBLP:journals/corr/abs-2306-02781}.
+% %has witenessed a huge breakthrough in recent years with their remarkable language understanding and generation ability and opened up many new opportunities for real-world applications~\citep{DBLP:journals/corr/abs-2303-18223, DBLP:journals/corr/abs-2306-02781}. 
+% Despite such capabilities, the democratization of LLMs is primarily restricted by their substantial resource demands~\citep{wan2023efficient, wang2024iot,zhou2024survey}.
+% %the presence of billions of parameters, which depends on astonishingly high computational and memory requirements~\citep{wan2023efficient, wang2024iot}. 
+% %
+% % As an example, LLaMA-65B~\citep{DBLP:journals/corr/abs-2302-13971} consumes more than 130 GB of GPU memory to load its weights and requires 4×80GB A100 GPUs to conduct inferences due to its high runtime memory consumption.
+% %As an example, GPT-3~\citep{DBLP:conf/nips/BrownMRSKDNSSAA20} consumes more than 325 GB of GPU memory to load its weights and requires 5×80GB A100 GPUs to conduct inferences due to its high runtime memory consumption~\citep{DBLP:conf/icml/XiaoLSWDH23}.
+% %8×48GB A6000 GPUs or 
+% % and at least five A100 (80GB) GPUs with sophisticated parallelism techniques. 
+% %
+% %% P2: Talk about model compression techniques for LLMs and their limitations. Talk about benefits of SVD.
+% One of the most effective techniques to reduce resource demands of LLMs is model compression~\citep{DBLP:conf/nips/Xu0YWZLLC24}. 
+% %
+% To avoid resource-intensive retraining, LLM compression is often conducted in a post-training manner, and  methods based on quantization~\citep{DBLP:conf/iclr/YuanSD24, DBLP:conf/icml/HuangLQLZ0M024}, unstructured pruning~\citep{DBLP:conf/icml/FrantarA23}, and structured pruning~\citep{DBLP:conf/nips/MaFW23, DBLP:conf/iclr/AshkboosCNHH24, DBLP:journals/corr/abs-2406-10594} specifically designed for LLMs have been intensively studied.
+% %Many recent works have been proposed in this field, such as weight quantization~\citep{DBLP:journals/corr/abs-2210-17323, DBLP:conf/icml/XiaoLSWDH23}, network pruning~\citep{DBLP:conf/nips/MaFW23,DBLP:conf/icml/FrantarA23}, and knowledge distillation~\citep{DBLP:journals/corr/abs-2306-08543, DBLP:conf/acl/HsiehLYNFRKLP23}. 
+% Regardless of their success, these techniques have their own constraints, such as hardware dependency and low inference speedup. 
+% %are constrained by XXX  including hardware dependency, XXX.
+% %
+% Compared to those techniques, compression techniques based on low-rank approximation, such as Singular Value Decomposition (SVD) are not limited by those constraints. 
+% %
+% Moreover, the KV cache of LLMs compressed via SVD at runtime can also be reduced.
+%
+%for deployment but also orthogonal and can be easily combined with other compression methods.
+
+%. To improve the inference speed and decrease the memory usage of LLMs, SVD approximates the large-scale weight matrices by truncating its smallest singular values so that the matrix can be decomposed into the product of several smaller low-rank matrices. Compared with other types of compression techniques, SVD is not only hardware-friendly for deployment but also orthogonal and can be easily combined with other compression methods. Moreover, the LLMs compressed via SVD can even greatly reduce its runtime KV cache memory without further losing its accuracy after compression.
+% Compared with other types of compression techniques, SVD has three main advantages: 
+% \textit{(1) Supportive to reduce the size of KV cache.} 
+% %Assuming that we estimate the original weight matrices $W$ by multiplying two low-rank matrices $A\times B$, when given an input $x$, we can now store only $Bx$ in the KV (Key-Value) cache instead of the entire activation $Wx$. This significantly reduces the memory usage of the KV cache without additionally compromising the accuracy of the inference. 
+% \textit{(2) Hardware-friendly for deployment.} Since SVD focuses only on the mathematical properties of the model rather than specific hardware features. It can be implemented on any hardware that supports basic linear algebra operations. 
+% \textit{(3) Orthogonal to other compression methods.} SVD has no specific constraints on the pattern of either original or compressed weight matrices. As a result, it is considered orthogonal and can be combined with other compression techniques to achieve a better efficiency during deployment.
+
+% P3: Weaknesses of the SOTA SVD methods. 
+%less competitive performance compared against
+Despite these advantages, the potential of SVD for LLM compression has not been fully explored. Several SVD-based LLM compression methods, such as FWSVD~\citep{DBLP:conf/iclr/HsuHCLSJ22} and ASVD~\citep{DBLP:journals/corr/abs-2312-05821} have been proposed. However, these methods exhibit severe performance degradation when model compression ratio\footnote{Model compression ratio refers to the percentage of parameter reduction achieved through compression.} increases. 
+%
+Such limitation can be attributed to two fundamental issues involved in their approaches.
+%
+\ding{182} \textbf{Misalignment between SVD truncation and compression loss}:
+% \footnote{Given input activation $X$, original weight matrix $W$ and its compressed version $W'$ in the LLM, the SVD compression loss~\citep{DBLP:journals/corr/abs-2312-05821, DBLP:conf/iclr/HsuHCLSJ22} refers to $||WX-W'X||_F$ in the form of Frobenius loss. }
+%
+% although the data preprocessing strategy proposed by ASVD reduces the negative impact of activation outliers, it does not 
+both FWSVD and ASVD fail to establish a direct relationship between singular values and model compression loss. As a consequence, truncating smaller singular values in SVD could lead to higher compression loss.
+%
+\ding{183} \textbf{Lack of model parameter update after SVD truncation}: 
+%Existing works only perform well under the mild compression ratio, which heavily limits their practical use. 
+as model compression ratio increases, the number of singular values that need to be truncated in SVD increases as well. To compensate for the accuracy degradation caused by truncating a larger number of singular values, it becomes necessary to update the remaining parameters of the compressed model.
+% so as to
+%, as seen in other types of compression methods. 
+Unfortunately, existing SVD-based LLM compression methods do not incorporate such update in their design, and thus fail to compensate for the accuracy degradation especially under high model compression ratios. 
+%none of the existing approaches have made an effort to design an effective post-training SVD update in their algorithm.
+
+%address the loss of accuracy resulting from truncating a large number of elements, a specific updating strategy for SVD is often needed, as seen in other types of compression methods. However, none of the existing approaches have made an effort to design an effective post-training SVD update in their algorithm.
+%As a result, it is still difficult for both researchers and practitioners to employ existing SVD methods for compressing the LLM to their customized memory budget.
+
+% \newpage
+% P4: Overview of our approach and how we address the limitations of SOTA SVD methods. 
+In this paper, we propose a SVD-based post-training LLM compression method, \sysname, which effectively addresses the two fundamental issues of existing SVD-based LLM compression methods.
+%
+\sysname differs from them in two key aspects.
+% In order to address the first limitation,
+%
+\ding{182} \textbf{Truncation-Aware Data Whitening:}
+supported by theoretical proof, \sysname incorporates a truncation-aware data whitening technique that ensures a \textit{direct mapping} between singular values and model compression loss. In doing so, the proposed truncation-aware data whitening technique is able to identify which singular values should be truncated to incur minimal model compression loss. 
+%As a result, the truncation of smaller singular values leads to minimal compression loss during the SVD compression.
+%
+\ding{183} \textbf{Parameter Update with Sequential Low-rank Approximation:}
+% To resolve the second limitation, 
+to compensate for accuracy degradation after compression, \sysname sequentially fine-tunes the decomposed low-ranking matrices for a global accuracy recovery.
+%that performs local layer updates to make the compressed weights adapt to the new activation after SVD truncation.
+%in a closed form.
+%after applying data whitening and singular value truncation, we observe that the compressed weight matrix still leads to a significant loss for the real input activation that passes through the compressed model. Therefore, 
+
+We compare \sysname with both state-of-the-art SVD-based LLM compression methods as well as pruning and quantization-based LLM compression methods. To demonstrate the generability of \sysname, we conduct our evaluation on a total of $10$ datasets and seven models from three different LLM families (LLaMA, OPT, and Mistral) at three different scales (7B, 13B, 30B), and evaluate the performance of \sysname on both GPU and CPU. We highlight three of our findings:
+
+%The proposed techniques have equipped SVD-LLM with \textbf{multifold merits} compared to prior works. 
+\vspace{-2mm}
+\begin{itemize}
+    \item \sysname outperforms state-of-the-art SVD-based LLM compression methods FWSVD and ASVD across all $10$ datasets, three LLM families at three scales by a large margin.
+    %, achieving over 99\% lower perplexity under 40\% compression ratios and above.
+    \item  \sysname also outperforms state-of-the-art structured pruning-based LLM compression methods, including LLM-Pruner, SliceGPT, BlockPruner as well as state-of-the-art 1-bit post-training quantization-based LLM compression methods, including PB-LLM and BiLLM. More importantly, when combined with 2-bit post-training quantization, \sysname outperforms state-of-the-art 1-bit training-required quantization-based LLM compression method OneBit, presenting a new way to achieve state-of-the-art compression performance without incurring expensive retraining.
+    \item LLMs compressed by \sysname are able to achieve inference speedup and memory reduction when deployed on real hardware, including both GPU and CPU. 
+    % In particular, compared to the original LLMs, models compressed by \sysname are able to achieve 3.1 times higher throughput on A100 GPU and 2.3 times higher throughput on AMD EPYC 7643 CPU. Moreover, the weight memory saving brought by \sysname are near linear to the compression ratio.
+    At the same time, \sysname is able to reduce runtime KV cache memory without additional accuracy drop.
+\end{itemize}
+
+
+%% P5: Highlight of our results.
+% We compare \sysname with three SVD-based methods for LLM compression, including vanilla SVD as well as state-of-the-art SVD-based LLM compression methods FWSVD and ASVD. To demonstrate the generability of \sysname, we conduct our evaluation on a total of $10$ datasets and seven models from three different LLM families (LLaMA, OPT, and Mistral) at six different scales (7B, 13B, 30B).
+% %and varying parameter ratios. 
+% %Our evaluation results show that:
+% We highlight six of our findings:
+% %
+% (1) \sysname consistently outperforms vanilla SVD, FWSVD, and ASVD across all $10$ datasets, three different LLM families, and three different scales, especially under higher compression ratios from 40\% to 80\%.
+% % 
+% (2) \sysname ensures a strong inference speedup. It achieves up to 3.1x higher throughput on GPU and 2.3x higher throughput on CPU. 
+% %
+% (3) \sysname provides additional benefit beyond compressing weight memory of LLMs, and is also able to reduce the runtime memory footprint of KV cache during inference.
+% %
+% (4) Our ablation studies show that with one of the two key components of \sysname alone, it still outperforms state-of-the-art SVD-based compression methods under different compression ratios.
+% %
+% (5) \sysname shows superiority to other LLM compression methods. It achieves better accuracy than state-of-the-art parameter pruning methods and 1-bit post-training quantization methods. When combined with 2-bit post-training quantization method, \sysname can even outperforms the 1-bit training-required quantization method. 
+% %
+% (6) \sysname not only achieves a better accuracy, but also ensures higher throughput and lower memory consumption compared to the scratch training method.

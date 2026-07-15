@@ -1,0 +1,123 @@
+\subsection{E-Commerce Environment}
+\label{subsec:ecommerce}
+Beyond competitive gameplay, customer-agent interactions in e-commerce provide a real-world setting where latency significantly impacts user experience. In a typical workflow, the customer submits a query through a chat interface and waits while the agent sequentially invokes multiple API calls—for example, processing a return may involve retrieving order information, validating eligibility for each item, and initiating the return. These chained calls can introduce substantial delay. By contrast, if some API calls are correctly speculated and executed in advance, the agent can return results immediately once the query arrives, making the interaction feel seamless. We evaluate this setting using the retail environment from \emph{$\tau$-bench}~\citep{yao_Taubench_2024}.
+\subsubsection{Experimental Setup}
+\paragraph{Speculative pipeline} 
+In this scenario, the current state $s_t$ is defined as the conversation history up to turn $t$, and $h_t$ are the API calls required to answer the user's query (eg. get\_user\_details, get\_order\_details). Our Speculator will predict
+\begin{enumerate}
+    \item The user’s query $\hat{a}_t$;
+    \item The target API calls and their corresponding parameters $(\hat{h}_{t+1}^{(i)}, \hat{q}_{t+1}^{(i)})$ for $i \in \{1, ..., k\}$, conditioned on the current state $s_t$ and the predicted user's query from step 1. Since the number of API calls for each turn is not fixed, the Speculator must also predict $k$.
+\end{enumerate}
+% Our framework executes as follows, 
+% \begin{itemize}[leftmargin=*]
+%     \item \textbf{Prediction phase}. While the user is composing their query, the Speculator attempts to predict: i) The user’s query $\hat{a}_t$; ii) The target API calls and their corresponding parameters $(\hat{h}_{t+1}^i, \hat{q}_{t+1}^i)$ for $i \in \{1, ..., k\}$, conditioned on the current state $s_t$ and the predicted user's query from step 1. Since the number of API calls for each turn is not fixed, the Speculator also determines $k$.
+%     \item \textbf{Validation}. Once the user submits their actual query, the Actor determines the required ground-truth API calls $(h_{t+1}, q_{t+1})$, the system validates whether any speculative calls match.
+%     \item \textbf{Commit or discard}. If one or more speculative calls match the required ground-truth API calls, their results are immediately committed, thereby eliminating latency. Otherwise, speculative calls are safely discarded and execution proceeds normally.
+% \end{itemize}
+\vspace{-5pt}
+
+% \paragraph{Agent configuration} We test various models as Speculator: OpenAI GPT models (gpt-5-nano, gpt-5-mini, gpt-5) and Google Gemini models (gemini-2.5-flash) with different reasoning budgets (1024, 2048, 4096 tokens).
+% Prior work~\cite{jiang-etal-2023-llm, chen_LLMEnsemble_2025} shows that heterogeneous LLM ensembles often outperform individual models, and multiple models can execute in parallel under the same time budget. Motivated by these findings, we evaluate two Speculator configurations: (i) a \emph{single-model} setting, where speculation relies on one model, and (ii) a \emph{multi-model} setting, where models with comparable capacity and reasoning budgets run in parallel (i.e., gpt-5-nano with low-budget Gemini, gpt-5-mini with medium-budget Gemini, and gpt-5 with high-budget Gemini). Their predictions are then aggregated into a shared candidate set of speculative actions. At runtime, when the user simulator provides the actual utterance, the Actor compares the speculative API calls with the ground-truth APIs. Correct predictions are committed immediately, eliminating latency, while incorrect predictions are safely discarded without affecting correctness.
+\paragraph{Agent configuration}
+\begin{wrapfigure}{r}{0.45\columnwidth}
+    \centering
+    \vspace{-15pt}
+\includegraphics[width=0.85\linewidth]{figures/ecommerce/pred_acc_error_bar.png}
+    \caption{APIs prediction accuracy across various Speculator models. %with various reasoning capability.
+    }
+    \label{fig:pred_acc}
+    \vspace{-15pt}
+\end{wrapfigure}
+We evaluate multiple Speculator models, including OpenAI GPT variants (gpt-5-nano, gpt-5-mini, gpt-5) and Google Gemini (gemini-2.5-flash) under different reasoning budgets (1024/2048/4096 tokens). Motivated by prior work where heterogeneous LLM ensembles outperform single models~\citep{jiang-etal-2023-llm, chen_LLMEnsemble_2025}, we consider two configurations: (i) a \emph{single-model} Speculator, and (ii) a \emph{multi-model} Speculator, where comparable models run in parallel (e.g., gpt-5-nano with low-budget Gemini, gpt-5-mini with medium-budget Gemini). Their outputs are aggregated into a shared pool of candidate speculative actions.
+
+At runtime, once the user simulator reveals the ground-truth utterance, the Actor validates the speculative API calls: correct predictions are committed immediately (eliminating latency), while incorrect ones are discarded without affecting correctness.
+\paragraph{Evaluation} 
+We evaluate performance using \textbf{APIs prediction accuracy}, defined as the fraction of speculative API calls that match the ground-truth APIs required to resolve the user’s query. This metric directly reflects the proportion of turns in which the user receives an immediate response, without waiting for API execution: higher prediction accuracy translates into greater time savings. 
+
+
+% Surface-form mismatches in user utterances are disregarded, as responsiveness is determined solely by the correctness of API calls rather than by linguistic variation.
+
+%predicted and true queries share intent (e.g., “I confirm I’d like to return the headphones and smart watch” vs. “Yup, go ahead.”).
+% (ii) \textbf{Cost}, measured as cumulative time and price for model invocations and tool interactions. Because raw throughput and latency vary across deployment settings, we normalize cost statistics using empirical measurements reported in~\cite{}.
+\subsubsection{Results}
+Figure~\ref{fig:pred_acc} shows that between 22\% and 38\% of API calls are correctly predicted by the Speculator. Accuracy improves with stronger models and the multi-agent configuration consistently outperforms single-model speculation. Importantly, low-budget models speculate in only 2–3 seconds (per the LLM API providers leaderboard\footnote{\url{https://artificialanalysis.ai/leaderboards/providers}}), well below the average user typing time of about 30 seconds (assuming 40 words per minute). This means that in roughly one third of turns, the agent can respond faster than sequential execution, without waiting for API execution. 
+% These results demonstrate that speculation can transform user experience from perceptibly delayed to effectively real-time in tool-heavy environments.
+
+
+% The time cost is calculated based on the LLM API providers Leaderboard \footnote{\url{https://artificialanalysis.ai/leaderboards/providers}}, consists of latency (i.e., Time to First Token) and output response time (i.e., output tokens per second multiply by the number of output tokens). The dashed vertical line represents average user typing time, estimated as 40 words per minute multiplied by the average number of words per turn in the tasks. At this threshold, the multi-agent setting achieves approximately 34\% prediction accuracy, meaning that in over one-third of cases the agent can return an immediate response without waiting for API execution. This demonstrates that speculation can transform user experience from perceptibly laggy to effectively real-time in tool-heavy environments.
+
+
+% \kostis{Start with the most important observation: Speculation accelerates things!!! Then go into the secondary budgetary/accuracy observations and trade-offs.}
+
+% Overall, we observe three consistent trends. First, increasing the reasoning budget within the same model family leads to higher prediction accuracy (Figure~\ref{fig:gemini}), reflecting the benefit of additional compute for more precise intent prediction. Second, larger models within the same family achieve systematically better accuracy (Figure~\ref{fig:gpt5}), confirming the expected scaling advantage. Third, the multi-model speculative setting significantly boosts accuracy compared to single-model speculation, suggesting that results from different rounds or model variants complement each other and reduce coverage gaps. These gains, however, come with associated costs. Larger or more compute-intensive models incur higher latency and generation time, as well as increased monetary cost. Figures~\ref{fig:time} and~\ref{fig:price} make these trade-offs explicit: accuracy improves steadily with model scale and budget, but at the expense of both runtime and price.
+
+% \begin{figure}[t]
+%   \centering
+%   \resizebox{0.8\textwidth}{!}{% <-- scale entire block to 90% of textwidth
+%     \begin{minipage}{\textwidth}
+%       \centering
+%       % Row 1
+%       \begin{subfigure}[t]{0.48\textwidth}
+%         \includegraphics[width=\linewidth]{figures/ecommerce/figure_gpt5.png}
+%         \caption{}
+%         \label{fig:gpt5}
+%       \end{subfigure}\hfill
+%       \begin{subfigure}[t]{0.48\textwidth}
+%         \includegraphics[width=\linewidth]{figures/ecommerce/figure_gemini.png}
+%         \caption{}
+%         \label{fig:gemini}
+%       \end{subfigure}
+
+%       \vspace{0.5em}
+
+%       % Row 2
+%       \begin{subfigure}[t]{0.48\textwidth}
+%         \includegraphics[width=\linewidth]{figures/ecommerce/figure_time.png}
+%         \caption{}
+%         \label{fig:time}
+%       \end{subfigure}\hfill
+%       \begin{subfigure}[t]{0.48\textwidth}
+%         \includegraphics[width=\linewidth]{figures/ecommerce/figure_price.png}
+%         \caption{}
+%         \label{fig:price}
+%       \end{subfigure}
+%     \end{minipage}
+%   }
+%   \caption{(a) Accuracy of the GPT-5 family with varying output lengths; dashed line indicates equivalent time cost under parallel execution. (b) Accuracy of the Gemini-2.5-flash family with varying output lengths; dashed line again marks the parallel cost threshold. (c) Accuracy–speculative time cost trade-off across models, where time is computed as average model latency plus token throughput; dashed line shows average user typing time. (d) Accuracy–price trade-off across models, reflecting the monetary cost of speculative execution.\kostis{MUCH MUCH bigger fonts and thicker lines please.}}
+%   \label{fig:ecommerce}
+% \end{figure}
+
+% \begin{figure}[t]
+%   \includegraphics[width=\columnwidth]{figures/ecommerce/figure_gpt5.png}
+%   \caption{A figure with a caption that runs for more than one line.
+%     Example image is usually available through the \texttt{mwe} package
+%     without even mentioning it in the preamble.}
+%   \label{fig:experiments}
+% \end{figure}
+
+% \begin{figure}[t]
+%   \includegraphics[width=\columnwidth]{figures/ecommerce/figure_gemini.png}
+%   \caption{A figure with a caption that runs for more than one line.
+%     Example image is usually available through the \texttt{mwe} package
+%     without even mentioning it in the preamble.}
+%   \label{fig:experiments}
+% \end{figure}
+
+% \begin{figure}[t]
+%   \includegraphics[width=\columnwidth]{figures/ecommerce/figure_time.png}
+%   \caption{A figure with a caption that runs for more than one line.
+%     Example image is usually available through the \texttt{mwe} package
+%     without even mentioning it in the preamble.}
+%   \label{fig:experiments}
+% \end{figure}
+
+% \begin{figure}[t]
+%   \includegraphics[width=\columnwidth]{figures/ecommerce/figure_price.png}
+%   \caption{A figure with a caption that runs for more than one line.
+%     Example image is usually available through the \texttt{mwe} package
+%     without even mentioning it in the preamble.}
+%   \label{fig:experiments}
+% \end{figure}
+
+
+

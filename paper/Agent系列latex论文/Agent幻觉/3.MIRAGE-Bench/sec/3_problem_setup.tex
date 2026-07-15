@@ -1,0 +1,131 @@
+\section{Extended Categorization of  Hallucination in LLM Agents}
+\label{section_3}
+
+The term hallucination originally emerged in the context of natural language generation (NLG)~\cite{bang2025hallulens, huang2025survey, ji2023survey}, where it typically refers to output that deviates from truth or input fidelity. Prior work distinguishes between two main types: a) \textbf{Extrinsic hallucination} --- content that is \textit{unfaithful} to external, verifiable information. b) \textbf{Intrinsic hallucination} --- content that is \textit{unfaithful} to the contextual input.
+
+Extending this concept to LLM agents presents new challenges. Unlike traditional NLG tasks that involve static input-output mappings, LLM agents operate with more complex cognitive architectures~\cite{sumers2023cognitive}, incorporating components such as planning modules, memory buffers, environment perception, and feedback loops. This architectural complexity complicates the identification of hallucination sources, especially given the wide variation in agent design.
+
+To ground our discussion, we focus on a generalist agent design inspired by the ReAct framework~\cite{yao2023reactsynergizingreasoningacting}, which is widely adopted in recent LLM-agent literature. These agents interact with their environment via the following core components: a) \textit{Task instructions} — the high-level goal, permissible actions, and any task constraints; b) \textit{Interaction history} — the sequence of past actions taken, planning trajectories and corresponding observations or feedback received; c) \textit{Current observations} — the agent's perception of the environment at the current step, such as web DOMs, file contents, tool outputs, or GUI states.
+
+Within this framework, we define hallucinations in LLM agents as actions that are unfaithful to one or more of these components. We propose the following categorization, each grounded in a specific source of unfaithfulness:
+
+% The concept of hallucination in traditional Natural Language Generation (NLG) refers to generated content that deviates from factual truth or fidelity to the input source and has been categorized into two primary types in earlier NLG studies~\cite{ji2023survey}: a) \textit{Extrinsic hallucination} --- content unsupported by external factual references. b) \textit{Intrinsic hallucination} --- content contradicted by the provided input context.
+
+% With the rise of LLMs, recent studies have refined these definitions. For instance, Huang et al.~\cite{huang2025survey} introduced a distinction between factuality hallucination (violating external facts) and faithfulness hallucination (violating the given instruction or context). Another binary distinction, Bang et al.~\cite{bang2025hallulens} defines hallucination solely by intrinsic (input context violation) and extrinsic (training data violation) property, decoupling factual correctness from the concept of hallucination.
+
+% When we extend this notion to LLM agents, critical differences emerge compared to traditional NLG tasks. Traditional NLG typically involves static linguistic input-output mappings, where both input and output are primarily textual, and the tasks are self-contained and stateless. In contrast, LLM agents utilize language as a medium for understanding, reasoning, and planning but ultimately produce outputs as \textbf{executable actions}, such as code snippets or API calls. This fundamental shift introduces dynamic cognitive complexities, as agents must integrate multiple inputs (i.e. perception, memory, planning, and real-time observations) to determine the appropriate actions to interact with the external environment that lies beyond pure textual source.
+
+% Due to such a complexity, grounding hallucinations from LLM agents remain indefinite, especially in the context of multi-task research and combinatorial architecture, we take a march for clarity by focusing on simple ReAct~\cite{yao2023reactsynergizingreasoningacting} style agents with chain-of-thought prompting~\cite{wei2022chain}.
+
+% In the baseline ReAct-style design, agents iteratively reason about the environment before performing each action, subsequently observe the resulting changes or feedback, and repeat this cycle throughout the task. At each step, the input guiding the agent's action generation comprises three core components: a) \textit{Task instructions} --- the high-level goal including permissible actions and any task constraints; b) \textit{Interaction history} --- the sequence of past actions taken including trajectory plans and corresponding observations or feedback; c) \textit{Current observations} --- the agent's perception of the environment at the current step including web DOMs, file contents, tool outputs, or GUI states.
+
+% Under this setting, we define hallucination in LLM agents as actions that are unfaithful to one or more of these core input components. Referencing prior analysis on hallucinations, these action-level hallucinations fall under intrinsic hallucination, as they contradict the agent's given input context rather than external facts or training data. For comprehensiveness, we propose the following categorizations, each explicitly tied to a source of unfaithfulness:
+
+\begin{figure}
+    \centering
+    \includegraphics*[width=1\columnwidth]{assets/tree.pdf}
+    \caption{
+    \textbf{Left:} Distribution of data across different risk settings, along with the diverse interactive environments in which LLM agents were deployed during data collection. 
+    \textbf{Right:} Illustration of how hallucinations in LLM agents are scattered across environments, tasks, and steps---making them difficult to capture and reproduce. One case from \textit{TheAgentCompany} shows the agent incorrectly taking \texttt{click([57]button, `mark\_johnson')} instead of the correct action \texttt{click([57]button)}, due to limited domain knowledge of web interactions. Subsequently, despite observing that it is still in a DM with Mike, the agent hallucinates a successful navigation of the previous step and proceeds to send Mark's information to Mike, posing a data leakage risk. We attribute the hallucination in this case to the risk setting of unexpected environment transitions.
+    }
+    \label{fig:capture_hallu}
+\end{figure}
+
+\begin{enumerate}[leftmargin=*,topsep=0.5ex,itemsep=-0.2ex,partopsep=0.75ex,parsep=0.75ex,wide,labelindent=0pt]
+    \item \textbf{Task Instruction Unfaithfulness}: Actions that violate the specified task objective, overstep domain constraints, or pursue irrelevant goals. Examples include executing operations with a fabricated API set or acting on extrapolated user intentions that go beyond the stated task.
+    \item \textbf{Interaction History Unfaithfulness}: Actions that conflict with the agent's knowledge based on past trajectory such as redoing completed steps or ignoring prior experiences.
+    \item \textbf{Environment Observation Unfaithfulness}: Actions that misrepresent or disregard the agent's observed information of the environment states. For instance, clicking a non-existent button, misreading a file directory, or assuming a nonexistent transition state.
+\end{enumerate}
+
+\begin{wraptable}{r}{0.5\textwidth} 
+    % \vspace{7mm}
+    \centering
+    \footnotesize
+    \begin{tabularx}{\linewidth}{>{\raggedright\arraybackslash\bfseries}p{1.4cm} X X}
+        \toprule
+        Aspect & \textbf{Wrong Actions} & \textbf{Hallucinated Actions} \\
+        \midrule
+        Relation & Superset & Subset of wrong actions \\
+        \midrule
+        Faithfulness Issue & Not necessarily & Yes - contextual input \\
+        \midrule
+        Causes & Any error (e.g. insufficient domain knowledge and planning) & Fabricated and misperceived context \\
+        \midrule
+        Examples & Navigating to the wrong page & Clicking on a non-existent button \\
+        \bottomrule
+    \end{tabularx}
+    \caption{Distinguishing incorrect actions from hallucinated ones.}
+    \label{tab:wrong_vs_hallu}
+    \vspace{-3mm}
+\end{wraptable}
+
+
+\paragraph{Remark: Hallucinated actions vs. Incorrect actions.}
+A wrong action refers to any behavior that is incorrect or suboptimal, thus leading to an unwanted or failed outcome, whereas a hallucinated action results from fabricated or misperceived information within the cognitive contextual input.
+We summarize the relationship in Table~\ref{tab:wrong_vs_hallu}. In practice, wrong actions may also result from: (i) a lack of domain knowledge (e.g., randomly selecting buttons due to unfamiliarity with software interfaces); (ii) flawed logic or planning (e.g., attempting to move without first standing up in embodied settings); (iii) limited contextual windows that leads to the loss of relevant interaction history.
+
+% A vivid illustration of this distinction is provided in Figure~\ref{fig:capture_hallu}. In the step immediately preceding the hallucination, the LLM agent performs a non-hallucinatory wrong action—specifically, executing \texttt{click([57]search, 'mark\_johnson')}. The correct action in this context should have been to first execute \texttt{click([57])} and then perform \texttt{fill('mark\_johnson')}. This error reflects an insufficient understanding of the interaction logic—namely, a lack of web automation domain knowledge. Importantly, such mistakes can often be rectified in subsequent steps; for example, upon observing that \texttt{click([57]search)} does not lead to any environmental change, the agent might adjust its strategy and attempt a different approach.
+
+% In contrast, the unfaithful behavior—or hallucination emerges in the following step: despite clear evidence that the previous action failed to achieve the desired transition, the LLM agent hallucinates the success of that action, disregarding the actual environmental observations. It then proceeds based on this erroneous assumption, ultimately sending Mark's personal information to Mike.
+
+% \textcolor{red}{In essence, part of the complexity in agentic tasks is attributed to the ambiguity of hallucination definitions and its relevant terminologies. While post-training or integrating external knowledge base may improve LLM agents' domain expertise in the targeted setting, they often come with the cost of overlooking unfaithful behaviors such as fabricating nonexistent buttons, inventing the success of prior actions, or making decisions based on assumptions that conflict with given instructions. Moreover, such enhancements can even exacerbate the problem, causing agents to over-rely on prior knowledge and experience at the expense of remaining faithful to the dynamic, task-specific information. Our task is to distinguish unfaithful actions from other types of incorrect actions and to pave the way for creating honest, effective, and robust agents.}
+
+These distinctions highlight the need to separate unfaithful behaviors from general errors: hallucinations stem from contextual unfaithfulness, not just limited capabilities. Yet methods like post-training or external knowledge integration often fall short in ensuring faithfulness, and may even worsen it by promoting over-reliance on prior knowledge over contextual information.
+
+% \textcolor{blue}{
+% 1. Problem Setup
+%     Unfaithfulness 
+%     Taxtonomy
+%     Math language
+%     [figure illustration]
+% 2. details in constructing examples
+%     overview
+%     [figure about showing the variety of cases]
+%     Each type
+%     - typical examples 
+%     - how to construct 
+%     = verifier
+% 3. evaluation 
+%     - motivation
+%     - setting (models metrics)
+%     - paragraphs (talk about findings and results)
+%     }
+
+% \subsection{Definition of hallucination in LLM}
+% \paragraph{Preliminary of LLM's hallucination's definition and categorization}
+% LLMs frequently exhibit hallucinations, producing content that appears plausible yet is unfaithful. Previous work~\cite{bang2025hallulens, huang2025survey, ji2023survey} classifies LLM hallucinations into two distinct categories, based on the consistency between the model's output and the knowledge accessible to it.
+
+% \begin{itemize}
+%     \item \textbf{Extrinsic Hallucination}: Generated content that is unfaithful with the training data and cannot be verified or contradicted by the input context.
+%     \item \textbf{Intrinsic Hallucination}: Generated content that directly contradicts or fails to align with the provided input context. This occurs when models misunderstand the input, resulting in outputs that either deviate from or are unsupported by the original query.
+% \end{itemize}
+
+% \subsection{Cognitive architecture of LLM agents} 
+
+% In the context of agentic settings where LLMs generalize their prior knowledge through reasoning to interact with external environments, such hallucinations also extend from simple text to \textit{actions}.
+
+% These hallucinations can be analyzed through the lens of the cognitive architecture of language agents~\cite{sumers2023cognitive}. Specifically, at each invocation, the LLM receives input synthesized from a subset of the agent's working memory. We consider ReAct-style~\cite{yao2023reactsynergizingreasoningacting} generalist baseline agents in our setting whose working memory typically comprises the following four distinct components:
+% \begin{enumerate}
+%     \item \textbf{Task Instructions} (e.g., high-level goals, predefined action set, task-specific constraints)
+%     \item \textbf{Interaction History} (e.g., history of actions taken and observations received)
+%     \item \textbf{Current Observations} (e.g., DOM elements of web pages, tool responses, feedback from the environment)
+% \end{enumerate}
+
+% Consequently, \textbf{intrinsic hallucinations in generalist LLM agents} manifest as decisions or actions that are inconsistent with the above components, and can further be categorized into four corresponding subtypes:
+
+
+
+% \begin{enumerate}
+
+%     \item \textbf{Task Instruction Unfaithfulness}: Actions that deviate from task instructions, including violations of the explicit goal, constraints, action space, and implicit task boundaries. 
+    
+%     \item \textbf{Current Observation Unfaithfulness}: Actions that fail to reflect or misinterpret current environmental observations, including ignoring environmental changes, misidentifying available affordances, and misreading feedback from tools and interfaces.
+    
+%     \item \textbf{Interaction History Unfaithfulness}: Actions that conflict with prior steps in the trajectory, including repeating actions, ignoring previous feedback, and mistakenly assuming that an unexecuted step has already been completed. 
+
+% \end{enumerate}
+
+
+
+
+

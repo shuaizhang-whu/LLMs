@@ -1,0 +1,302 @@
+\clearpage
+\appendix
+\section{Appendix}
+\subsection{LLM Disclaimer}
+The authors hereby declare the role of large language model (LLM) tools in the preparation of this manuscript: LLMs were solely utilized to assist with text polishing (including refining sentence structure, optimizing lexical expression, and enhancing language fluency) and **writing optimization** of the paper’s narrative content.  
+
+It is explicitly emphasized that all core components of this research, which determine the originality, scientific validity, and academic value of the work, were independently completed by the research team through manual efforts. These components include, but are not limited to:  
+\begin{itemize}
+    \item The formulation and development of the overall research framework, core ideas, and logical structure of the study; 
+    \item The design, coding, debugging, and validation of all algorithms and program codes involved in the research;  
+    \item The design of experimental protocols, collection and preprocessing of experimental data, execution of experiments, analysis and interpretation of experimental results, and verification of conclusions.  
+\end{itemize}
+
+
+The use of LLM tools did not involve any participation in the conception of research content, generation of technical solutions, implementation of experimental processes, or derivation of research conclusions. All content of this paper adheres to academic integrity standards, and the research team assumes full responsibility for the scientificity, authenticity, and originality of the work.
+
+
+
+\newpage
+\subsection{THEORETICAL PROOF OF ThEOREM \ref{theorem 1} and subsequent truncated SVD } \label{theorem1 derivation}
+\paragraph{Problem Formulation.} 
+Consider the optimization problem
+\begin{equation}
+   \min_{A,B} J(A,B) = \|ABX - Z\|_F^2,
+\end{equation}
+where the goal is to simplify the objective function $J(A,B)$ so that optimization with respect to $A$ and $B$ becomes more tractable. The key idea is to exploit the structure of the matrix $X$, particularly its row space.
+
+\paragraph{Assumption.} 
+To ensure that the following projection operations are well-defined, we assume that $X$ has full row rank, because in practice a small ridge parameter $\lambda$ will be introduced and $L_\ell=(H_\ell+\lambda I)^{-1/2}$.
+This assumption is reasonable since the activation matrix $X$ typically has far more columns than rows. If $X$ is a $p \times n$ matrix with $p \ll n$, then $\mathrm{rank}(X) = p$, which guarantees that $XX^\top$ is invertible.
+
+\paragraph{Orthogonal Projection Operator.} 
+We define the projection matrix
+\begin{equation}
+   P = X^\top(XX^\top)^{-1}X,
+\end{equation}
+which is an $n \times n$ orthogonal projector mapping any row vector in $\mathbb{R}^n$ onto the row space of $X$. For any matrix $Y$ with $n$ columns, the product $YP$ projects each row of $Y$ onto the row space of $X$. 
+
+The matrix $P$ satisfies several important properties:
+\begin{itemize}
+    \item \textbf{Symmetry:} $P^\top = P$, since $XX^\top$ is symmetric and so is its inverse.
+    \item \textbf{Idempotence:} $P^2 = P$, which follows by direct calculation.
+    \item \textbf{Projection property:} For any matrix of the form $CX$, right multiplication by $P$ leaves it unchanged, i.e., $(CX)P = CX$. In particular, $ABX$ belongs to this class.
+\end{itemize}
+
+\paragraph{Decomposition of $Z$.} 
+We decompose $Z$ into components lying in the row space of $X$ and its orthogonal complement:
+\begin{equation}
+   Z_P = ZP, \qquad Z_\perp = Z(I-P).
+\end{equation}
+Clearly,
+\begin{equation}
+   Z = ZP + Z(I-P) = Z_P + Z_\perp,
+\end{equation}
+where $Z_P$ is the projection of $Z$ onto the row space of $X$, and $Z_\perp$ is the projection onto its orthogonal complement. Moreover, $Z_\perp P = 0$.
+
+\paragraph{Reformulated Objective.}
+Using this decomposition, we expand the objective:
+    \begin{equation}
+\begin{aligned}
+   J(A,B) &= \|ABX - Z\|_F^2 \\
+          &= \|ABX - (Z_P + Z_\perp)\|_F^2 \\
+          &= \|(ABX - Z_P) - Z_\perp\|_F^2.
+\end{aligned}
+\end{equation}
+Let $U = ABX - Z_P$ and $V = Z_\perp$. Since $U$ lies in the row space of $X$ and $V$ lies in its orthogonal complement, they are orthogonal, i.e., $\mathrm{Tr}(U^\top V) = 0$. By the Pythagorean theorem for the Frobenius norm, we obtain
+\begin{equation}
+   J(A,B) = \|ABX - Z_P\|_F^2 + \|Z_\perp\|_F^2.
+   \label{eq jab}
+\end{equation}
+
+%  其中$\|Z\perp\|_F^2$ 是个常数此时我们将$P=X^\top (XX^\top)^{-1}X$代入公式\ref{eq jab} 从而得到 
+By the premise, we start from
+\begin{equation}
+J(A,B) \;=\; \|\,ABX - ZX^\top(XX^\top)^{-1}X\,\|_F^2 \;=\; \|\,U X - ZP\,\|_F^2,
+\qquad where\, U=AB .
+\label{eq:start}
+\end{equation}
+
+\paragraph{Step 1: Projection reduction is tight up to a constant.}
+Decompose $Z$ into its components on the row space of $X$ and its orthogonal complement:
+\begin{equation}
+Z \;=\; ZP \;+\; Z(I-P) \;=:\; Z_P + Z_\perp,
+\qquad Z_\perp P = 0 .
+\end{equation}
+Since $UX$ lies in the row space of $X$, we have $(UX)P=UX$. Therefore,
+\begin{align}
+\|UX - Z\|_F^2
+&= \|UX - (Z_P + Z_\perp)\|_F^2
+= \|(UX - Z_P) - Z_\perp\|_F^2 \nonumber\\
+&= \|UX - Z_P\|_F^2 + \|Z_\perp\|_F^2 
+\quad\text{(orthogonality in the row/orthogonal subspaces).}
+\label{eq:pyth}
+\end{align}
+Thus minimizing $\|UX - ZP\|_F^2$ is equivalent to minimizing $\|UX - Z\|_F^2$, since they differ by the constant $\|Z_\perp\|_F^2$ independent of $U$. Hence \eqref{eq:start} is a valid surrogate objective.
+
+\paragraph{Step 2: Whitening reformulation.}
+Let $M=ZX^\top\in\mathbb{R}^{m\times p}$. Expand the Frobenius norm using trace identities:
+\begin{align}
+\|UX - ZP\|_F^2
+&= \|UX - ZP\|_F^2
+= \|(UX - Z)P\|_F^2
+= \operatorname{tr}\!\big((UX - Z)P(UX - Z)^\top\big) \nonumber\\
+&= \operatorname{tr}(UXX^\top U^\top) - 2\,\operatorname{tr}(UXPZ^\top) + \operatorname{tr}(ZPZ^\top) \nonumber\\
+&= \operatorname{tr}(UHU^\top) - 2\,\operatorname{tr}(UM^\top) + \operatorname{tr}(ZPZ^\top).
+\label{eq:expand}
+\end{align}
+Because $H\succ0$, its symmetric square roots $H^{\pm 1/2}$ exist and are invertible. Using
+\begin{equation}
+\operatorname{tr}(UHU^\top)=\|UH^{1/2}\|_F^2,
+\qquad
+\operatorname{tr}(UM^\top)=\langle UH^{1/2},\, MH^{-1/2}\rangle_F,
+\end{equation}
+we can complete the square:
+\begin{align}
+\|UX - ZP\|_F^2
+&= \|UH^{1/2}\|_F^2 - 2\langle UH^{1/2}, MH^{-1/2}\rangle_F + \operatorname{tr}(ZPZ^\top) \nonumber\\
+&= \|UH^{1/2} - MH^{-1/2}\|_F^2 
+\;+\; \Big(\operatorname{tr}(ZPZ^\top) - \|MH^{-1/2}\|_F^2\Big).
+\label{eq:completed-square}
+\end{align}
+The parenthetical term is independent of $U$. Therefore the minimizers of \eqref{eq:start} are exactly the minimizers of
+\begin{equation}
+\min_{\operatorname{rank}(U)\le r}\ \big\|UH^{1/2} - MH^{-1/2}\big\|_F^2 .
+\end{equation}
+At this point, we have completed the proof of Theorem \ref{theorem 1}. Subsequently, we will perform low-rank approximation based on this.
+
+\paragraph{Step 3: Invertible change of variables and rank preservation.}
+Define the change of variables
+\begin{equation}
+V \;=\; U H^{1/2}, 
+\qquad
+L \;=\; H^{-1/2}.
+\end{equation}
+Since $H^{1/2}$ is invertible, $\operatorname{rank}(V)=\operatorname{rank}(U)$, so the rank constraint is preserved. The problem is thus equivalent to
+\begin{equation}
+\min_{\operatorname{rank}(V)\le r}\ \|\,V - ML\,\|_F^2 .
+\end{equation}
+This proves the desired whitening equivalence: minimizing $\|UX - ZP\|_F^2$ over rank-$r$ $U$ is equivalent to minimizing $\|V - ML\|_F^2$ over rank-$r$ $V$, with the bijection between minimizers given by $U^\star = V^\star H^{-1/2}$.
+
+
+\newpage
+\subsection{THEORETICAL PROOF OF THEOREM \ref{theorem2}: Fixed-Subspace First-Order Approximation for Truncation Ratios}
+\label{app:fsfoa}
+\label{theorem2 derivation}
+
+\paragraph{Setup.}
+Let $S\in\mathbb{R}^{m\times n}$ with singular value decomposition $S=U\Sigma V^\top$, and fix a target rank $r\in\{1,\dots,\min(m,n)-1\}$. Denote
+\[
+U_r:=U_{[:,1:r]},\quad V_r:=V_{[:,1:r]},\qquad
+P_L:=I-U_rU_r^\top,\quad P_R:=I-V_rV_r^\top.
+\]
+Given a direction $D\in\mathbb{R}^{m\times n}$ and a scalar $\beta\in[0,1]$, define the affine path
+\begin{equation}\label{eq:affine_path}
+G(\beta):=S+\beta D.
+\end{equation}
+Let $\|\cdot\|_F$ be the Frobenius norm, $\|\cdot\|_2$ the spectral norm, and let $\sigma_1(\cdot)\ge\cdots$ denote singular values.
+
+\paragraph{True tail energy and ratio.}
+By the Eckart--Young--Mirsky theorem,
+\begin{equation}\label{eq:tail_energy}
+E(\beta)\ :=\ \min_{\operatorname{rank}(Q)\le r}\ \|G(\beta)-Q\|_F^2\ =\ \sum_{i>r}\sigma_i\!\big(G(\beta)\big)^2.
+\end{equation}
+We call $\sqrt{E(\beta)}$ the \emph{tail (Frobenius) norm} of $G(\beta)$ at rank $r$. The corresponding \emph{tail ratio} is
+\begin{equation}\label{eq:tail_ratio}
+\rho(\beta)\ :=\ \frac{\sqrt{E(\beta)}}{\ \|G(\beta)\|_F\ }.
+\end{equation}
+
+\paragraph{Fixed-subspace first-order approximation (FS-FOA).}
+Freeze the leading rank-$r$ subspaces at $\beta=0$ (those of $S$), and approximate the tail by the projection onto the fixed orthogonal complement:
+\begin{equation}\label{eq:fsfoa_tail_energy}
+\widetilde E(\beta)\ :=\ \big\|\,P_L\,G(\beta)\,P_R\,\big\|_F^2
+\ =\ \big\|\,S_\perp+\beta D_\perp\,\big\|_F^2, \quad
+S_\perp:=P_LSP_R,\ \ D_\perp:=P_LDP_R.
+\end{equation}
+The \emph{FS-FOA tail ratio} is then
+\begin{equation}\label{eq:fsfoa_ratio}
+\widetilde\rho(\beta)\ :=\ \frac{\|S_\perp+\beta D_\perp\|_F}{\|S+\beta D\|_F}.
+\end{equation}
+
+\paragraph{Assumption (spectral gap and small perturbation).}
+Let the spectral gap at $r$ be
+\begin{equation}\label{eq:gap_assump}
+\delta\ :=\ \sigma_r(S)-\sigma_{r+1}(S)\ >\ 0,
+\end{equation}
+and assume the relative perturbation is small:
+\begin{equation}\label{eq:tau_assump}
+\tau\ :=\ \frac{\beta\,\|D\|_2}{\delta}\ \le\tau_0, \qquad \text{for some sufficiently small }\tau_0\in(0,1).
+\end{equation}
+
+\paragraph{Theorem (FS-FOA is first-order accurate for the tail energy).}
+Under \eqref{eq:gap_assump}--\eqref{eq:tau_assump}, there exist absolute constants $C_1,C_2>0$ such that for all $\beta\in[0,1]$,
+\begin{equation}\label{eq:fsfoa_main_bound}
+E(\beta)\ =\ \|S_\perp+\beta D_\perp\|_F^2\ +\ R_E(\beta),
+\qquad
+\big|R_E(\beta)\big|\ \le\ C_1\,\tau^2\Big(\|S\|_F^2+\beta^2\|D\|_F^2\Big).
+\end{equation}
+In particular, the discrepancy between the true tail energy and its FS-FOA surrogate is \emph{second order} in $\tau$.
+
+\paragraph{Corollary (FS-FOA is first-order accurate for the tail ratio).}
+With the same assumptions, there exists $C'>0$ such that
+\begin{equation}\label{eq:ratio_bound}
+\big|\rho(\beta)-\widetilde\rho(\beta)\big|\ \le\ C'\,\tau^2
+\ =\ O\!\left(\frac{\beta^2\|D\|_2^2}{\delta^2}\right).
+\end{equation}
+Hence $\widetilde\rho(\beta)$ is a first-order accurate approximation to the true ratio $\rho(\beta)$.
+
+\paragraph{Proof sketch of \eqref{eq:fsfoa_main_bound}.}
+Let $U_r(\beta),V_r(\beta)$ be the leading $r$-dimensional singular subspaces of $G(\beta)$ and $P_L(\beta)=I-U_r(\beta)U_r(\beta)^\top$, $P_R(\beta)=I-V_r(\beta)V_r(\beta)^\top$ their orthogonal complements. Standard Davis--Kahan/Wedin perturbation bounds imply
+\begin{equation}\label{eq:proj_bounds}
+\|P_L(\beta)-P_L\|_2\ \lesssim\ \tau,\qquad \|P_R(\beta)-P_R\|_2\ \lesssim\ \tau.
+\end{equation}
+Because $E(\beta)=\|P_L(\beta)G(\beta)P_R(\beta)\|_F^2$, write $P_L(\beta)=P_L+E_L$, $P_R(\beta)=P_R+E_R$ with $\|E_{L/R}\|_2=O(\tau)$ and expand:
+\[
+P_L(\beta)G(\beta)P_R(\beta)
+=(P_L+E_L)(S+\beta D)(P_R+E_R)
+= P_L(S+\beta D)P_R\ +\ \mathcal{E},
+\]
+where the Frobenius norm of the remainder satisfies $\|\mathcal{E}\|_F=O\!\big(\tau\,\|G(\beta)\|_F\big)$ by the block structure induced by $(U_r,V_r)$. Squaring norms yields
+\[
+E(\beta)=\|P_LGP_R\|_F^2 + O\!\big(\tau^2\|G(\beta)\|_F^2\big)
+=\|S_\perp+\beta D_\perp\|_F^2 + O\!\big(\tau^2(\|S\|_F^2+\beta^2\|D\|_F^2)\big),
+\]
+which is \eqref{eq:fsfoa_main_bound}. The corollary \eqref{eq:ratio_bound} follows by dividing by $\|G(\beta)\|_F^2$ and using $\sqrt{1+x}=1+O(x)$ for small $x$.
+
+\paragraph{Closed form for the FS-FOA ratio and its stationary condition.}
+Both numerator and denominator of \eqref{eq:fsfoa_ratio} are quadratic polynomials in $\beta$:
+\begin{equation}\label{eq:num_quad}
+\|S_\perp+\beta D_\perp\|_F^2\ =\ a+2b\,\beta+c\,\beta^2,
+\end{equation}
+\begin{equation}\label{eq:den_quad}
+\|S+\beta D\|_F^2\ =\ A+2B\,\beta+C\,\beta^2,
+\end{equation}
+where
+\begin{equation}\label{eq:abc_defs}
+a:=\|S_\perp\|_F^2,\quad b:=\langle S_\perp,D_\perp\rangle,\quad c:=\|D_\perp\|_F^2,\qquad
+A:=\|S\|_F^2,\quad B:=\langle S,D\rangle,\quad C:=\|D\|_F^2.
+\end{equation}
+Let
+\begin{equation}\label{eq:phi_def}
+\phi(\beta):=\widetilde\rho(\beta)=\sqrt{\frac{a+2b\beta+c\beta^2}{A+2B\beta+C\beta^2}}.
+\end{equation}
+Since the square root is monotone, $\arg\min\phi$ coincides with $\arg\min$ of the squared ratio. Differentiating and simplifying gives the \emph{quadratic} stationary equation
+\begin{equation}\label{eq:stationary_quadratic}
+(cB-bC)\,\beta^2\ +\ (cA-aC)\,\beta\ +\ (bA-aB)\ =\ 0.
+\end{equation}
+\emph{Selection rule.} Solve \eqref{eq:stationary_quadratic}, keep real roots in $[0,1]$, add the boundaries $\{0,1\}$, evaluate $\widetilde\rho(\beta)$ on this candidate set, and choose the minimizer $\beta^*\in[0,1]$. In applications with a trade-off parameter $\alpha\ge 0$, one uses the bijection
+\begin{equation}\label{eq:alpha_beta}
+\beta=\frac{\alpha}{1+\alpha}\quad\Longleftrightarrow\quad \alpha=\frac{1}{1-\beta}-1,
+\end{equation}
+so that $\alpha^*=\frac{1}{\beta^*}-1$.
+
+\paragraph{When is FS-FOA accurate.}
+Accuracy is controlled by $\tau=\beta\|D\|_2/\delta$. When $\tau\ll 1$ (e.g., $\tau\lesssim 0.5$), the error in \eqref{eq:fsfoa_main_bound}--\eqref{eq:ratio_bound} is second order and the stationary points of $\widetilde\rho$ reliably approximate those of $\rho$. In near-degenerate cases (small spectral gap or large $D$), one may constrain $\beta\le\beta_{\max}<1$ or apply a mild shrinkage to the selected $\beta^*$; a one-step refinement that recomputes the leading subspaces at $G(\beta^*)$ further reduces the residual error.
+
+\paragraph{Interpretation.}
+The numerator in \eqref{eq:fsfoa_ratio} measures the energy that would be \emph{discarded} by rank-$r$ truncation (tail) when measured in the fixed orthogonal complement of the leading subspaces of $S$; the denominator measures the \emph{total} energy. The quadratic form \eqref{eq:stationary_quadratic} encodes the balance between tail alignment $(a,b,c)$ and total alignment $(A,B,C)$, yielding a closed-form, one-dimensional selection of $\beta$ (hence $\alpha$) that minimizes the truncation ratio to first order.
+
+
+
+\newpage
+\subsection{Quantitative Results}
+\input{tables/table_27b}
+\input{tables/table_38b}
+We have supplemented detailed experimental results on different compression ratios for LLama-2 and LLama-3. As shown in Table~\ref{tab:27b} and Table~\ref{tab:38b}, our method consistently achieves superior results across different compression ratios. Especially under extreme compression ratio conditions, such as Llama3-8B at a compression ratio of 0.8, our method outperforms the SVD-LLM method by nearly two orders of magnitude on the Perplexity metric.
+
+
+\newpage
+\subsection{Visualization of Self-Adaptation Beta}
+To clarify the impact of different beta coefficients on the low-rank property of the optimization objective in Section~\ref{sec:cealc}, we visualized the compression of the k-proj Linear layer of the 14th layer of LLama3-8B. As shown in Figure~\ref{fig:different beta ratio}, beta affects the low-rank property of the optimization objective. The difference between the most suitable beta and the worst beta within the range of [0,1] is significant. When beta = 0.95, as shown in the first subfigure, the proportion  of discarded spectral energy is 7\%, while when beta = 0.4, only 4.7\% of the spectral energy is lost.
+\input{figs/fig_beta_ratio}
+
+We visualized in Figure~\ref{fig:optiminal beta} the Self-Adaptation beta coefficients of the odd k-proj layers of the LLama3-8B model under the condition of a compression ratio of 0.4. As can be observed from the figure, in the shallow layers of the network, beta tends to be small. As the number of layers deepens, the optimal beta continuously increases. In the last few layers, a downward trend appears.
+\input{figs/fig_beta_vis}
+
+\input{texs/rebuttal}
+
+
+\newpage
+\subsection{Algorithm}\label{appendix:algorithm}
+\subsection*{Appendix A. Algorithmic Details}
+
+\paragraph{Algorithm~\ref{alg:collect-stats-stream} (CollectSecondOrderStats-Streaming).}
+This routine gathers the per-layer second-order statistics required by SAES-SVD without storing raw activations. For each layer $\ell$, it maintains a running estimate of the covariance $H_\ell = XX^\top$ and the cross-residual term $\Delta_\ell = (X^f - X)X^\top$. The update is fully streaming: existing statistics are reweighted by a factor $\gamma = n_\ell/(n_\ell + m)$ and the current mini-batch is scaled by $\sqrt{2/(n_\ell + m)}$ before accumulation, matching the numerics used in our implementation. Shapes are normalized to $(d_{\text{in}}, N)$ to keep the math consistent across layers. This design avoids caching $X_\ell$ or $X^f_\ell$ in memory, reduces I/O, and remains robust under variable batch sizes.
+
+\paragraph{Algorithm~\ref{alg:saes-svd} (SAES-SVD for a single layer).}
+Given layer weights $W_\ell$ and the statistics $(H_\ell,\Delta_\ell)$, we form the whitener $L_\ell = (H_\ell+\lambda I)^{-1/2}$ and the whitened objective matrix
+\(
+G_\ell(\beta)=W_\ell\big(H_\ell+\beta\,\Delta_\ell\big)L_\ell.
+\)
+If no alignment strength is provided, $\beta$ is selected by Algorithm~\ref{alg:aces-beta}; otherwise we use the given $\alpha$ via $\beta=\alpha/(1+\alpha)$. A single rank-$r$ truncated SVD of $G_\ell(\beta)$ yields factors $A_\ell=\tilde U_\ell\Sigma_\ell^{1/2}$ and $B_\ell=\Sigma_\ell^{1/2}\tilde V_\ell^\top L_\ell$, which reconstruct a low-rank approximation of $W_\ell$ tailored to the cumulative-error–aware objective. The routine uses only one SVD per layer and a Cholesky-based whitener, making it both stable and efficient.
+
+\paragraph{Algorithm~\ref{alg:aces-beta} (ACES\_BetaSelect).}
+This procedure selects the adaptive alignment coefficient $\beta$ without repeated SVDs. We compute a \emph{single} SVD of $S = WHL$ to obtain the rank-$r$ principal subspace, project $(S,D)$ onto the orthogonal complement to get $(S_\perp, D_\perp)$, and then optimize a first-order (fixed-subspace) surrogate. Two objectives are supported: (i) the \emph{ratio} objective, which minimizes the approximate tail/total energy $\widetilde\rho(\beta)=\frac{a+2b\beta+c\beta^2}{A+2B\beta+C\beta^2}$; and (ii) the \emph{energy} objective, which minimizes the tail energy $a+2b\beta+c\beta^2$. Candidate $\beta$ values are obtained in closed form (stationary roots and interval endpoints), then filtered through guardrails: interval clipping $[\beta_{\min},\beta_{\max}]$, a cap $\beta_{\mathrm{cap}}<1$ to prevent over-alignment, and an optional shrink factor $\rho\in(0,1]$ for added stability. The final choice $\beta^\star$ is mapped back to $\alpha^\star=\beta^\star/(1-\beta^\star)$ and passed to Algorithm~\ref{alg:saes-svd}.
+
+\paragraph{Complexity and implementation notes.}
+All three algorithms rely only on matrix multiplications, one Cholesky per layer for whitening, and one rank-$r$ truncated SVD per layer (randomized or Lanczos). No iterative backpropagation or fine-tuning is required. In practice, choosing a small ridge $\lambda$ ensures numerical stability when $H_\ell$ is ill-conditioned; if Cholesky fails, increase $\lambda$. The \texttt{ratio} objective in Algorithm~\ref{alg:aces-beta} is recommended when cross-layer robustness is prioritized; the \texttt{energy} objective is a conservative alternative that further suppresses absolute tail energy.
+\input{texs/algorithm_1}
+
+    
+
+

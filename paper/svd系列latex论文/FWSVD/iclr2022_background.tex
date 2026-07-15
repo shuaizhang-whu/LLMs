@@ -1,0 +1,58 @@
+\section{Background}
+
+\subsection{Model compression with low-rank approximation}
+
+Given a matrix $W \in \R^{N \times M}$, the low-rank approximation is achieved via singular value decomposition (SVD):
+\begin{equation}
+    W \approx US{V^T},
+\label{equ:svd}
+\end{equation}
+where $U \in \R^{N \times r}$, $V \in \R^{M \times r}$, and $k$ is the rank of matrix $W$. $S$ is a diagonal matrix of non-zero singular values $diag(\sigma_1, ,...,\sigma_r)$, where ${\sigma _1} \ge {\sigma _2} \ge  \cdots {\sigma _r} \ge  \cdots {\sigma _k} > 0$. The low-rank approximation with targeted rank $r$ is obtained by setting zeros to  $\sigma_{r+1},...,\sigma_k$.
+
+Given input data $X \in \R^{1 \times N}$, a linear layer in neural networks is represented below with the weight matrix $W \in \R^{N \times M}$ and bias $b \in \R^{1 \times M}$:
+%\begin{align}
+%Z &= XW + b \nonumber\\ 
+% \tag{\ref{equ:linear_svd}{a}} \\
+%\label{linear_svd_a}\\
+% &= (US{V^T})X + b \tag{\ref{equ:linear_svd}{b}} \label{linear_svd_b}\\
+%&= (XUS){V^T} + b \label{equ:linear_svd}
+%\end{align}
+\begin{equation}
+Z = XW + b  \approx (XUS){V^T} + b.
+\label{equ:linear_svd}
+\end{equation}
+
+Factorizing W with Equation (\ref{equ:svd}) leads to Equation (\ref{equ:linear_svd}), which can be implemented with two smaller linear layers: 1) The first layer has $Nr$ parameters without bias. Its weight matrix is $US$. 2) The second layer has $Mr$ parameters plus bias. Its weight matrix and bias are $V$ and $b$, correspondingly. 
+%\begin{enumerate}
+ %\item  The first layer has $Nr$ parameters without bias. Its weight matrix is $US$. 
+ %\item The second layer has $Mr$ parameters plus bias. Its weight matrix and bias are $V$ and $b$, correspondingly. 
+%\end{enumerate}
+The total number of parameters for approximating $W$ is $Nr+Mr$. In the case of full rank matrix and $M=N$, the model size is reduced when $r<0.5N$. For example, if we set $r$ to reserve the largest 30\% singular values, the method will reduce about 40\% of the parameters from $W$. In general, the reduced size will be $NM-(Nr+Mr)$.
+
+Low rank approximation in neural networks has been extensively studied \citep{jaderberg2014speeding,zhang2015accelerating,denton2014exploiting}. In more recent works, SVD is often applied to compress the word embedding layer \citep{chen2018groupreduce, acharya2019online}. \cite{noach2020compressing} applies SVD to the transformer layers, but it does not investigate why SVD gives a very poor result without fine-tuning. Our work explores this issue and provides a weighted version to address it. 
+
+% \yh{Add some related works here}
+
+% This section shows that model compression with low-rank approximation is very easy to implement and does not require any support from the hardware nor the underlying library for matrix computation.
+
+\subsection{Fisher information}
+The Fisher information measures the amount of information that an observable dataset $D$ carries about a model parameter $w$. The computation of its exact form is generally intractable since it requires marginalizing over the space of $D$, which includes data and its labels. 
+% Besides, the size of the information matrix $I$ is k-by-k where k is the number of parameters in a model. Its complexity will become unaffordable with millions of parameters.
+Therefore, most of the previous works estimate its empirical Fisher information:
+\begin{equation}
+    I_w =E\left[\left(\frac{\partial}{{\partial w }} \log p(D|w )\right)^2\right] \approx \frac{1}{|D|}\sum\limits_{i = 1}^{|D|} {\left( {\frac{\partial }{{\partial w }}\gL(d_i;w)} \right)^2}={\hat I_w}.
+    \label{equ:empirical_fisher}
+\end{equation}
+The estimated information $\hat I_w$ accumulates the squared gradients over the training data $d_i \in \mathcal{D}$, where $\gL$ is the target task objective (\eg, cross-entropy for a classification task, or mean squared error for a regression task). This approximation provides a straight intuition: the parameters that change the task objective with a large absolute gradient are important to the target task; therefore, those parameters should be reconstructed better than others in the compression process.
+
+The above estimation of Fisher information computes only the first-order derivatives and has been shown to measure the importance of parameters effectively. \cite{kirkpatrick2017overcoming} and \cite{hua2021hyperparameter} use it to avoid the model catastrophic forgetting in a continual learning scenario.
+\cite{liu2021group} and \cite{molchanov2019importance} use it or a similar variant to help the structured model pruning. However, no previous work has explored its potential in assisting SVD for model compression.
+% Specifically, a parameter with a higher Fisher information value is ``important'' that modifying this parameter will bring significant variance to the loss.
+% Given parameter $w$, its Fisher information can not be calculated directly, as the exact form of $\log p(\mathcal{D}|w )$ is  often intractable. 
+% Instead, empirical Fisher information $\hat{I}_w$
+% is computed through data $d_i \in \mathcal{D}$ drawn from $p(\mathcal{D}|w)$:
+% % \begin{equation}
+% %     \hat{I}_w =\frac{1}{D}\sum\limits_{i = 1}^D {\left( {\frac{\partial }{{\partial w }}\log p({d_i}|w )} \right)} {\left( {\frac{\partial }{{\partial w }}\log p({d_i}|w )} \right)^T}.
+% %     % \label{equ:empirical_fisher}
+% % \end{equation}
+% As can be seen from the Equation (\ref{equ:empirical_fisher}), another good property of Fisher information is that it can be computed from first-order derivatives, and thus friendly for large models such as Transformers.

@@ -1,0 +1,76 @@
+% \section{Related Work}
+% \label{sec:related}
+
+% To our knowledge, \sys is the first system to treat website structure as a speculative execution primitive for accelerating general-purpose web agents. Prior work instead improves agent policies and web-agent benchmarks, accelerates inference or agent execution, or exploits webpage structure for extraction and pruning. We discuss these lines of related work below.
+
+
+% \para{Web agents and benchmarks.}
+% Recent work has rapidly expanded both the scope of LLM-based web agents and the realism of their evaluation environments. Early systems such as WebGPT~\cite{webgpt} and ReAct~\cite{react} established the paradigm of interleaving reasoning with actions over external environments, with subsequent work improving planning, observation representations, grounding, prompting, program synthesis, skill reuse, and benchmark realism~\cite{webagent,mind2web,webshop,webarena,weblinx,webvoyager,gaia,odysseys,webxskill,seeact,agentoccam,molmoweb,browseruse}, alongside interface perception and grounding work that improves how agents observe and act on interfaces~\cite{showui,uground,pixels2uiactions}. The closest antecedent is WebAgent~\cite{webagent}, which pushes execution in a more programmatic direction through planning, understanding, and program synthesis to generate executable scripts for real websites rather than one-step-at-a-time action selection. Its motivation is adjacent to ours, but the core question differs: WebAgent improves the agent policy and execution strategy inside the online loop, whereas \sys asks when that loop can be bypassed altogether through a verified site-structured fast path. More broadly, prior systems strengthen the policy or evaluation setting of the underlying agent but still execute a largely uniform browser-and-LLM loop online; \sys instead targets the execution substrate beneath those agents, speculating away repeated browser and frontier-model use when site structure makes a cheaper path safe.
+
+% \para{Speculation, cascades, and efficient LLM serving.}
+% Another line of work targets efficiency through multi-model routing, token-level speculation, and speculative execution inside agent loops. FrugalGPT~\cite{frugalgpt} learns cascades over models to reduce per-query cost, while most speculation work targets wall-clock latency: speculative decoding accelerates generation by drafting with a smaller model and verifying with a larger one~\cite{speculative_decoding}, and related agent-side techniques add auxiliary drafting, branching, or verification work to shorten response time~\cite{contextbudget,readmorethinkmore,dsp,speculative_actions,speccache}. These methods reduce latency but often by spending extra compute, sometimes substantially increasing monetary cost. \sys shares the intuition that cheap predictions can be validated before paying for a stronger execution path, but applies it at a different granularity and objective: our speculation is over \emph{site-structured fast paths and execution tiers} rather than tokens, cached environment responses, compressed context alone, or next actions inside an unchanged agent loop. We speculate on direct URLs, HTTP-only execution, and schema-constrained extraction, falling back to the full web agent only when verification fails. As a result, \sys reduces latency and monetary cost simultaneously by removing browser work and entire ReAct steps, rather than adding speculative computation in front of the same underlying execution.
+
+% \para{Wrapper induction and web extraction.}
+% \sys also relates to classical wrapper induction for semi-structured web pages, which exploits the regularity of site templates to extract data reliably and efficiently~\cite{kushmerick2000wrapper}. Modern web-agent work revisits similar questions through HTML-specific modeling, structured DOM reasoning, DOM pruning, region-level observation abstractions, and explicit executable skill artifacts~\cite{html_understanding,domqnet,prune4web,region4web,contractskill}. \sys operates one level earlier: instead of compressing the page after the agent reaches it, it uses site structure to predict when the browser and much of the trajectory can be skipped entirely. This literature shares our core observation that purpose-built websites expose stable structure across many pages, but our setting is broader in two ways. First, we use site structure not only for extraction or DOM reduction but also for URL synthesis, retrieval-mode selection, and runtime verification. Second, wrapper-, abstraction-, and pruning-based systems were not designed to solve the full fast-path routing problem for general-purpose web agents: they do not address how to apply a speculative fast path aggressively enough to save browser and model cost while preserving end-to-end accuracy when the fast path is wrong. \sys thus uses wrapper-like structure as a speculative fast path rather than the only execution mode.
+\section{Related Work}
+\label{sec:related}
+
+To our knowledge, \sys is the first system to treat website
+structure as a speculative execution primitive for accelerating
+web agents. Prior work instead improves agent
+policies and benchmarks, accelerates inference and execution, or
+exploits webpage structure for extraction and compression.
+
+\para{Web agents and benchmarks.}
+Recent work has rapidly expanded the capabilities of LLM-based
+web agents and the realism of their evaluation environments.
+Early systems such as WebGPT~\cite{webgpt} and
+ReAct~\cite{react} established the paradigm of interleaving
+reasoning with actions over external environments, with later
+work improving planning, grounding, prompting, observation
+representations, skill reuse, program synthesis, and benchmark
+realism~\cite{webagent,mind2web,webshop,webarena,weblinx,webvoyager,gaia,odysseys,webxskill,seeact,agentoccam,molmoweb,browseruse},
+alongside interface grounding and perception
+work~\cite{showui,uground,pixels2uiactions}. The closest
+antecedent is WebAgent~\cite{webagent}, which synthesizes
+executable programs for websites.
+Its motivation is adjacent to ours, but the core question
+differs: WebAgent improves the policy operating inside the online
+loop, whereas \sys asks when that loop can be bypassed entirely
+through verified site-structured fast paths. More broadly, prior
+systems strengthen the underlying agent but still execute a
+mostly uniform browser-and-LLM loop online; \sys instead targets
+the execution substrate itself, speculating away browser
+interaction and frontier-model use when site structure makes a
+cheaper path safe.
+
+\para{Speculation and efficient inference.}
+Another line of work targets efficiency through model cascades,
+routing, and speculative execution. FrugalGPT~\cite{frugalgpt}
+learns cascades over models to reduce cost, while speculative
+decoding accelerates generation by drafting with a smaller model
+and verifying with a larger one~\cite{speculative_decoding}.
+Related approaches reduce latency through auxiliary drafting,
+branching, caching, or verification
+work~\cite{contextbudget,readmorethinkmore,dsp,speculative_actions,speccache}.
+These methods operate primarily at the level of tokens, context,
+or next-action prediction within an otherwise unchanged agent
+loop. \sys instead speculates over \emph{site-structured
+execution paths}: direct URLs, HTTP-only retrieval, and
+schema-constrained extraction. Rather than adding speculative
+computation ahead of the same browser trajectory, \sys removes
+browser interaction and entire ReAct steps whenever verification
+accepts the fast path.
+
+\para{Wrapper induction and web extraction.}
+\sys also relates to classical wrapper induction for
+semi-structured webpages~\cite{kushmerick2000wrapper} and modern
+work on HTML understanding, DOM reasoning, pruning, and
+region-level abstractions~\cite{html_understanding,domqnet,prune4web,region4web,contractskill}.
+These systems exploit recurring webpage structure for extraction
+or observation compression \emph{after} the agent reaches the page.
+\sys operates one level earlier: it uses site structure not only
+for extraction, but also for URL synthesis, retrieval-mode
+selection, speculative execution, and runtime verification. In
+this sense, wrapper-like structure becomes a verified fast path
+rather than the sole execution mode.

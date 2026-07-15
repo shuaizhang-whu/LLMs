@@ -1,0 +1,35 @@
+# Read more about SSH config files: https://linux.die.net/man/5/ssh_config
+Host A40
+  HostName 10.11.12.8
+  User zhangs
+  IdentityFile "C:/Users/yh/.ssh/id_rsa_A40"
+  IdentitiesOnly yes
+  # 本地代理端口转到远端：远端访问 127.0.0.1:7897 == 走你本机 7897 (Clash Verge)
+  RemoteForward 7897 127.0.0.1:7897
+  RemoteForward 7898 127.0.0.1:7898
+  # 保活，降低“经常中断”，每隔 30 秒向服务器发送一个"心跳包"，连续发送6心跳包都没收到服务器回应，才认为连接断，既在应用层说"我在"，也在网络层说"我在"
+  ServerAliveInterval 30
+  ServerAliveCountMax 6
+  TCPKeepAlive yes
+  # 推荐加：避免连接复用在某些网络下更容易挂
+  ControlMaster no
+
+
+Host lab-3090
+  HostName 172.28.6.61
+  User zhangshuai
+  IdentityFile "C:/Users/yh/.ssh/id_rsa"
+
+
+Host uranus-3090
+  HostName 10.254.29.38
+  User zhangs
+  ProxyJump A40
+  IdentityFile "C:/Users/yh/.ssh/id_rsa_A40"
+  IdentitiesOnly yes
+  RemoteForward 7897 127.0.0.1:7897
+  ExitOnForwardFailure yes
+  ServerAliveInterval 30
+  ServerAliveCountMax 6
+  TCPKeepAlive yes
+  ControlMaster no

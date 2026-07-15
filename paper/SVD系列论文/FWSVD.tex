@@ -1,0 +1,600 @@
+
+\documentclass{article} % For LaTeX2e
+\usepackage{iclr2022_conference,times}
+\usepackage{authblk}
+
+% Optional math commands from https://github.com/goodfeli/dlbook_notation.
+\input{math_commands.tex}
+
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{graphicx}
+
+\usepackage{booktabs}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{multirow,array}
+
+\usepackage{appendix}
+% \usepackage{arydshln}
+
+\makeatletter
+\renewcommand\AB@affilsepx{, \protect\Affilfont}
+\makeatother
+\title{Language model compression with weighted low-rank factorization} 
+
+% Authors must not appear in the submitted version. They should be hidden
+% as long as the \iclrfinalcopy macro remains commented out below.
+% Non-anonymous submissions will be rejected without review.
+\iclrfinalcopy
+\author[1]{Yen-Chang Hsu$^*$}
+%\newcommand\CoAuthorMark{\footnotemark[\arabic{footnote}]} % get the current value
+\author[1]{Ting Hua$^*$}
+\author[2]{Sung-En Chang}
+\author[1]{ Qian Lou}
+\author[1]{Yilin Shen}
+\author[1]{Hongxia Jin}
+\affil[1]{Samsung Research America }
+\affil[2]{Northeastern University }
+\affil[ ]{ \par  \{\tt yenchang.hsu, ting.hua, qian.lou, yilin.shen, hongxia.jin\}@samsung.com,\{\tt chang.sun\}@northeastern.edu}
+ 
+
+
+\newcommand{\fix}{\marginpar{FIX}}
+\newcommand{\new}{\marginpar{NEW}}
+
+%\iclrfinalcopy % Uncomment for camera-ready version, but NOT for submission.
+
+\newcommand{\etal}{\textit{et al}.}
+\newcommand{\ie}{\textit{i}.\textit{e}.}
+\newcommand{\eg}{\textit{e}.\textit{g}.}
+
+\iffalse
+    \newcommand{\yh}[1]{}
+    \newcommand{\ting}[1]{}
+    \newcommand{\yilin}[1]{}
+    \newcommand{\needcite}[1]{}
+\else
+    \newcommand{\yh}[1]{{\color{green}{(Yen: #1)}}}
+    \newcommand{\ting}[1]{{\color{orange}{(ting: #1)}}}
+    \newcommand{\yilin}[1]{{\color{red}{(yilin: #1)}}}
+    \newcommand{\needcite}{{\color{blue}{(cite)}}}
+\fi
+
+\begin{document}
+\maketitle
+
+\def\thefootnote{*}\footnotetext{These authors contributed equally to this work.}\def\thefootnote{\arabic{footnote}}
+
+\begin{abstract}
+Factorizing a large matrix into small matrices is a popular strategy for model compression. Singular value decomposition (SVD) plays a vital role in this compression strategy, approximating a learned matrix with fewer parameters. However, SVD minimizes the squared error toward reconstructing the original matrix without gauging the importance of the parameters, potentially giving a larger reconstruction error for those who affect the task accuracy more. In other words, the optimization objective of SVD is not aligned with the trained model's task accuracy. We analyze this previously unexplored problem, make observations, and address it by introducing Fisher information to weigh the importance of parameters affecting the model prediction. This idea leads to our method: Fisher-Weighted SVD (FWSVD). Although the factorized matrices from our approach do not result in smaller reconstruction errors, we find that our resulting task accuracy is much closer to the original model's performance. We perform analysis with the transformer-based language models, showing our weighted SVD largely alleviates the mismatched optimization objectives and can maintain model performance with a higher compression rate. Our method can directly compress a task-specific model while achieving better performance than other compact model strategies requiring expensive model pre-training.
+Moreover, the evaluation of compressing an already compact model shows our method can further reduce 9\% to 30\% parameters with an insignificant impact on task accuracy.
+% \yilin{Extensive experiments show that our non-pretraining method can achieve comparable compression rate and even better performance with methods that require an expensive generic model pre-training, which reduced model compression computation by xxx times.}
+\end{abstract}
+
+\input{iclr2022_intro}
+\section{Introduction}
+
+Language models built with transformers \citep{devlin2018bert} have attained extensive success in natural language tasks such as language modeling \citep{radford2018improving}, text classification \citep{wang2018glue}, question answering \citep{rajpurkar2016squad}, and summarization \citep{liu2019fine}. The success is achieved by fine-tuning a big transformer model pre-trained with a large corpus. The target task for fine-tuning may only focus on a restricted scenario such as sentiment analysis \citep{socher2013recursive} and multiple-choice question inference \citep{zellers2018swag}. Having a big transformer model is often overkill for the target task and prohibits the model deployment to resource-constrained hardware. Therefore, language model compression raises immense interest.
+
+The popular strategy creates a compact model from scratch \citep{jiao2019tinybert} or a subset of the big model's layers \citep{sun2019patient,sanh2019distilbert}, then pre-trains with a large corpus and distills knowledge from the big model. This process is called generic pre-training \citep{wang2020minilm,sun2019patient,sanh2019distilbert} and is necessary for a compact model to achieve good performance on the target tasks. However, the generic pre-training could still cost considerable computational resources. For example, it takes 384 NVIDIA V100 GPU hours to get the pre-trained TinyBERT \citep{jiao2019tinybert} on the Wiki corpus dataset. So it may not be affordable for everyone who wants to create a compact model. In contrast, another line of strategy, specifically low-rank factorization \citep{golub1971singular,noach2020compressing}, can potentially reduce a big model's parameters without the generic pre-training. Since the factorization aims to approximate the learned model parameters, the method has the nature of directly inheriting the knowledge of the big trained model. 
+
+However, approximating the learned weights with standard factorization often loses most of the task performance. This work investigates this issue with the most popular strategy, which uses singular value decomposition (SVD) to compress the learned model weights. With SVD, the learned matrix is factorized into three matrices ($U$, $S$, $V$). The portion associated with small singular values will be truncated to produce a smaller version of factorized matrices. The multiplication of these smaller matrices will approximate the original one with fewer total parameters to achieve the model compression. In other words, SVD minimizes the reconstruction error with fewer parameters as its objective. However, this objective does not necessarily correlate to the ultimate goal of keeping task performance. Specifically, the SVD algorithm is biased to reconstruct the parameters associated with large singular values. As a result, the parameters mainly reconstructed by the ranks with small singular values will become the victim in the compression process. Are these victimized parameters less critical to achieving a good task performance? We argue that this is not true, and the optimization objective of SVD is not properly aligned with the target task objective. 
+This paper is the first work to provide an empirical analysis of this issue, proposing a novel weighted SVD to mitigate it. 
+
+Our weighted SVD addresses the above issue by assigning importance scores to the parameters. This score has to correlate to how much the task performance is affected by the parameter change. The Fisher information nicely fits into this purpose \citep{Pascanu14revisitingnatural}. Besides, the calculation of Fisher information is usually simplified to accumulating a parameter's squared gradient over the training dataset based on its task objective (\eg cross-entropy, regression error, etc.), conveniently providing the importance of each parameter in a model. Then we modify the optimization objective of factorization (\ie, reconstruction error) by multiplying it with Fisher information, providing a new objective that jointly considers matrix reconstruction error and the target task objective. 
+% Figure \ref{fig:wsvd} illustrates the above concept, and we give a more formal description of the process in the later sections.
+
+In summary, this work makes the following contributions: (1) we analyze the issue of mismatched objectives between factorization and the target task for model compression; (2) we propose a novel compression strategy with the SVD weighted by the Fisher information; (3) we perform extensive analysis on varied language tasks, showing our Fisher-weighted SVD can compress an already compact model, and it can achieve comparable compression rate and performance with methods that require an expensive generic model pre-training.
+
+\input{iclr2022_background}
+\section{Background}
+
+\subsection{Model compression with low-rank approximation}
+
+Given a matrix $W \in \R^{N \times M}$, the low-rank approximation is achieved via singular value decomposition (SVD):
+\begin{equation}
+    W \approx US{V^T},
+\label{equ:svd}
+\end{equation}
+where $U \in \R^{N \times r}$, $V \in \R^{M \times r}$, and $k$ is the rank of matrix $W$. $S$ is a diagonal matrix of non-zero singular values $diag(\sigma_1, ,...,\sigma_r)$, where ${\sigma _1} \ge {\sigma _2} \ge  \cdots {\sigma _r} \ge  \cdots {\sigma _k} > 0$. The low-rank approximation with targeted rank $r$ is obtained by setting zeros to  $\sigma_{r+1},...,\sigma_k$.
+
+Given input data $X \in \R^{1 \times N}$, a linear layer in neural networks is represented below with the weight matrix $W \in \R^{N \times M}$ and bias $b \in \R^{1 \times M}$:
+%\begin{align}
+%Z &= XW + b \nonumber\\ 
+% \tag{\ref{equ:linear_svd}{a}} \\
+%\label{linear_svd_a}\\
+% &= (US{V^T})X + b \tag{\ref{equ:linear_svd}{b}} \label{linear_svd_b}\\
+%&= (XUS){V^T} + b \label{equ:linear_svd}
+%\end{align}
+\begin{equation}
+Z = XW + b  \approx (XUS){V^T} + b.
+\label{equ:linear_svd}
+\end{equation}
+
+Factorizing W with Equation (\ref{equ:svd}) leads to Equation (\ref{equ:linear_svd}), which can be implemented with two smaller linear layers: 1) The first layer has $Nr$ parameters without bias. Its weight matrix is $US$. 2) The second layer has $Mr$ parameters plus bias. Its weight matrix and bias are $V$ and $b$, correspondingly. 
+%\begin{enumerate}
+ %\item  The first layer has $Nr$ parameters without bias. Its weight matrix is $US$. 
+ %\item The second layer has $Mr$ parameters plus bias. Its weight matrix and bias are $V$ and $b$, correspondingly. 
+%\end{enumerate}
+The total number of parameters for approximating $W$ is $Nr+Mr$. In the case of full rank matrix and $M=N$, the model size is reduced when $r<0.5N$. For example, if we set $r$ to reserve the largest 30\% singular values, the method will reduce about 40\% of the parameters from $W$. In general, the reduced size will be $NM-(Nr+Mr)$.
+
+Low rank approximation in neural networks has been extensively studied \citep{jaderberg2014speeding,zhang2015accelerating,denton2014exploiting}. In more recent works, SVD is often applied to compress the word embedding layer \citep{chen2018groupreduce, acharya2019online}. \cite{noach2020compressing} applies SVD to the transformer layers, but it does not investigate why SVD gives a very poor result without fine-tuning. Our work explores this issue and provides a weighted version to address it. 
+
+% \yh{Add some related works here}
+
+% This section shows that model compression with low-rank approximation is very easy to implement and does not require any support from the hardware nor the underlying library for matrix computation.
+
+\subsection{Fisher information}
+The Fisher information measures the amount of information that an observable dataset $D$ carries about a model parameter $w$. The computation of its exact form is generally intractable since it requires marginalizing over the space of $D$, which includes data and its labels. 
+% Besides, the size of the information matrix $I$ is k-by-k where k is the number of parameters in a model. Its complexity will become unaffordable with millions of parameters.
+Therefore, most of the previous works estimate its empirical Fisher information:
+\begin{equation}
+    I_w =E\left[\left(\frac{\partial}{{\partial w }} \log p(D|w )\right)^2\right] \approx \frac{1}{|D|}\sum\limits_{i = 1}^{|D|} {\left( {\frac{\partial }{{\partial w }}\gL(d_i;w)} \right)^2}={\hat I_w}.
+    \label{equ:empirical_fisher}
+\end{equation}
+The estimated information $\hat I_w$ accumulates the squared gradients over the training data $d_i \in \mathcal{D}$, where $\gL$ is the target task objective (\eg, cross-entropy for a classification task, or mean squared error for a regression task). This approximation provides a straight intuition: the parameters that change the task objective with a large absolute gradient are important to the target task; therefore, those parameters should be reconstructed better than others in the compression process.
+
+The above estimation of Fisher information computes only the first-order derivatives and has been shown to measure the importance of parameters effectively. \cite{kirkpatrick2017overcoming} and \cite{hua2021hyperparameter} use it to avoid the model catastrophic forgetting in a continual learning scenario.
+\cite{liu2021group} and \cite{molchanov2019importance} use it or a similar variant to help the structured model pruning. However, no previous work has explored its potential in assisting SVD for model compression.
+% Specifically, a parameter with a higher Fisher information value is ``important'' that modifying this parameter will bring significant variance to the loss.
+% Given parameter $w$, its Fisher information can not be calculated directly, as the exact form of $\log p(\mathcal{D}|w )$ is  often intractable. 
+% Instead, empirical Fisher information $\hat{I}_w$
+% is computed through data $d_i \in \mathcal{D}$ drawn from $p(\mathcal{D}|w)$:
+% % \begin{equation}
+% %     \hat{I}_w =\frac{1}{D}\sum\limits_{i = 1}^D {\left( {\frac{\partial }{{\partial w }}\log p({d_i}|w )} \right)} {\left( {\frac{\partial }{{\partial w }}\log p({d_i}|w )} \right)^T}.
+% %     % \label{equ:empirical_fisher}
+% % \end{equation}
+% As can be seen from the Equation (\ref{equ:empirical_fisher}), another good property of Fisher information is that it can be computed from first-order derivatives, and thus friendly for large models such as Transformers.
+
+\input{iclr2022_method}
+\section{Model compression with SVD may lose performance quickly}\label{sec:mismatch}
+
+\begin{figure}[b] %[htbp]
+   \centering
+   \includegraphics[clip, trim=0cm 1.5cm 0cm 0.8cm,width=0.55\textwidth]{figures/method_fig1_drop.pdf}
+       \caption{The grouped truncation and its performance. The truncation of the 10th group, which has the smallest singular values resulting from SVD, is expected to have a minor performance impact (\ie, follow the ideal trend of red dashed line), but this may not be true in actual cases (blue bar).}
+       \label{fig:method_rank}
+\end{figure}
+
+The singular values in $S$ implicitly give an importance score for a group of parameters. Since the small singular values will be truncated first, those parameters affected by the truncation are expected to be not important for the task performance. We verify the above assumption with a brute force attack: truncate one singular value at a time, then reconstruct the matrix, put it into a model, evaluate and get its performance. Ideally, we hope to see less performance drop when we truncate the smaller singular values. This process can be written as having the reconstructed model weights $\bar W_i$ with the $i$-th singular value be truncated:
+\begin{equation}
+    \bar W_i = {u_1}{\sigma _1}v_1^T + ... + {u_{i-1}}{\sigma _{i-1}}v_{i-1}^T + {u_{i+1}}{\sigma _{i+1}}v_{i+1}^T + ... + {u_k}{\sigma _k}v_k^T,
+    \label{equ:splitting}
+\end{equation}
+where $u_i$ and $v_i$ are the $i$-th column in $U$ and $V$, correspondingly.
+
+Applying this brute force attack to test a deep neural network is not straightforward since a model can have hundreds of linear layers. Therefore, we truncate a group of singular values together instead of only one. Specifically, we split the singular values of a layer into 10 groups sorted by their values. The 1st group has the top 10\% singular values, while the 10th group contains the smallest 10\% values. When we truncate a specific group, \eg, 5th group, the 5th group of all the layers in a model are truncated together. In other words, we observe the summed impact in a rank group. This results in a smoothed trend for the observation.
+
+Figure \ref{fig:method_rank} plots the result of truncating the 10 groups separately in a standard 12-layer BERT model \citep{devlin2018bert} trained for STS-B task \citep{cer-etal-2017-semeval}. The red dashed line shows an ideal trend which has a smaller performance drop with the tail groups. The blue bars show the actual performance drop. The 10th group surprisingly caused a performance drop as large as the 2nd group. This means the parameters associated with the 10th group are as important as the 2nd group. However, the magnitude of singular value does not reflect this importance, causing a model to lose its performance quickly even when truncating only a small portion.
+
+% As the singular values are in descending order ${\sigma _1} \ge {\sigma _2} \ge  \cdots {\sigma _k} > 0$, the splitting of Equation \ref{equ:splitting} generates rank-pieces ${u_i}{\sigma _i}v_i^T$ of matrix $W$ in order of importance. 
+% When conducting low-rank approximation, SVD will first remove the tail rank-pieces, in order to minimize the reconstruction errors.
+% Here is a hidden assumption that: lower the reconstruction errors will always reduce the 
+% performance drop compared to the original matrix.
+
+% Is that really the case?
+% To evaluate this assumption, we split the rank-pieces of SVD into 10 groups, remove one group each time, and calculate the performance drop for each removal correspondingly.
+% The results are plotted in Figure \ref{fig:method_rank}.
+% Ideally, for any $i<j$, removing rank-piece ${u_i}{\sigma _i}v_i^T$ will cause more performance drop than rank-piece ${u_j}{\sigma _j}v_j^T$, which corresponds to the red line in the figure. 
+% However, as shown in the figure,  the tail group of SVD causes more performance drop than most of its preceders.
+
+
+\begin{figure}%[!b]
+  \centering
+  \includegraphics[clip, trim=0cm 9.5cm 0cm 0cm, width=0.75\textwidth]{figures/fig_svd.pdf} 
+  \caption{The dilemma of vanilla SVD. Some parameters (the overlap of meshed orange and green) that significantly impact the task performance may not be reconstructed well by SVD because their associated singular values are small and truncated. 
+%   Note the reconstruction ($W'$) is shown only for demonstration and is not used to replace the original weights. 
+%   Note all the rectangles are 2-D matrices, but we paint only a block for brevity.
+  }\label{fig:svd}
+\end{figure} 
+
+\begin{figure}%[!b]
+  \centering
+  \includegraphics[clip, trim=0cm 9.5cm 3.5cm 0cm, width=0.66\textwidth]{figures/fig_wsvd.pdf} 
+  \caption{The schematic effect of our Fisher-Weighted SVD (FWSVD). $\hat I$ is a diagonal matrix containing estimated Fisher information of parameters. By involving Fisher information to weigh the importance, our method reduces the overlap between meshed orange and green, making less performance drop after truncation. 
+%   Details are in Section \ref{sec:wsvd}.
+  }\label{fig:wsvd}
+\end{figure} 
+
+\section{Fisher-weighted low-rank approximation}\label{sec:wsvd}
+
+The issue in Section \ref{sec:mismatch} has an intuitive cause: the optimization objective of SVD does not consider each parameter's impact on the task performance. This issue is illustrated in Figure \ref{fig:svd}, and we address it by introducing the Fisher information into SVD's optimization objective, described as below.
+
+In the generic low-rank approximation, its objective minimizes $||W-AB||_2$. SVD can solve this problem efficiently by having $A=US$ and $B=V^T$. Since we can obtain the importance of each element $W_{ij}$ in $W$, we weigh the individual reconstruction error by multiplying with the estimated Fisher information $\hat {I}_{W_{ij}}$:
+% The vanilla SVD is designed to factorize a regular matrix. 
+% However, each parameter in the weight matrix of the Transformer has different importance over the loss. 
+% In the ideal case, these ``important'' parameters should be remained ``unchanged'' after the compressing of Transformers. 
+% To achieve this goal, we replace the original SVD with a novel low-rank approximation weighted by Fisher information. 
+% The key idea is to compute the Fisher information for each weight parameter in a trained Transformer and assign this Fisher information value as the weight for low-rank approximation. 
+% In this way, the construction process of low-rank approximation will penalize more for modifying ``sensitive'' parameters.
+% Give $I(w)$, can be approximated by minimizing
+\begin{equation}
+\min\limits_{A,B} \sum\limits_{i,j} \hat {I}_{W_{ij}} (W_{ij} - (AB)_{ij})^2.
+\label{equ:weight_svd}
+\end{equation}
+% where $U \in \R^{M \times l}$, $V \in \R^{N \times l}$, and $l$ is the targeted rank.
+% ${\hat I}_{{A_{i,j}}}$ is the empirical Fisher information of element $A_{i,j}$.
+
+In general, weighted SVD does not have a closed-form solution \citep{srebro2003weighted} when each element has its weight. To make our method easy to deploy and analyze, we propose a simplification by making the same row of the $W$ matrix to share the same importance. The importance for the row $i$ is defined to be the summation of the row, \ie, $\hat {I}_{W_i}=\sum\limits_{j} \hat {I}_{W_{ij}}$.
+
+% To simplify the problem, we assume that the elements in the same row of the matrix share the same weight. 
+Define the diagonal matrix $\hat I= diag(\sqrt{\hat I_{W_1}},...,\sqrt{\hat I_{W_N}})$, then the optimization problem of Equation (\ref{equ:weight_svd}) can be written as:
+\begin{equation}
+\mathop {\min }\limits_{A,B} ||\hat IW - \hat IAB|{|_2}.
+\label{equ:weight_svd_diag}
+\end{equation}
+Equation \ref{equ:weight_svd_diag} can be solved by the standard SVD on $\hat IW$. We use the notation $svd(\hat IW)=(U^*, S^*, V^*)$, then the solution of Equation (\ref{equ:weight_svd_diag}) will be $A={\hat I}^{ - 1} U^* S^*$, and $B=V^{*T}$. In other words, the solution is the result of removing the information $\hat I$ from the factorized matrices. Figure \ref{fig:wsvd} illustrates this process and its schematic effect of reducing the overlap between important parameters and poorly reconstructed parameters. We will measure this overlap with the performance drop analysis of Section \ref{sec:mismatch}. Lastly, to compress $W$, we will have $A={\hat I}^{ - 1} U_r^* S_r^*$, and $B=V_r^{*T}$, where $r$ denotes the truncated $U^*$, $S^*$, and $V^*$ with reserving only $r$ ranks.  
+
+We call the above method FWSVD in this paper. One thing to highlight is that since we share the same optimization process with the standard SVD, any advantage we observed will be the result of a direct contribution from the $\hat I$ in Equation (\ref{equ:weight_svd_diag}). 
+% Moreover, the row-based importance $\hat I$ has an intuitive illustration in Figures \ref{fig:wsvd}, providing a tool to analyze the mismatch between the objectives of low-rank factorization and target task performance.
+
+% We can solve (\ref{equ:weight_svd_diag}) by conducting low-rank approximation of $\hat IA$.
+% Assume $(\hat U, \hat S, \hat V)$ is the SVD low-rank solution of $\hat IA$ that $\hat IA \approx \hat U\hat S{{\hat V}^T}$, then the solution of Eqaution (\ref{equ:weight_svd_diag}) will be $U^*={{\hat I}^{ - 1}}\hat U\hat S$, and $V^*=\hat V$.
+
+\input{iclr2022_exp}
+\section{Experiments}
+%each part
+%connections btw parts
+
+
+
+\subsection{The paths to a compressed language model}\label{sec:3path}
+
+% Unlike the previous section which describes \textit{how} to compress, this section describes \textit{when} to compress. 
+
+This section describes how we obtain a compressed model under the popular pre-training schemes of language models. Figure \ref{fig:scheme} illustrates three paths that we examined for creating compressed language models. All the paths start from retraining a large transformer-based model pre-trained with a large language corpus in a self-supervised way, called the generic pre-training ($L \rightarrow L^g$). 
+
+The path-1 ($S \rightarrow S^g \rightarrow S^t$) is a popular scheme that creates a small model first, then performs the generic distillation for the small model to learn the knowledge of the large model. The resulting small generic model $S^g$ will be fine-tuned with the target task dataset to obtain the task-specific model $S^t$. The representative works of path-1 include DistilBERT \citep{sanh2019distilbert}, TinyBERT \citep{jiao2019tinybert}, MobileBERT \citep{sun2020mobilebert}, and MiniLM v1/v2 \citep{wang2020minilm,wang2020minilmv2}. Some previous methods may include task-specific distillation ($L^t \rightarrow S^t$) and data augmentation \citep{jiao2019tinybert}, but we exclude those from the scheme (and all the experiments in this paper) to make a fair and clean comparison across methods. The task-specific distillation and data augmentation are orthogonal to all the methods and can be jointly applied with low-rank factorization to make further improvements.
+
+The path-2 ($L^g \rightarrow L^t \rightarrow L^{tf}$) avoids the costly generic pre-training, directly compresses the task-specific model with factorization and task-specific fine-tuning (optional). Our analysis for the mismatched objectives phenomenon is based on this path. We also compare the models from path-1 and path-2, showing that path-2 can generate a model with a comparable performance under the same compression rate. Although path-2 requires much less training than path-1 (no generic pre-training for the compressed model).
+
+The path-3 ($S^t \rightarrow S^{tf}$) is a challenging setting that aims to compress an already compact model. This setting examines whether FWSVD can further improve the compression rate on models obtained by path-1. Our experiments show the answer is yes.
+
+With the three compression paths, we make four examinations as follows. Section \ref{sec:path1_vs_path2}: the comparison of path-1 versus path-2; Section \ref{sec:path3}: the compression of an already compact model (path-3); Section \ref{sec:wsvd_vs_svd}: the detailed comparison between FWSVD and vanilla SVD; Section \ref{sec:mismatch_obj}: the empirical evidence for the schematic effects illustrated in Figures \ref{fig:svd} and \ref{fig:wsvd}.
+
+\begin{figure}%[htbp]
+  \centering
+  \includegraphics[clip, trim=0cm 7.2cm 0cm 0.3cm, width=0.9\textwidth]{figures/scheme.pdf} 
+  \caption{The three paths to create compressed language models are examined in this paper.
+  $L/S$ denote the initial models, $L^g/S^g$ are models after generic pre-training,
+  $L^t/S^t$ correspond to task-specific models,
+  and $L^{tf}/S^{tf}$ are factorized task-specific models. Detailed elaborations are in Sections \ref{sec:3path} nad \ref{sec:3path_implement}
+  }\label{fig:scheme}
+\end{figure} 
+
+\subsection{Experiment setup}
+
+\subsubsection{Language tasks and datasets}
+
+We evaluate the methods of all three paths in Figure \ref{fig:scheme} on the General Language
+Understanding Evaluation (GLUE) benchmark \citep{wang2019glue} and a token classification task.
+We include 2 single sentence tasks: CoLA \citep{warstadt2018neural} measured in Matthew's correlation, SST2 \citep{socher2013recursive} measured in classification accuracy; 3 sentence similarity tasks: MRPC \citep{dolan2005microsoft} measured in F-1 score, STS-B \citep{cer-etal-2017-semeval} measured in Pearson-Spearman correlation, QQP \citep{chen2018quora} measured in F-1 score; and 3 natural
+language inference tasks: MNLI \citep{williams2018broad} measured in classification accuracy with the average of the matched and mismatched subsets, QNLI \citep{rajpurkar2016squad} measured in accuracy. The token classification task we used is the named entity recognition (NER) on the CoNLL-2003 dataset \citep{sang2003introduction}. In summary, our evaluation includes 8 different natural language tasks.
+
+% We compare our method with a few state-of-the-art pre-BERT model on the General Language Understanding and Evaluation (GLUE) \needcite  benchmark and NER task CoNLL-03. 
+% Details of the datasets are shown in Appendix \needcite
+\input{tabs_figs/tab1.tex}
+
+\begin{table}%[!tbp]
+\centering
+\caption{Results of CoNLL and GLUE benchmark. G-Avg means the average of GLUE tasks, A-Avg denotes the average of all tasks, including CoNLL.
+Our FWSVD+fine-tuning is the best performer in terms of both average scores,  without the expensive generic pre-training required by path-1 models (e.g., DistillBERT costs 720 V100 GPU hours for training). 
+}
+\label{tab:GLUE}
+\renewcommand\tabcolsep{2.0pt}
+\resizebox{1\textwidth}{!}{
+\begin{tabular}
+%{p{2.3cm}|c|p{0.7cm}p{0.7cm}p{0.7cm}p{0.7cm}p{0.7cm}p{0.7cm}p{0.7cm}p{0.7cm}p{0.7cm}|p{0.7cm}}
+{l|l|c|c|ccccccc|c|c}
+\toprule
+&Model& \#Param &  CoNLL &  CoLA &  MNLI &  MRPC &  QNLI &  QQP  &  SST-2 &  STS-B &  G-Avg & A-Avg \\ \midrule
+Original&BERT$_{base}$ & 109.5M & 94.1 & 56.2 & 84.7 & 87.4 & 91.3 & 87.8 & 93.0 & 88.5 & 84.1 & 85.4 \\ \midrule
+\multirow{ 2}{*}{Path-1}&DistilBERT & 67.0M & 93.2 & 49.8 & 82.2 & 88.7 & 89.3 & 86.7 & 90.4 & 86.1 & 81.9 & 83.3 \\
+&MiniLMv2 & 67.0M & 92.2 & 43.3 & 84.0 & 89.1 & 90.6 & 86.7 & 91.4 & 88.1 & 81.9 & 83.2  \\ \midrule
+\multirow{ 5}{*}{Path-2}&BERT-PKD & 67.0M & $-$ & 45.5 & 81.3 & 85.7 & 88.4 & 88.4 & 91.3 & 86.2 & 81.0 & $-$ \\ 
+&BERT+SVD & 66.5M & 12.0 & 2.7 & 35.6 & 61.4 & 37.2 & 60.0 & 76.7 & 26.8 & 42.9 & 39.0 \\
+&\multicolumn{1}{r|}{+fine-tuning} 
+& 66.5M & 92.4 & 40.5 & 82.8 & 84.1 & 89.6 & 87.3 & 90.9 & 85.7 & 80.1 & 81.6 \\
+&BERT+FWSVD & 66.5M & 49.6 & 13.5 & 52.8 & 81.2 & 52.2 & 65.7 & 82.1 & 68.6 & 59.4 & 58.2 \\
+&\multicolumn{1}{r|}{+fine-tuning} & 66.5M & 93.2 & 49.4 & 83.0 & 88.0 & 89.5 & 87.6 & 91.2 & 87.0 & \textbf{82.2} & \textbf{83.6} \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+
+\subsubsection{Implementation details and the baseline models}\label{sec:3path_implement}
+
+First of all, we use the same training configuration for all the experiments in this paper and avoid any hyperparameter screening to ensure a fair comparison. 
+
+For the SOTA models on path-1 (MiniLMv2 and DistilBERT), we use the pre-trained generic compact models ($S^g$) provided by the original authors as the starting point, then directly fine-tune them with 3 epochs on the target task training data. The fine-tuning is optimized by Adam with learning rate of $2 \times 10^{-5}$ and batch size of 32 on one GPU.
+
+For the methods on path-2 (FWSVD and SVD), we start from the pre-trained generic large model ($L^g$), which is the standard 12-layer BERT model \citep{devlin2018bert}. Then we fine-tune it with the training setting exactly the same as we used for the path-1 models to get the large task-specific models ($L^t$). The last step is applying the low-rank factorization (SVD or FWSVD) followed by another fine-tuning with the same training setting described above. The performance with and without fine-tuning will be both reported.
+We also note that we compress only the linear layers in the transformer blocks by reserving only 33\% of the ranks in this work. The setup intentionally makes a fair comparison to the path-1 methods. In other words, we do not compress the non-transformer modules such as the token embedding. Previous works \citep{chen2018groupreduce} have shown significant success in using low-rank factorization to compress the embedding layer, which occupies 23.4M (21.3\%) parameters in the standard BERT model. Therefore, the results we reported for the path-2 methods still have room for improvement by applying our method to non-transformer modules. Lastly, we add BERT-PKD \citep{sun2019patient} based on its reproduced results \citep{chen2018groupreduce} for comparison. BERT-PKD uses knowledge distillation instead of factorization in the path-2 process.
+
+% \yh{talk about the simplification of row-based importance}
+
+For the path-3 experiments, we use the pre-trained task-specific \textit{compact} models ($S^t$) as the starting point. These pre-trained models have a much smaller size (TinyBERT-STSB, MiniLM-CoNLL, MobileBERT-MNLI) or a better performance (DistilBERT-MRPC) than the models we used in the path-1 and path-2, indicating they may contain denser knowledge in their compact models. Therefore, compressing these models introduces a significant challenge. In order to have better coverage for all tasks, we additionally use ALBERT$_{large}$ and ALBERT$_{base}$ \citep{lan2019albert} as the already compact models to generate all 8 task-specific models ($S^g \rightarrow S^t$). Then follow path-3 to compress the compact models. All the training involved here has the same setting as described in path-1.
+
+Lastly, our implementation and experiments are built on top of the popular HuggingFace Transformers library \citep{wolf-etal-2020-transformers}. All other unspecified training settings use the default configuration of the library. Since no hyperparameter tuning is involved in our experiments, we directly report the results on the dev set of all the datasets, making the numbers convenient to compare and verify.
+
+% \subsubsection{Baselines}
+
+
+
+\subsection{Path-1 versus Path-2}\label{sec:path1_vs_path2}
+%A. BERT+WSVD with finetune (path 2 Vs path 1):
+%A1 2nd best avg GLUE 
+%A2 stable. no obvious drop. DistilBERT good at COLA, poor at RTE; MiniLMv2 good at RTE but bad at COLA.
+Table \ref{tab:GLUE} reports the results of the GLUE benchmark and a NER task. 
+Our FWSVD with fine-tuning achieves an average score of $83.6$, beating all other path-1 and path-2 methods.
+This is a non-trivial accomplishment since FWSVD with fine-tuning does not need the expensive generic pre-training.
+Furthermore, FWSVD has consistent performance retention for all the tasks; it contrasts the path-1 methods, which may have a more considerable variance.
+For example, DistilBERT is good at CoLA but poor at STS-B; oppositely,
+MiniLMv2 is a strong performer at STS-B but is weak with CoLA. 
+In contrast, FWSVD+fine-tuning does not show an obvious shortcoming.
+
+
+\input{tabs_figs/tab2.tex}
+\begin{figure} %[htbp]
+  \begin{subfigure}{.32\textwidth}
+   \centering
+   \includegraphics[clip, trim=0cm 0.5cm 0cm 0.5cm,width=\textwidth]{figures/exp_fig1_COLA.pdf}
+       \caption{COLA}
+       \label{fig:rank:cola}
+       \end{subfigure}
+\begin{subfigure}{.32\textwidth}
+\includegraphics[clip, trim=0cm 0.5cm 0cm 0.5cm,width=\textwidth]{figures/exp_fig1_NER.pdf}
+\centering
+  \caption{NER (CoNLL-2003)}
+   \label{fig:rank:ner}
+\end{subfigure}
+\begin{subfigure}{.32\textwidth}
+\includegraphics[clip, trim=0cm 0.5cm 0cm 0.5cm,width=\textwidth]{figures/exp_fig1_STSB.pdf}
+\centering
+  \caption{STS-B}
+   \label{fig:rank:stsb}
+\end{subfigure}
+\caption{FWSVD versus SVD by varying the ratio of reserved ranks. The model with a rank ratio 1.0 indicates the full-rank reconstruction with the same accuracy as the original model (\ie, the $L^t$ in Figure \ref{fig:scheme}). Note that all the models here do not have fine-tuning after factorization. 
+% \vspace{-0.3cm}
+}
+\label{fig:rank}
+\end{figure}
+
+\input{tabs_figs/compress_albert}
+\begin{table}%[!tbp]
+\centering
+\caption{Results of compressing an already compact model. This table compresses ALBERT \citep{lan2019albert}, which uses the parameter-sharing strategy to create the compact model. FWSVD preserves the performance significantly better than SVD in all 8 tasks, indicating its excellent compatibility in combining the parameter-sharing strategy. This experiment examines the path-3 process.
+}
+\label{tab:GLUE_albert}
+\renewcommand\tabcolsep{2.1pt}
+\resizebox{1\textwidth}{!}{
+\begin{tabular}
+%{p{2.3cm}|c|p{0.7cm}p{0.7cm}p{0.7cm}p{0.7cm}p{0.7cm}p{0.7cm}p{0.7cm}p{0.7cm}p{0.7cm}|p{0.7cm}}
+{l|c|c|ccccccc|c|c}
+\toprule
+Model& \#Param &  CoNLL &  CoLA &  MNLI &  MRPC &  QNLI &  QQP  &  SST-2 &  STS-B &  G-Avg & A-Avg \\ \midrule
+BERT$_{base}$ & 109.5M & 94.1 & 56.2 & 84.7 & 87.4 & 91.3 & 87.8 & 93.0 & 88.5 & 84.1 & 85.4 \\ \midrule
+ALBERT$_{large}$ & 17.7M & 93.5 & 50.9 & 84.3 & 89.9 & 91.7 & 86.7 & 90.7 & 90.1 & 83.5 & 84.7 \\ \cmidrule{2-12}
+\hspace{0.1 in} w SVD & 15.2M (-14\%) & 0.3 & 0.0 & 41.1 & 0.0 & 54.2 & 5.4 & 70.2 & 9.6 & 25.8 & 22.6 \\
+\hspace{0.1 in} w SVD+ft. & 15.2M (-14\%) & 92.2 & 46.4 & 83.4 & 81.8 & 49.5 & 86.9 & 89.8 & 86.8 & 74.9 & 77.1 \\
+\hspace{0.1 in} w FWSVD & 15.2M (-14\%) & 22.8 & 0.0 & 65.2 & 50.0 & 78.2 & 72.6 & 81.4 & 76.4 & 60.5 & 55.8 \\
+\hspace{0.1 in} w FWSVD+ft. & 15.2M (-14\%) & 93.0 & 50.6 & 83.3 & 90.4 & 90.6 & 87.0 & 90.6 & 89.0 & \textbf{83.1} & \textbf{84.3} \\
+\midrule
+ALBERT$_{base}$ & 11.7M & 92.1 & 43.0 & 82.3 & 88.6 & 90.6 & 86.6 & 89.7 & 89.1 & 81.4 & 82.7 \\ \cmidrule{2-12}
+\hspace{0.1 in} w SVD & 9.6M (-18\%) & 3.5 & 0.0 & 32.0 & 0.0 & 55.1 & 53.4 & 52.4 & 9.6 & 28.9 & 25.7 \\
+\hspace{0.1 in} w SVD+ft. & 9.6M (-18\%) & 89.8 & 28.8 & 81.3 & 81.2 & 88.3 & 85.5 & 88.2 & 75.0 & 75.5 & 77.3 \\
+\hspace{0.1 in} w FWSVD & 9.6M (-18\%) & 16.9 & 6.9 & 55.6 & 47.7 & 69.1 & 54.7 & 72.9 & 54.0 & 51.6 & 47.2 \\
+\hspace{0.1 in} w FWSVD+ft. & 9.6M (-18\%) & 91.2 & 42.2 & 81.8 & 86.9 & 88.9 & 86.2 & 88.7 & 87.0 & \textbf{80.2} & \textbf{81.6} \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+
+\subsection{Compressing an already compact model}\label{sec:path3}
+%1.our method further compress light-weight models up to 30\% 
+%TinyBERT 18.8%, MimiLM 19.2%, Mobile BERT 8% Distill bert 30.4%
+%2. even better than TinyBERT with an extreme small size of 11.8M
+%3.SVD complete fails in DistillBERT-MRPC
+%*. explanation, we only found pretrained models in these tasks. 
+The setting of path-3 targets to further compress the lightweight models.
+This is challenging as the compact models are already 1.6x $\sim$ 7.8x smaller than the original BERT. 
+The results in Table \ref{tab:compact} demonstrate the effectiveness of FWSVD on further reducing the number of parameters. 
+The original SVD is almost useless without fine-tuning, while our FWSVD can still retain a significant part of the performance.
+For example, SVD ends with a zero accuracy when compressing DistillBERT, while our FWSVD keeps a score of $67.9$ under the same setting.
+When combined with fine-tuning, FWSVD can cut off 30\% redundancy for DistillBERT. Even for the highly compact model TinyBERT (only $14.4$M parameters),
+FWSVD+fine-tuning still successfully reduces 18\% of the parameters without any performance loss. 
+More interestingly, the TinyBERT, MiniLM, and DistillBERT-MRPC compressed by FWSVD+fine-tuning exceed the original performance slightly. The result suggests FWSVD+fine-tuning might introduce a small regularization effect to improve the model's generalizability. 
+
+Lastly, Table \ref{tab:GLUE_albert} examines the compatibility between SVD/FWSVD and the parameter-sharing strategy of the ALBERT model. The average score of ALBERT-large is 84.7\%. The performance of FWSVD (84.3\%) is far better than that of SVD (77.1\%) when both reducing 14\% parameters, suggesting FWSVD is more robust than SVD in combining the parameter-sharing strategy.  
+
+
+
+% \subsection{Limitations and future works}
+\input{tabs_figs/fig1.tex}
+\begin{figure} %[htbp]
+  \begin{subfigure}{.32\textwidth}
+   \centering
+   \includegraphics[clip, trim=0cm 0.5cm 0cm 0.5cm,width=\textwidth]{figures/exp_fig1_COLA.pdf}
+       \caption{COLA}
+       \label{fig:rank:cola}
+       \end{subfigure}
+\begin{subfigure}{.32\textwidth}
+\includegraphics[clip, trim=0cm 0.5cm 0cm 0.5cm,width=\textwidth]{figures/exp_fig1_NER.pdf}
+\centering
+  \caption{NER (CoNLL-2003)}
+   \label{fig:rank:ner}
+\end{subfigure}
+\begin{subfigure}{.32\textwidth}
+\includegraphics[clip, trim=0cm 0.5cm 0cm 0.5cm,width=\textwidth]{figures/exp_fig1_STSB.pdf}
+\centering
+  \caption{STS-B}
+   \label{fig:rank:stsb}
+\end{subfigure}
+\caption{FWSVD versus SVD by varying the ratio of reserved ranks. The model with a rank ratio 1.0 indicates the full-rank reconstruction with the same accuracy as the original model (\ie, the $L^t$ in Figure \ref{fig:scheme}). Note that all the models here do not have fine-tuning after factorization. 
+% \vspace{-0.3cm}
+}
+\label{fig:rank}
+\end{figure}
+
+\subsection{FWSVD versus SVD}\label{sec:wsvd_vs_svd}
+
+% \subsubsection{Intra path-2 comparison}
+%B. SVD Vs WSVD (path 2 alone)
+%B1 overall WSVD improves SVD over 26.7\%
+%B2 SVD completely fails CoNLL CoLA STS-B. WSVD is 3 to 6 times better
+In Table \ref{tab:GLUE}, FWSVD consistently produces much better results than SVD on all tasks. 
+On average, FWSVD without fine-tuning obtains an absolute improvement of 17.5\% over SVD. 
+To highlight, FWSVD without fine-tuning can maintain a significant portion of performance in challenging tasks such as CoNLL and STS-B, where SVD completely fails. 
+With fine-tuning, FWSVD provides better initialization for fine-tuning and consistently achieves a better or comparable performance.
+
+Figure \ref{fig:rank} plots the performance trend with respect to the change of targeted rank ratio, where the full-rank reconstruction corresponds to the results at rank ratio $1.0$.
+These results demonstrate the apparent advantage of FWSVD over standard SVD. 
+First, at each rank ratio, FWSVD shows significant improvements over SVD. 
+Second, the performance of FWSVD keeps growing with the increase of rank ratio, while SVD shows fluctuations in its trend. 
+Specifically, two tasks (COLA and STS-B) in Figure \ref{fig:rank} show that SVD has abrupt performance drops at some points. 
+On the STS-B task, the performance of SVD at rank ratio $0.3$ is significantly lower than having a smaller rank ratio of $0.2$.
+In contrast, FWSVD shows a much stable trend of increasing performance along with the rank ratio.
+% \textbf{Why this mismatch between rank ratio and performance happens to SVD while our WSVD is immune to the negative effects?}
+
+\input{tabs_figs/fig2.tex}
+\begin{figure}%[htbp]
+  \begin{subfigure}[b]{.49\textwidth}
+   \centering
+   \includegraphics[clip, trim=0cm 0.5cm 0cm 0.5cm, width=\textwidth]{figures/exp_fig2_per_recolor.pdf}
+       \caption{STS-B performance drop}
+       \label{fig:remove_group:drop}
+       \end{subfigure}
+\begin{subfigure}[b]{.49\textwidth}
+\includegraphics[clip, trim=0cm 0.5cm 0cm 0.5cm, width=\textwidth]{figures/exp_fig2_err_recolor.pdf}
+\centering
+  \caption{ STS-B reconstruction error}
+   \label{fig:remove_group:error}
+\end{subfigure}
+\caption{
+Results of grouped rank truncation on STS-B task. 
+% More comparisons on other tasks are presented in Figure \ref{app:err_per} in Appendix.  
+In (a), FWSVD shows a consistent trend of having less performance drop with the small singular value groups (group 10 has the smallest singular values), mitigating the issue of Figure \ref{fig:method_rank}. In (b), FWSVD results in a larger reconstruction error with almost all truncated groups, although FWSVD retains the model accuracy better than SVD.
+% Unlike SVD, the performance drop of our FWSVD perfectly imitates the ideal trending shown in Figure \ref{fig:method_rank}. 
+% \vspace{-0.5cm}
+}
+\label{fig:remove_group}
+\end{figure}
+
+\subsubsection{Revisit the brute force attack }\label{sec:mismatch_obj}
+
+This section applies the same analysis of Section \ref{sec:mismatch}, but adds FWSVD to see if it matches the task's objective better. In Figure \ref{fig:remove_group:drop}, the red bars are significantly lower than the blue bars, especially for the tail groups, which will be truncated first.
+We specifically highlight group-10 in \ref{fig:remove_group:drop}, which has the smallest 10\% singular values. The height of the blue bar is equivalent to the size of the overlapped (green and meshed orange) region in Figures \ref{fig:svd}. Similarly, its red bar (close to zero) is equivalent to the overlapped region in Figure \ref{fig:wsvd}. In other words, the illustrations of Figures \ref{fig:svd} and \ref{fig:wsvd} are strongly supported by the results here. Although FWSVD shows a smaller performance drop shown by Figure \ref{fig:remove_group:drop}, it has a more significant reconstruction error than SVD in many cases (see Figure \ref{fig:remove_group:error}), especially with the rank groups that will be truncated first (\eg, groups 5 to 10). In other words, FWSVD's objective (Equation \ref{equ:weight_svd_diag}) aligns with the task objective better by sacrificing the reconstruction error.
+
+% The empirical evidence of mismatched objectives between  a standard low-rank factorization and task performance. The groups with a large performance drop in (a) are equivalent to the green regions in Figure \ref{fig:svd}.
+
+%results:
+%A1) top ranks significantly impact the performance
+%A2) WSVD  continually decrease
+%A3)tail ranks SVD still have strong impact
+%B1) SVD always has smaller errors, still more performance loss
+%B2) error decrease with group id
+%B3) The last group analysis 
+% Given a certain targeted rank, standard SVD will discard the ``tail'' singular values in order to achieve the least reconstruction error.
+% \textbf{Is it always a wise decision towards the better performance?}
+
+
+% To study this problem,  we designed the following experiments. First, we split singular values into $r/m$ rank groups by descending order.
+% As shown in Equation \ref{equ:gi}, each rank group $g_i$ contains $m$ singular values. 
+% We remove one rank group $g_i$ at a time by setting $g_i$ to be a zero vector,
+% and this operation will generate a singular values vector $\bar \Sigma_i$.
+% Then the ``cripple'' matrix ${{\bar W}_i}$ recomposed by the remaining groups excluded $g_i$ can be computed as follows:
+% \begin{equation}
+%     {{\bar W}_i} = U \cdot diag({{\bar \Sigma }_i}) \cdot {V^T}.
+%     \label{equ:rank_matrix}
+% \end{equation}
+
+% We evaluate the performance drop and reconstruction error of the matrix ${{\bar W}_i}$, compared to the full-rank matrix. 
+% Taking STS-B taks for example, we split singular values into 10 rank groups, and plot the performance drop and reconstruction errors in Figure \ref{fig:remove_group}.
+% As clearly shown in Figure \ref{fig:remove_group}, at each position, although SVD has  the smaller reconstruction errors, FWSVD always enjoys the smaller performance drop. 
+%First, as expected by Equation \ref{equ:rank_decomposition}, the top group of singular values has a dominant impact towards the overall performance. \ting{change }
+%As shown in Figure \ref{fig:remove_group:drop}, if the first group of  singular values are set zero, the Pearson correlation of STS-B will drop from $0.89$ to around $0.25$ for both SVD and WSVD.
+% Figure \ref{fig:remove_group:error} shows the elimination of the top ranked singular values will result in larger reconstruction errors for both FWSVD and SVD. 
+% However, when it comes to performance drop, the behaviors of FWSVD and SVD are quite different. 
+% For FWSVD, removing a low-ranked group will always cost less performance drop. But this is not true for SVD. 
+% With SVD, the removal of Group 10 surprisingly causes a performance drop as large as Group 2.  
+% These results prove that lower reconstruction error can not guarantee the better performance.
+% And compared to SVD, our proposed FWSVD can better balance the trade-off between the goals of overall performance and reconstruction error. 
+% \ting{following table is optional to add} 
+
+% \input{tabs_figs/tab3.tex}
+\begin{table}
+\centering
+\caption{Average absolute reconstruction error of Group-9 and Group-10 in Figure \ref{fig:remove_group}.}
+\begin{tabular}{l|cc|cc}
+\toprule
+{Average absolute }& \multicolumn{2}{c|}{Group-9} & \multicolumn{2}{c}{Group-10} \\ \cline{2-5}
+ reconstruction error & SVD & WSVD & SVD & WSVD \\ \midrule
+Whole matrix $\bar W$ & 1.34E-05 & 1.59E-05 & 7.77E-06 & 9.55E-06 \\
+Top fisher columns $\bar W_f$ & 1.54E-05 & 4.75E-07 & 1.41E-05 & 2.19E-07 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+% \subsection{Main Results}
+
+
+
+\input{iclr2022_limitation}
+\section{Limitation and future work}
+
+FWSVD has two limitations. First, FWSVD relies on a given task objective and a target task training dataset to compute the importance matrix; thus, it is more proper to compress a task-specific model (\eg, $L^t$ or $S^t$) than the pre-trained generic model (\eg, $L^g$). In contrast, the vanilla SVD can apply to any case. In other words, FWSVD trades the method's applicability for the target task performance. Second, FWSVD only uses a simplified importance matrix that gives the same importance for the parameters on the same row of matrix $W$. Although this strategy is simple and effective, it does not fully utilize the Fisher information. Therefore, a future improvement can be made by directly seeking an element-wise factorization solution for Equation (\ref{equ:weight_svd}).
+
+% \input{iclr2022_relatedWork}
+\section{Related Work}
+equivalent optimization: \cite{chen2018groupreduce}\\
+
+If we can get 250(or lower) rank without loss any acc.\\
+SVD baseline for NLP:\cite{noach2020compressing}\\
+Tinybert\\
+Distillbert\\
+BERT-PKD\\
+BERT-of-Theseus \cite{xu-etal-2020-bert}\\
+
+
+If we can get 125(or lower) rank without loss any acc.\\
+Ladabert (SVD + irregular pruning): \cite{mao2020ladabert}
+
+\input{iclr2022_conclusion}
+\section{Conclusion}
+
+In this work, we investigate why using standard low-rank factorization (SVD) to compress the model may quickly lose most of its performance, pointing out the issue of the mismatched optimization objectives between the low-rank approximation and the target task. We provide empirical evidence and observations for the issue, and propose a new strategy, FWSVD, to alleviate it. Our FWSVD uses the estimated Fisher information to weigh the importance of parameters for the factorization and achieve significant success in compressing an already compact model. Furthermore, FWSVD reuses the existing SVD solver and can still implement its factorized matrices with linear layers; therefore, it is simple to implement and deploy. We believe FWSVD could be one of the most easy-to-use methods with good performance for language model compression.
+
+\bibliography{iclr2022_conference}
+\bibliographystyle{iclr2022_conference}
+
+ \input{iclr2022_app}
+\appendix
+\section{Appendix}
+You may include other additional sections here.
+
+$U^*={{\hat I}^{ - 1}}\hat U\hat S$, and $V^*=\hat V$
+
+Specifically, our evaluation datasets 2 single-tasks CoLA \needcite SST-2, 3 sentence similarity tasks MRPC QQP,
+3 natural language inference taks: MNLI RTE QNLI.
+
+%${{\bar S}_i} = diag(\begin{array}{*{20}{c}}{{\Sigma _1},}&{ \ldots ,}&{{\Sigma _{i - 1}},}&{0,}&{{\Sigma _{i - 1}},}&{ \ldots ,}&{{\Sigma _{r/g}}}\end{array})$
+
+${{\bar S}_i} = diag \left({{\Sigma _1},}&{ \ldots ,}&{{\Sigma _{i - 1}},}&{0,}&{{\Sigma _{i - 1}},}&{ \ldots ,}&{{\Sigma _{r/g}}} \right)$
+
+$\Sigma_i=diag(\sigma_i,...,\sigma_{i+g-1})$
+
+we split singular values of matrix $W$ into $m$ groups, and each group contains $r/m$ elements. remove one group each time, and evaluate the performance drop and reconstruction error of the matrix recomposed by the $g-1$ groups. ${{\bar S}_i} = diag \left({{\Sigma _1},}&{ \ldots ,}&{{\Sigma _{i - 1}},}&{0,}&{{\Sigma _{i - 1}},}&{ \ldots ,}&{{\Sigma _{r/g}}} \right)$
+
+
+
+
+
+\end{document}
+
+
+
+

@@ -1,0 +1,76 @@
+\section{Design}
+
+\subsection{Problem Formulation}
+
+We study tool-using agent orchestration as a sequential decision problem. Given a user query, the agent interacts with an external environment through a sequence of intermediate steps. At each step $t$, the agent observes a state $s_t$ and must decide whether to answer directly, obtain more external evidence, verify its current information, or terminate execution. The key question is therefore not only \emph{what the model can do}, but also \emph{whether another action is justified at the current stage of execution}.
+
+Formally, we define a compact action space
+\[
+\mathcal{A} = \{\texttt{respond},\ \texttt{retrieve},\ \texttt{tool\_call},\ \texttt{verify},\ \texttt{stop}\}.
+\]
+This action space is intentionally lightweight. It is sufficient to capture the main control decisions in a tool-using agent, while remaining simple enough for explicit policy analysis.
+
+\subsection{Agent State}
+
+At step $t$, the agent state $s_t$ includes four categories of information:
+\begin{itemize}
+    \item the original user query and the current working context,
+    \item the interaction history, including prior actions and intermediate reasoning traces,
+    \item external observations returned by retrieval or tool calls,
+    \item execution-status signals such as step count and budget-related metadata.
+\end{itemize}
+
+This state representation is not intended to be a fully learned latent state. Instead, it acts as an explicit control interface between the language model and the environment. Its purpose is to expose enough information for orchestration decisions while keeping the decision layer interpretable.
+
+\subsection{Utility-Guided Action Selection}
+
+To make orchestration explicit, we assign each candidate action $a \in \mathcal{A}$ a utility score
+\[
+U(a \mid s_t)
+=
+\mathrm{Gain}(a \mid s_t)
+-
+\lambda_1 \mathrm{StepCost}(a \mid s_t)
+-
+\lambda_2 \mathrm{Uncertainty}(a \mid s_t)
+-
+\lambda_3 \mathrm{Redundancy}(a \mid s_t).
+\]
+
+The next action is selected by
+\[
+a_t^\star = \arg\max_{a \in \mathcal{A}} U(a \mid s_t).
+\]
+
+This formulation is deliberately simple. We do not claim that it is an optimal policy in the reinforcement learning sense. Rather, we use it as a structured and analyzable control mechanism for studying how explicit orchestration signals affect multi-step agent behavior.
+
+\subsection{Utility Components}
+
+\paragraph{Estimated Gain.}
+$\mathrm{Gain}(a \mid s_t)$ measures the self-estimated marginal value of taking action $a$ at state $s_t$. Intuitively, it captures whether another retrieval, tool call, or verification step is likely to improve the final answer. In our implementation, this term is a heuristic self-estimated signal rather than a calibrated probability.
+
+\paragraph{Step Cost.}
+$\mathrm{StepCost}(a \mid s_t)$ is a lightweight normalized proxy for the internal cost of taking one more step. It is designed to discourage unnecessary trajectory expansion. Importantly, this term is not claimed to be an exact substitute for token usage or wall-clock latency. Instead, it acts as an internal control signal whose relationship to real execution cost is examined empirically through token-cost and latency-cost variants. It is therefore best understood as a lightweight control proxy rather than a direct measurement of token or latency cost.
+
+\paragraph{Uncertainty.}
+$\mathrm{Uncertainty}(a \mid s_t)$ reflects the agent's self-estimated uncertainty about whether the current evidence is sufficient. Higher uncertainty encourages further evidence gathering or verification, whereas lower uncertainty makes stopping or direct response more plausible. As with estimated gain, this term is heuristic and not calibrated.
+
+\paragraph{Redundancy.}
+$\mathrm{Redundancy}(a \mid s_t)$ penalizes repeated or overly similar actions, especially repeated retrieval or tool-use behavior with limited expected novelty. This term is intended to reduce low-value repetition and to compact the execution trajectory. We evaluate both exact-match and semantic variants of this component.
+
+\subsection{Execution Loop and Termination}
+
+Figure~\ref{fig:framework} illustrates the overall execution loop. Starting from the user query, the agent constructs a state representation, computes utility scores for candidate actions, selects the action with the highest utility, and then updates its state based on the resulting observation. This process continues iteratively until one of the following conditions is met:
+\begin{itemize}
+    \item the selected action is \texttt{stop},
+    \item a predefined step budget is exhausted,
+    \item or a fallback termination condition is triggered.
+\end{itemize}
+
+This termination design is important because stopping is itself part of the control problem. In many free-form agent systems, stopping behavior is only weakly specified by prompts. In our framework, stopping is treated as an explicit action and is therefore subject to the same utility-based decision process as other behaviors.
+
+\subsection{Why Explicit Orchestration?}
+
+The proposed formulation offers two practical benefits. First, it separates task-solving ability from control logic. Rather than embedding all behavior inside a prompt, we expose the orchestration policy as an explicit, inspectable layer. Second, it enables targeted empirical analysis. Because the utility function is decomposed into interpretable components, we can study how cost proxies, uncertainty, redundancy control, and stopping behavior influence the final quality--cost trade-off.
+
+For this reason, the contribution of our framework should not be understood as a fully learned or universally dominant policy. Its value lies in providing a lightweight and defensible mechanism for making multi-step tool use more controllable, more analyzable, and more suitable for cost-sensitive LLM agent settings.
