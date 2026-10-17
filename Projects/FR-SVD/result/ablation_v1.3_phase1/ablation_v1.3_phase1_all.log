@@ -1,0 +1,806 @@
+nohup: ignoring input
+============================================
+Phase 1: 算法验证（6 组实验）
+============================================
+验证 3 个算法改动：
+  ① ACES 线性退化分支（已合入代码）
+  ② CEALC-aware Stage 2
+  ③ Fisher soft-reweighting
+
+历史对照组：
+  v1.2 Exp1 (无退化分支, alpha=[0.4,0.6], rho=0.95): PPL=7.894
+  v1.2 Exp2 (Psi直接变换):                            PPL=7.871
+  v1.2 Exp3 (H-weighted Stage2):                      PPL=7.869
+  v1.2 Exp4 (v1.2 Both):                              PPL=7.848
+  v1.3 Exp1 (无退化分支, alpha=[0.25,0.75], rho=1.0): PPL=8.175
+  v1.3 Exp4 (无退化分支, v1.3 Both):                  待完成
+============================================
+
+>>> Exp5: Baseline (v1.2 params, 验证窄范围退化分支)
+/data/zhangs/anaconda3/envs/compress/lib/python3.9/site-packages/transformers/utils/generic.py:441: FutureWarning: `torch.utils._pytree._register_pytree_node` is deprecated. Please use `torch.utils._pytree.register_pytree_node` instead.
+  _torch_pytree._register_pytree_node(
+/data/zhangs/anaconda3/envs/compress/lib/python3.9/site-packages/transformers/utils/generic.py:309: FutureWarning: `torch.utils._pytree._register_pytree_node` is deprecated. Please use `torch.utils._pytree.register_pytree_node` instead.
+  _torch_pytree._register_pytree_node(
+/data/zhangs/anaconda3/envs/compress/lib/python3.9/site-packages/transformers/utils/generic.py:309: FutureWarning: `torch.utils._pytree._register_pytree_node` is deprecated. Please use `torch.utils._pytree.register_pytree_node` instead.
+  _torch_pytree._register_pytree_node(
+You are using the default legacy behaviour of the <class 'transformers.models.llama.tokenization_llama.LlamaTokenizer'>. This is expected, and simply means that the `legacy` (previous) behavior will be used so nothing changes for you. If you want to use the new behaviour, set `legacy=False`. This should only be set if you understand what it means, and thouroughly read the reason why this was added as explained in https://github.com/huggingface/transformers/pull/24565
+CUDA_VISIBLE_DEVICES: 5
+============================================================
+FR-SVD v1.3 配置
+============================================================
+  模型: /data/zhangs/LLMs/Models/jeffwan/llama-7b-hf
+  压缩率: 0.2 (保留 80.0%)
+  数据集: wikitext2, 样本数: 128
+  设备: cuda:0
+  r1_ratio: 1.0
+  创新点A (Fisher soft-reweighting): OFF
+  创新点B (CEALC-aware Stage 2): OFF
+  eps=0.0001
+  Alpha: [0.4, 0.6], rho=0.95
+============================================================
+
+加载模型...
+Loading checkpoint shards:   0%|          | 0/2 [00:00<?, ?it/s]Loading checkpoint shards:  50%|█████     | 1/2 [00:04<00:04,  4.60s/it]Loading checkpoint shards: 100%|██████████| 2/2 [00:06<00:00,  2.87s/it]Loading checkpoint shards: 100%|██████████| 2/2 [00:06<00:00,  3.13s/it]
+
+加载校准数据...
+
+开始 FR-SVD v1.3 压缩...
+============================================================
+FR-SVD v1.3: Widened-ACES + CEALC-aware Stage 2 + Fisher Soft-Reweighting
+============================================================
+  保留比例: 0.8 (80.0%)
+  秩分配: r1=100% of r / r2=0% of r (r1+r2=r)
+  创新点A (Fisher soft-reweighting): OFF
+  创新点B (CEALC-aware Stage 2): OFF (r2=0)
+  H 阻尼: eps=0.0001
+  Alpha 范围: [0.4, 0.6], rho=0.95, beta_cap=0.3750
+============================================================
+
+加载教师模型（fp16 存储，fp32 计算）...
+Loading checkpoint shards:   0%|          | 0/2 [00:00<?, ?it/s]Loading checkpoint shards:  50%|█████     | 1/2 [00:04<00:04,  4.48s/it]Loading checkpoint shards: 100%|██████████| 2/2 [00:06<00:00,  2.91s/it]Loading checkpoint shards: 100%|██████████| 2/2 [00:06<00:00,  3.15s/it]
+收集第 0 层输入激活...
+
+开始逐层 FR-SVD v1.3 压缩...
+FR-SVD v1.3 Compression:   0%|          | 0/32 [00:00<?, ?it/s]FR-SVD v1.3 Compression:   3%|▎         | 1/32 [02:16<1:10:25, 136.29s/it]FR-SVD v1.3 Compression:   6%|▋         | 2/32 [04:26<1:06:26, 132.90s/it]FR-SVD v1.3 Compression:   9%|▉         | 3/32 [06:36<1:03:34, 131.52s/it]FR-SVD v1.3 Compression:  12%|█▎        | 4/32 [08:49<1:01:42, 132.21s/it]FR-SVD v1.3 Compression:  16%|█▌        | 5/32 [10:56<58:36, 130.26s/it]  FR-SVD v1.3 Compression:  19%|█▉        | 6/32 [13:02<55:49, 128.82s/it]FR-SVD v1.3 Compression:  22%|██▏       | 7/32 [14:59<52:04, 124.98s/it]FR-SVD v1.3 Compression:  25%|██▌       | 8/32 [17:04<49:57, 124.90s/it]FR-SVD v1.3 Compression:  28%|██▊       | 9/32 [19:05<47:23, 123.64s/it]FR-SVD v1.3 Compression:  31%|███▏      | 10/32 [21:06<45:00, 122.77s/it]FR-SVD v1.3 Compression:  34%|███▍      | 11/32 [23:10<43:05, 123.10s/it]FR-SVD v1.3 Compression:  38%|███▊      | 12/32 [25:19<41:38, 124.92s/it]FR-SVD v1.3 Compression:  41%|████      | 13/32 [27:21<39:18, 124.16s/it]FR-SVD v1.3 Compression:  44%|████▍     | 14/32 [29:22<36:56, 123.16s/it]FR-SVD v1.3 Compression:  47%|████▋     | 15/32 [31:29<35:12, 124.24s/it]FR-SVD v1.3 Compression:  50%|█████     | 16/32 [33:32<33:05, 124.10s/it]FR-SVD v1.3 Compression:  53%|█████▎    | 17/32 [35:40<31:16, 125.09s/it]FR-SVD v1.3 Compression:  56%|█████▋    | 18/32 [37:45<29:11, 125.08s/it]FR-SVD v1.3 Compression:  59%|█████▉    | 19/32 [39:52<27:13, 125.67s/it]FR-SVD v1.3 Compression:  62%|██████▎   | 20/32 [42:01<25:20, 126.70s/it]FR-SVD v1.3 Compression:  66%|██████▌   | 21/32 [44:07<23:09, 126.34s/it]FR-SVD v1.3 Compression:  69%|██████▉   | 22/32 [46:23<21:33, 129.34s/it]FR-SVD v1.3 Compression:  72%|███████▏  | 23/32 [48:43<19:54, 132.70s/it]FR-SVD v1.3 Compression:  75%|███████▌  | 24/32 [50:43<17:09, 128.75s/it]FR-SVD v1.3 Compression:  78%|███████▊  | 25/32 [52:47<14:51, 127.37s/it]FR-SVD v1.3 Compression:  81%|████████▏ | 26/32 [54:53<12:41, 127.00s/it]FR-SVD v1.3 Compression:  84%|████████▍ | 27/32 [57:12<10:51, 130.38s/it]FR-SVD v1.3 Compression:  88%|████████▊ | 28/32 [59:28<08:48, 132.16s/it]FR-SVD v1.3 Compression:  91%|█████████ | 29/32 [1:01:30<06:27, 129.26s/it]FR-SVD v1.3 Compression:  94%|█████████▍| 30/32 [1:03:35<04:15, 127.75s/it]FR-SVD v1.3 Compression:  97%|█████████▋| 31/32 [1:05:38<02:06, 126.52s/it]FR-SVD v1.3 Compression: 100%|██████████| 32/32 [1:07:41<00:00, 125.36s/it]FR-SVD v1.3 Compression: 100%|██████████| 32/32 [1:07:41<00:00, 126.92s/it]
+  L0 self_attn.q_proj: β₁=0.2714, α*=0.3725, r=1638(r1=1638+r2=0), E_kept=1.0000, W_err=0.0401, D/H=0.0000
+  L0 self_attn.k_proj: β₁=0.2714, α*=0.3725, r=1638(r1=1638+r2=0), E_kept=1.0000, W_err=0.0354, D/H=0.0000
+  L0 self_attn.v_proj: β₁=0.2714, α*=0.3725, r=1638(r1=1638+r2=0), E_kept=0.9954, W_err=0.3288, D/H=0.0000
+  L0 self_attn.o_proj: β₁=0.2714, α*=0.3725, r=1638(r1=1638+r2=0), E_kept=0.9998, W_err=0.3475, D/H=0.0000
+  L0 mlp.gate_proj: β₁=0.2714, α*=0.3725, r=2388(r1=2388+r2=0), E_kept=0.9986, W_err=0.2348, D/H=0.0000
+  L0 mlp.up_proj: β₁=0.2714, α*=0.3725, r=2388(r1=2388+r2=0), E_kept=0.9975, W_err=0.2526, D/H=0.0000
+  L0 mlp.down_proj: β₁=0.2714, α*=0.3725, r=2388(r1=2388+r2=0), E_kept=0.9891, W_err=0.4037, D/H=0.0000
+Layer 0 Summary: avg_β=0.2714, avg_α*=0.3725, avg_D/H=0.0000
+Layer 1 Summary: avg_β=0.2835, avg_α*=0.3984, avg_D/H=0.0211
+Layer 2 Summary: avg_β=0.2957, avg_α*=0.4242, avg_D/H=0.0276
+Layer 3 Summary: avg_β=0.2957, avg_α*=0.4242, avg_D/H=0.0583
+Layer 4 Summary: avg_β=0.3562, avg_α*=0.5534, avg_D/H=0.1684
+Layer 5 Summary: avg_β=0.3562, avg_α*=0.5534, avg_D/H=0.3389
+Layer 6 Summary: avg_β=0.3441, avg_α*=0.5276, avg_D/H=0.5218
+Layer 7 Summary: avg_β=0.3441, avg_α*=0.5276, avg_D/H=0.5967
+  L8 self_attn.q_proj: β₁=0.3562, α*=0.5534, r=1638(r1=1638+r2=0), E_kept=0.9957, W_err=0.3205, D/H=0.6210
+  L8 self_attn.k_proj: β₁=0.3562, α*=0.5534, r=1638(r1=1638+r2=0), E_kept=0.9965, W_err=0.3326, D/H=0.6210
+  L8 self_attn.v_proj: β₁=0.3562, α*=0.5534, r=1638(r1=1638+r2=0), E_kept=0.9699, W_err=0.4115, D/H=0.6210
+  L8 self_attn.o_proj: β₁=0.2714, α*=0.3725, r=1638(r1=1638+r2=0), E_kept=0.9754, W_err=0.4458, D/H=0.6962
+  L8 mlp.gate_proj: β₁=0.3562, α*=0.5534, r=2388(r1=2388+r2=0), E_kept=0.9789, W_err=0.4409, D/H=0.6329
+  L8 mlp.up_proj: β₁=0.3562, α*=0.5534, r=2388(r1=2388+r2=0), E_kept=0.9606, W_err=0.4640, D/H=0.6329
+  L8 mlp.down_proj: β₁=0.3562, α*=0.5534, r=2388(r1=2388+r2=0), E_kept=0.9340, W_err=0.4426, D/H=0.7478
+Layer 8 Summary: avg_β=0.3441, avg_α*=0.5276, avg_D/H=0.6533
+Layer 9 Summary: avg_β=0.3320, avg_α*=0.5017, avg_D/H=0.6245
+Layer 10 Summary: avg_β=0.3320, avg_α*=0.5017, avg_D/H=0.6150
+Layer 11 Summary: avg_β=0.3320, avg_α*=0.5017, avg_D/H=0.5637
+Layer 12 Summary: avg_β=0.3320, avg_α*=0.5017, avg_D/H=0.5705
+Layer 13 Summary: avg_β=0.3320, avg_α*=0.5017, avg_D/H=0.5671
+Layer 14 Summary: avg_β=0.3320, avg_α*=0.5017, avg_D/H=0.5264
+Layer 15 Summary: avg_β=0.3441, avg_α*=0.5276, avg_D/H=0.4634
+  L16 self_attn.q_proj: β₁=0.3562, α*=0.5534, r=1638(r1=1638+r2=0), E_kept=0.9914, W_err=0.3666, D/H=0.3356
+  L16 self_attn.k_proj: β₁=0.3562, α*=0.5534, r=1638(r1=1638+r2=0), E_kept=0.9942, W_err=0.3712, D/H=0.3356
+  L16 self_attn.v_proj: β₁=0.3562, α*=0.5534, r=1638(r1=1638+r2=0), E_kept=0.9465, W_err=0.4492, D/H=0.3356
+  L16 self_attn.o_proj: β₁=0.3562, α*=0.5534, r=1638(r1=1638+r2=0), E_kept=0.9680, W_err=0.4745, D/H=0.5585
+  L16 mlp.gate_proj: β₁=0.3562, α*=0.5534, r=2388(r1=2388+r2=0), E_kept=0.9779, W_err=0.4360, D/H=0.4863
+  L16 mlp.up_proj: β₁=0.3562, α*=0.5534, r=2388(r1=2388+r2=0), E_kept=0.9633, W_err=0.4577, D/H=0.4863
+  L16 mlp.down_proj: β₁=0.3562, α*=0.5534, r=2388(r1=2388+r2=0), E_kept=0.9202, W_err=0.4593, D/H=0.5319
+Layer 16 Summary: avg_β=0.3562, avg_α*=0.5534, avg_D/H=0.4385
+Layer 17 Summary: avg_β=0.3562, avg_α*=0.5534, avg_D/H=0.4487
+Layer 18 Summary: avg_β=0.3562, avg_α*=0.5534, avg_D/H=0.3984
+Layer 19 Summary: avg_β=0.3562, avg_α*=0.5534, avg_D/H=0.3581
+Layer 20 Summary: avg_β=0.3562, avg_α*=0.5534, avg_D/H=0.3473
+Layer 21 Summary: avg_β=0.3562, avg_α*=0.5534, avg_D/H=0.3173
+Layer 22 Summary: avg_β=0.3320, avg_α*=0.5017, avg_D/H=0.3043
+Layer 23 Summary: avg_β=0.3562, avg_α*=0.5534, avg_D/H=0.2688
+  L24 self_attn.q_proj: β₁=0.3562, α*=0.5534, r=1638(r1=1638+r2=0), E_kept=0.9879, W_err=0.3805, D/H=0.2410
+  L24 self_attn.k_proj: β₁=0.3562, α*=0.5534, r=1638(r1=1638+r2=0), E_kept=0.9921, W_err=0.3814, D/H=0.2410
+  L24 self_attn.v_proj: β₁=0.3562, α*=0.5534, r=1638(r1=1638+r2=0), E_kept=0.9394, W_err=0.4620, D/H=0.2410
+  L24 self_attn.o_proj: β₁=0.3562, α*=0.5534, r=1638(r1=1638+r2=0), E_kept=0.9566, W_err=0.5233, D/H=0.4879
+  L24 mlp.gate_proj: β₁=0.3562, α*=0.5534, r=2388(r1=2388+r2=0), E_kept=0.9696, W_err=0.4451, D/H=0.2772
+  L24 mlp.up_proj: β₁=0.3562, α*=0.5534, r=2388(r1=2388+r2=0), E_kept=0.9563, W_err=0.4610, D/H=0.2772
+  L24 mlp.down_proj: β₁=0.3562, α*=0.5534, r=2388(r1=2388+r2=0), E_kept=0.9137, W_err=0.4546, D/H=0.3013
+Layer 24 Summary: avg_β=0.3562, avg_α*=0.5534, avg_D/H=0.2952
+Layer 25 Summary: avg_β=0.3441, avg_α*=0.5276, avg_D/H=0.2835
+Layer 26 Summary: avg_β=0.3441, avg_α*=0.5276, avg_D/H=0.2938
+Layer 27 Summary: avg_β=0.3441, avg_α*=0.5276, avg_D/H=0.3087
+Layer 28 Summary: avg_β=0.3562, avg_α*=0.5534, avg_D/H=0.2648
+Layer 29 Summary: avg_β=0.3562, avg_α*=0.5534, avg_D/H=0.2600
+Layer 30 Summary: avg_β=0.3441, avg_α*=0.5276, avg_D/H=0.2677
+  L31 self_attn.q_proj: β₁=0.3562, α*=0.5534, r=1638(r1=1638+r2=0), E_kept=0.9936, W_err=0.3591, D/H=0.2221
+  L31 self_attn.k_proj: β₁=0.3562, α*=0.5534, r=1638(r1=1638+r2=0), E_kept=0.9962, W_err=0.3618, D/H=0.2221
+  L31 self_attn.v_proj: β₁=0.3562, α*=0.5534, r=1638(r1=1638+r2=0), E_kept=0.9566, W_err=0.4664, D/H=0.2221
+  L31 self_attn.o_proj: β₁=0.3562, α*=0.5534, r=1638(r1=1638+r2=0), E_kept=0.9942, W_err=0.5349, D/H=0.4473
+  L31 mlp.gate_proj: β₁=0.3562, α*=0.5534, r=2388(r1=2388+r2=0), E_kept=0.9910, W_err=0.4477, D/H=0.2222
+  L31 mlp.up_proj: β₁=0.3562, α*=0.5534, r=2388(r1=2388+r2=0), E_kept=0.9895, W_err=0.4535, D/H=0.2222
+  L31 mlp.down_proj: β₁=0.3562, α*=0.5534, r=2388(r1=2388+r2=0), E_kept=0.9978, W_err=0.5660, D/H=0.2613
+Layer 31 Summary: avg_β=0.3562, avg_α*=0.5534, avg_D/H=0.2599
+
+============================================================
+FR-SVD v1.3 压缩完成！
+============================================================
+  平均 beta: 0.3392
+  平均 D/H:  0.3572
+  Beta 范围: [0.2714, 0.3562]
+
+保存压缩模型到: ./result/ablation_v1.3_phase1/exp5_baseline/_data_zhangs_LLMs_Models_jeffwan_llama_7b_hf_fr_svd_0.8.pt
+
+运行困惑度评估...
+  0%|          | 0/42 [00:00<?, ?it/s]  2%|▏         | 1/42 [00:02<01:42,  2.49s/it]  5%|▍         | 2/42 [00:04<01:38,  2.45s/it]  7%|▋         | 3/42 [00:07<01:35,  2.44s/it] 10%|▉         | 4/42 [00:09<01:32,  2.44s/it] 12%|█▏        | 5/42 [00:12<01:30,  2.44s/it] 14%|█▍        | 6/42 [00:14<01:27,  2.44s/it] 17%|█▋        | 7/42 [00:17<01:25,  2.44s/it] 19%|█▉        | 8/42 [00:19<01:22,  2.44s/it] 21%|██▏       | 9/42 [00:21<01:20,  2.44s/it] 24%|██▍       | 10/42 [00:24<01:17,  2.44s/it] 26%|██▌       | 11/42 [00:26<01:15,  2.44s/it] 29%|██▊       | 12/42 [00:29<01:13,  2.44s/it] 31%|███       | 13/42 [00:31<01:10,  2.44s/it] 33%|███▎      | 14/42 [00:34<01:08,  2.44s/it] 36%|███▌      | 15/42 [00:36<01:05,  2.44s/it] 38%|███▊      | 16/42 [00:39<01:03,  2.44s/it] 40%|████      | 17/42 [00:41<01:00,  2.44s/it] 43%|████▎     | 18/42 [00:43<00:58,  2.44s/it] 45%|████▌     | 19/42 [00:46<00:56,  2.44s/it] 48%|████▊     | 20/42 [00:48<00:53,  2.44s/it] 50%|█████     | 21/42 [00:51<00:51,  2.44s/it] 52%|█████▏    | 22/42 [00:53<00:48,  2.44s/it] 55%|█████▍    | 23/42 [00:56<00:46,  2.44s/it] 57%|█████▋    | 24/42 [00:58<00:43,  2.44s/it] 60%|█████▉    | 25/42 [01:00<00:41,  2.44s/it] 62%|██████▏   | 26/42 [01:03<00:39,  2.44s/it] 64%|██████▍   | 27/42 [01:05<00:36,  2.44s/it] 67%|██████▋   | 28/42 [01:08<00:34,  2.44s/it] 69%|██████▉   | 29/42 [01:10<00:31,  2.44s/it] 71%|███████▏  | 30/42 [01:13<00:29,  2.44s/it] 74%|███████▍  | 31/42 [01:15<00:26,  2.44s/it] 76%|███████▌  | 32/42 [01:18<00:24,  2.44s/it] 79%|███████▊  | 33/42 [01:20<00:22,  2.44s/it] 81%|████████  | 34/42 [01:22<00:19,  2.44s/it] 83%|████████▎ | 35/42 [01:25<00:17,  2.44s/it] 86%|████████▌ | 36/42 [01:27<00:14,  2.45s/it] 88%|████████▊ | 37/42 [01:30<00:12,  2.45s/it] 90%|█████████ | 38/42 [01:32<00:09,  2.45s/it] 93%|█████████▎| 39/42 [01:35<00:07,  2.45s/it] 95%|█████████▌| 40/42 [01:37<00:04,  2.45s/it] 98%|█████████▊| 41/42 [01:40<00:02,  2.45s/it]100%|██████████| 42/42 [01:41<00:00,  2.09s/it]100%|██████████| 42/42 [01:41<00:00,  2.41s/it]
+PPL after pruning: {'wikitext2': 8.082331907213971}
+Weight Memory: 11422.076171875 MiB
+
+
+>>> Exp5b: Baseline (v1.3 params, 验证宽范围退化分支)
+/data/zhangs/anaconda3/envs/compress/lib/python3.9/site-packages/transformers/utils/generic.py:441: FutureWarning: `torch.utils._pytree._register_pytree_node` is deprecated. Please use `torch.utils._pytree.register_pytree_node` instead.
+  _torch_pytree._register_pytree_node(
+/data/zhangs/anaconda3/envs/compress/lib/python3.9/site-packages/transformers/utils/generic.py:309: FutureWarning: `torch.utils._pytree._register_pytree_node` is deprecated. Please use `torch.utils._pytree.register_pytree_node` instead.
+  _torch_pytree._register_pytree_node(
+/data/zhangs/anaconda3/envs/compress/lib/python3.9/site-packages/transformers/utils/generic.py:309: FutureWarning: `torch.utils._pytree._register_pytree_node` is deprecated. Please use `torch.utils._pytree.register_pytree_node` instead.
+  _torch_pytree._register_pytree_node(
+You are using the default legacy behaviour of the <class 'transformers.models.llama.tokenization_llama.LlamaTokenizer'>. This is expected, and simply means that the `legacy` (previous) behavior will be used so nothing changes for you. If you want to use the new behaviour, set `legacy=False`. This should only be set if you understand what it means, and thouroughly read the reason why this was added as explained in https://github.com/huggingface/transformers/pull/24565
+CUDA_VISIBLE_DEVICES: 5
+============================================================
+FR-SVD v1.3 配置
+============================================================
+  模型: /data/zhangs/LLMs/Models/jeffwan/llama-7b-hf
+  压缩率: 0.2 (保留 80.0%)
+  数据集: wikitext2, 样本数: 128
+  设备: cuda:0
+  r1_ratio: 1.0
+  创新点A (Fisher soft-reweighting): OFF
+  创新点B (CEALC-aware Stage 2): OFF
+  eps=0.0001
+  Alpha: [0.25, 0.75], rho=1.0
+============================================================
+
+加载模型...
+Loading checkpoint shards:   0%|          | 0/2 [00:00<?, ?it/s]Loading checkpoint shards:  50%|█████     | 1/2 [00:08<00:08,  8.83s/it]Loading checkpoint shards: 100%|██████████| 2/2 [02:14<00:00, 77.51s/it]Loading checkpoint shards: 100%|██████████| 2/2 [02:14<00:00, 67.21s/it]
+
+加载校准数据...
+
+开始 FR-SVD v1.3 压缩...
+============================================================
+FR-SVD v1.3: Widened-ACES + CEALC-aware Stage 2 + Fisher Soft-Reweighting
+============================================================
+  保留比例: 0.8 (80.0%)
+  秩分配: r1=100% of r / r2=0% of r (r1+r2=r)
+  创新点A (Fisher soft-reweighting): OFF
+  创新点B (CEALC-aware Stage 2): OFF (r2=0)
+  H 阻尼: eps=0.0001
+  Alpha 范围: [0.25, 0.75], rho=1.0, beta_cap=0.4286
+============================================================
+
+加载教师模型（fp16 存储，fp32 计算）...
+Loading checkpoint shards:   0%|          | 0/2 [00:00<?, ?it/s]Loading checkpoint shards:  50%|█████     | 1/2 [00:04<00:04,  4.71s/it]Loading checkpoint shards: 100%|██████████| 2/2 [00:06<00:00,  2.97s/it]Loading checkpoint shards: 100%|██████████| 2/2 [00:06<00:00,  3.23s/it]
+收集第 0 层输入激活...
+
+开始逐层 FR-SVD v1.3 压缩...
+FR-SVD v1.3 Compression:   0%|          | 0/32 [00:00<?, ?it/s]FR-SVD v1.3 Compression:   3%|▎         | 1/32 [02:10<1:07:31, 130.71s/it]FR-SVD v1.3 Compression:   6%|▋         | 2/32 [04:28<1:07:32, 135.08s/it]FR-SVD v1.3 Compression:   9%|▉         | 3/32 [06:34<1:03:06, 130.57s/it]FR-SVD v1.3 Compression:  12%|█▎        | 4/32 [08:37<59:33, 127.61s/it]  FR-SVD v1.3 Compression:  16%|█▌        | 5/32 [10:37<56:17, 125.09s/it]FR-SVD v1.3 Compression:  19%|█▉        | 6/32 [12:40<53:48, 124.18s/it]FR-SVD v1.3 Compression:  22%|██▏       | 7/32 [14:42<51:29, 123.58s/it]FR-SVD v1.3 Compression:  25%|██▌       | 8/32 [16:43<49:05, 122.74s/it]FR-SVD v1.3 Compression:  28%|██▊       | 9/32 [18:46<47:08, 122.96s/it]FR-SVD v1.3 Compression:  31%|███▏      | 10/32 [20:50<45:07, 123.07s/it]FR-SVD v1.3 Compression:  34%|███▍      | 11/32 [22:48<42:36, 121.72s/it]FR-SVD v1.3 Compression:  38%|███▊      | 12/32 [24:53<40:52, 122.65s/it]FR-SVD v1.3 Compression:  41%|████      | 13/32 [26:56<38:54, 122.86s/it]FR-SVD v1.3 Compression:  44%|████▍     | 14/32 [28:58<36:44, 122.49s/it]FR-SVD v1.3 Compression:  47%|████▋     | 15/32 [32:22<41:38, 146.99s/it]FR-SVD v1.3 Compression:  50%|█████     | 16/32 [35:20<41:40, 156.27s/it]FR-SVD v1.3 Compression:  53%|█████▎    | 17/32 [37:43<38:07, 152.51s/it]FR-SVD v1.3 Compression:  56%|█████▋    | 18/32 [39:48<33:36, 144.03s/it]FR-SVD v1.3 Compression:  59%|█████▉    | 19/32 [41:51<29:52, 137.89s/it]FR-SVD v1.3 Compression:  62%|██████▎   | 20/32 [43:55<26:42, 133.55s/it]FR-SVD v1.3 Compression:  66%|██████▌   | 21/32 [45:58<23:54, 130.40s/it]FR-SVD v1.3 Compression:  69%|██████▉   | 22/32 [48:01<21:21, 128.19s/it]FR-SVD v1.3 Compression:  72%|███████▏  | 23/32 [50:04<18:59, 126.63s/it]FR-SVD v1.3 Compression:  75%|███████▌  | 24/32 [52:03<16:35, 124.47s/it]FR-SVD v1.3 Compression:  78%|███████▊  | 25/32 [54:06<14:28, 124.04s/it]FR-SVD v1.3 Compression:  81%|████████▏ | 26/32 [56:09<12:21, 123.59s/it]FR-SVD v1.3 Compression:  84%|████████▍ | 27/32 [58:11<10:16, 123.20s/it]FR-SVD v1.3 Compression:  88%|████████▊ | 28/32 [1:00:12<08:10, 122.60s/it]FR-SVD v1.3 Compression:  91%|█████████ | 29/32 [1:02:15<06:07, 122.66s/it]FR-SVD v1.3 Compression:  94%|█████████▍| 30/32 [1:04:18<04:05, 122.71s/it]FR-SVD v1.3 Compression:  97%|█████████▋| 31/32 [1:06:19<02:02, 122.23s/it]FR-SVD v1.3 Compression: 100%|██████████| 32/32 [1:08:22<00:00, 122.37s/it]FR-SVD v1.3 Compression: 100%|██████████| 32/32 [1:08:22<00:00, 128.20s/it]
+  L0 self_attn.q_proj: β₁=0.2000, α*=0.2500, r=1638(r1=1638+r2=0), E_kept=1.0000, W_err=0.0401, D/H=0.0000
+  L0 self_attn.k_proj: β₁=0.2000, α*=0.2500, r=1638(r1=1638+r2=0), E_kept=1.0000, W_err=0.0354, D/H=0.0000
+  L0 self_attn.v_proj: β₁=0.2000, α*=0.2500, r=1638(r1=1638+r2=0), E_kept=0.9954, W_err=0.3288, D/H=0.0000
+  L0 self_attn.o_proj: β₁=0.2000, α*=0.2500, r=1638(r1=1638+r2=0), E_kept=0.9998, W_err=0.3475, D/H=0.0000
+  L0 mlp.gate_proj: β₁=0.2000, α*=0.2500, r=2388(r1=2388+r2=0), E_kept=0.9986, W_err=0.2348, D/H=0.0000
+  L0 mlp.up_proj: β₁=0.2000, α*=0.2500, r=2388(r1=2388+r2=0), E_kept=0.9975, W_err=0.2526, D/H=0.0000
+  L0 mlp.down_proj: β₁=0.2000, α*=0.2500, r=2388(r1=2388+r2=0), E_kept=0.9891, W_err=0.4037, D/H=0.0000
+Layer 0 Summary: avg_β=0.2000, avg_α*=0.2500, avg_D/H=0.0000
+Layer 1 Summary: avg_β=0.2327, avg_α*=0.3214, avg_D/H=0.0211
+Layer 2 Summary: avg_β=0.2653, avg_α*=0.3929, avg_D/H=0.0268
+Layer 3 Summary: avg_β=0.2693, avg_α*=0.3993, avg_D/H=0.0583
+Layer 4 Summary: avg_β=0.4286, avg_α*=0.7500, avg_D/H=0.1683
+Layer 5 Summary: avg_β=0.3954, avg_α*=0.6771, avg_D/H=0.3491
+Layer 6 Summary: avg_β=0.3959, avg_α*=0.6786, avg_D/H=0.5496
+Layer 7 Summary: avg_β=0.3959, avg_α*=0.6786, avg_D/H=0.6363
+  L8 self_attn.q_proj: β₁=0.4286, α*=0.7500, r=1638(r1=1638+r2=0), E_kept=0.9958, W_err=0.3344, D/H=0.6739
+  L8 self_attn.k_proj: β₁=0.4286, α*=0.7500, r=1638(r1=1638+r2=0), E_kept=0.9966, W_err=0.3452, D/H=0.6739
+  L8 self_attn.v_proj: β₁=0.4286, α*=0.7500, r=1638(r1=1638+r2=0), E_kept=0.9706, W_err=0.4213, D/H=0.6739
+  L8 self_attn.o_proj: β₁=0.2000, α*=0.2500, r=1638(r1=1638+r2=0), E_kept=0.9768, W_err=0.4381, D/H=0.7288
+  L8 mlp.gate_proj: β₁=0.4286, α*=0.7500, r=2388(r1=2388+r2=0), E_kept=0.9797, W_err=0.4560, D/H=0.6798
+  L8 mlp.up_proj: β₁=0.4286, α*=0.7500, r=2388(r1=2388+r2=0), E_kept=0.9616, W_err=0.4749, D/H=0.6798
+  L8 mlp.down_proj: β₁=0.4286, α*=0.7500, r=2388(r1=2388+r2=0), E_kept=0.9360, W_err=0.4648, D/H=0.7883
+Layer 8 Summary: avg_β=0.3959, avg_α*=0.6786, avg_D/H=0.6998
+Layer 9 Summary: avg_β=0.3633, avg_α*=0.6071, avg_D/H=0.6828
+Layer 10 Summary: avg_β=0.3633, avg_α*=0.6071, avg_D/H=0.6612
+Layer 11 Summary: avg_β=0.3633, avg_α*=0.6071, avg_D/H=0.6024
+Layer 12 Summary: avg_β=0.3633, avg_α*=0.6071, avg_D/H=0.6049
+Layer 13 Summary: avg_β=0.3633, avg_α*=0.6071, avg_D/H=0.5923
+Layer 14 Summary: avg_β=0.3633, avg_α*=0.6071, avg_D/H=0.5425
+Layer 15 Summary: avg_β=0.3959, avg_α*=0.6786, avg_D/H=0.4757
+  L16 self_attn.q_proj: β₁=0.4286, α*=0.7500, r=1638(r1=1638+r2=0), E_kept=0.9915, W_err=0.3761, D/H=0.3437
+  L16 self_attn.k_proj: β₁=0.4286, α*=0.7500, r=1638(r1=1638+r2=0), E_kept=0.9943, W_err=0.3803, D/H=0.3437
+  L16 self_attn.v_proj: β₁=0.4286, α*=0.7500, r=1638(r1=1638+r2=0), E_kept=0.9472, W_err=0.4554, D/H=0.3437
+  L16 self_attn.o_proj: β₁=0.2000, α*=0.2500, r=1638(r1=1638+r2=0), E_kept=0.9678, W_err=0.4569, D/H=0.5754
+  L16 mlp.gate_proj: β₁=0.4286, α*=0.7500, r=2388(r1=2388+r2=0), E_kept=0.9788, W_err=0.4427, D/H=0.4920
+  L16 mlp.up_proj: β₁=0.4286, α*=0.7500, r=2388(r1=2388+r2=0), E_kept=0.9644, W_err=0.4637, D/H=0.4920
+  L16 mlp.down_proj: β₁=0.4286, α*=0.7500, r=2388(r1=2388+r2=0), E_kept=0.9207, W_err=0.4669, D/H=0.5277
+Layer 16 Summary: avg_β=0.3959, avg_α*=0.6786, avg_D/H=0.4454
+Layer 17 Summary: avg_β=0.4286, avg_α*=0.7500, avg_D/H=0.4549
+Layer 18 Summary: avg_β=0.4286, avg_α*=0.7500, avg_D/H=0.4008
+Layer 19 Summary: avg_β=0.4286, avg_α*=0.7500, avg_D/H=0.3586
+Layer 20 Summary: avg_β=0.4286, avg_α*=0.7500, avg_D/H=0.3489
+Layer 21 Summary: avg_β=0.4286, avg_α*=0.7500, avg_D/H=0.3170
+Layer 22 Summary: avg_β=0.3633, avg_α*=0.6071, avg_D/H=0.3044
+Layer 23 Summary: avg_β=0.4286, avg_α*=0.7500, avg_D/H=0.2696
+  L24 self_attn.q_proj: β₁=0.4286, α*=0.7500, r=1638(r1=1638+r2=0), E_kept=0.9882, W_err=0.3847, D/H=0.2409
+  L24 self_attn.k_proj: β₁=0.4286, α*=0.7500, r=1638(r1=1638+r2=0), E_kept=0.9923, W_err=0.3854, D/H=0.2409
+  L24 self_attn.v_proj: β₁=0.4286, α*=0.7500, r=1638(r1=1638+r2=0), E_kept=0.9400, W_err=0.4648, D/H=0.2409
+  L24 self_attn.o_proj: β₁=0.4286, α*=0.7500, r=1638(r1=1638+r2=0), E_kept=0.9570, W_err=0.5315, D/H=0.4829
+  L24 mlp.gate_proj: β₁=0.4286, α*=0.7500, r=2388(r1=2388+r2=0), E_kept=0.9703, W_err=0.4484, D/H=0.2763
+  L24 mlp.up_proj: β₁=0.4286, α*=0.7500, r=2388(r1=2388+r2=0), E_kept=0.9571, W_err=0.4641, D/H=0.2763
+  L24 mlp.down_proj: β₁=0.4286, α*=0.7500, r=2388(r1=2388+r2=0), E_kept=0.9145, W_err=0.4591, D/H=0.3053
+Layer 24 Summary: avg_β=0.4286, avg_α*=0.7500, avg_D/H=0.2948
+Layer 25 Summary: avg_β=0.3959, avg_α*=0.6786, avg_D/H=0.2830
+Layer 26 Summary: avg_β=0.3959, avg_α*=0.6786, avg_D/H=0.2924
+Layer 27 Summary: avg_β=0.3959, avg_α*=0.6786, avg_D/H=0.3070
+Layer 28 Summary: avg_β=0.4286, avg_α*=0.7500, avg_D/H=0.2641
+Layer 29 Summary: avg_β=0.4286, avg_α*=0.7500, avg_D/H=0.2604
+Layer 30 Summary: avg_β=0.3959, avg_α*=0.6786, avg_D/H=0.2687
+  L31 self_attn.q_proj: β₁=0.4286, α*=0.7500, r=1638(r1=1638+r2=0), E_kept=0.9937, W_err=0.3644, D/H=0.2268
+  L31 self_attn.k_proj: β₁=0.4286, α*=0.7500, r=1638(r1=1638+r2=0), E_kept=0.9963, W_err=0.3669, D/H=0.2268
+  L31 self_attn.v_proj: β₁=0.4286, α*=0.7500, r=1638(r1=1638+r2=0), E_kept=0.9570, W_err=0.4696, D/H=0.2268
+  L31 self_attn.o_proj: β₁=0.4286, α*=0.7500, r=1638(r1=1638+r2=0), E_kept=0.9943, W_err=0.5745, D/H=0.4522
+  L31 mlp.gate_proj: β₁=0.4286, α*=0.7500, r=2388(r1=2388+r2=0), E_kept=0.9913, W_err=0.4519, D/H=0.2248
+  L31 mlp.up_proj: β₁=0.4286, α*=0.7500, r=2388(r1=2388+r2=0), E_kept=0.9898, W_err=0.4576, D/H=0.2248
+  L31 mlp.down_proj: β₁=0.4286, α*=0.7500, r=2388(r1=2388+r2=0), E_kept=0.9978, W_err=0.6137, D/H=0.2678
+Layer 31 Summary: avg_β=0.4286, avg_α*=0.7500, avg_D/H=0.2643
+
+============================================================
+FR-SVD v1.3 压缩完成！
+============================================================
+  平均 beta: 0.3807
+  平均 D/H:  0.3689
+  Beta 范围: [0.2000, 0.4286]
+
+保存压缩模型到: ./result/ablation_v1.3_phase1/exp5b_wide_alpha/_data_zhangs_LLMs_Models_jeffwan_llama_7b_hf_fr_svd_0.8.pt
+
+运行困惑度评估...
+  0%|          | 0/42 [00:00<?, ?it/s]  2%|▏         | 1/42 [00:02<01:42,  2.49s/it]  5%|▍         | 2/42 [00:04<01:38,  2.45s/it]  7%|▋         | 3/42 [00:07<01:35,  2.44s/it] 10%|▉         | 4/42 [00:09<01:32,  2.44s/it] 12%|█▏        | 5/42 [00:12<01:30,  2.44s/it] 14%|█▍        | 6/42 [00:14<01:27,  2.44s/it] 17%|█▋        | 7/42 [00:17<01:25,  2.44s/it] 19%|█▉        | 8/42 [00:19<01:22,  2.44s/it] 21%|██▏       | 9/42 [00:21<01:20,  2.44s/it] 24%|██▍       | 10/42 [00:24<01:17,  2.44s/it] 26%|██▌       | 11/42 [00:26<01:15,  2.44s/it] 29%|██▊       | 12/42 [00:29<01:13,  2.44s/it] 31%|███       | 13/42 [00:31<01:10,  2.44s/it] 33%|███▎      | 14/42 [00:34<01:08,  2.44s/it] 36%|███▌      | 15/42 [00:36<01:05,  2.44s/it] 38%|███▊      | 16/42 [00:39<01:03,  2.44s/it] 40%|████      | 17/42 [00:41<01:00,  2.44s/it] 43%|████▎     | 18/42 [00:43<00:58,  2.44s/it] 45%|████▌     | 19/42 [00:46<00:56,  2.44s/it] 48%|████▊     | 20/42 [00:48<00:53,  2.44s/it] 50%|█████     | 21/42 [00:51<00:51,  2.44s/it] 52%|█████▏    | 22/42 [00:53<00:48,  2.44s/it] 55%|█████▍    | 23/42 [00:56<00:46,  2.44s/it] 57%|█████▋    | 24/42 [00:58<00:43,  2.44s/it] 60%|█████▉    | 25/42 [01:01<00:41,  2.44s/it] 62%|██████▏   | 26/42 [01:03<00:39,  2.44s/it] 64%|██████▍   | 27/42 [01:05<00:36,  2.44s/it] 67%|██████▋   | 28/42 [01:08<00:34,  2.44s/it] 69%|██████▉   | 29/42 [01:10<00:31,  2.44s/it] 71%|███████▏  | 30/42 [01:13<00:29,  2.45s/it] 74%|███████▍  | 31/42 [01:15<00:26,  2.45s/it] 76%|███████▌  | 32/42 [01:18<00:24,  2.45s/it] 79%|███████▊  | 33/42 [01:20<00:22,  2.45s/it] 81%|████████  | 34/42 [01:23<00:19,  2.45s/it] 83%|████████▎ | 35/42 [01:25<00:17,  2.45s/it] 86%|████████▌ | 36/42 [01:27<00:14,  2.45s/it] 88%|████████▊ | 37/42 [01:30<00:12,  2.45s/it] 90%|█████████ | 38/42 [01:32<00:09,  2.45s/it] 93%|█████████▎| 39/42 [01:35<00:07,  2.45s/it] 95%|█████████▌| 40/42 [01:37<00:04,  2.45s/it] 98%|█████████▊| 41/42 [01:40<00:02,  2.45s/it]100%|██████████| 42/42 [01:41<00:00,  2.09s/it]100%|██████████| 42/42 [01:41<00:00,  2.41s/it]
+PPL after pruning: {'wikitext2': 8.174956624052129}
+Weight Memory: 11422.076171875 MiB
+
+
+>>> Exp6: B only (CEALC-aware Stage 2, v1.2 params)
+/data/zhangs/anaconda3/envs/compress/lib/python3.9/site-packages/transformers/utils/generic.py:441: FutureWarning: `torch.utils._pytree._register_pytree_node` is deprecated. Please use `torch.utils._pytree.register_pytree_node` instead.
+  _torch_pytree._register_pytree_node(
+/data/zhangs/anaconda3/envs/compress/lib/python3.9/site-packages/transformers/utils/generic.py:309: FutureWarning: `torch.utils._pytree._register_pytree_node` is deprecated. Please use `torch.utils._pytree.register_pytree_node` instead.
+  _torch_pytree._register_pytree_node(
+/data/zhangs/anaconda3/envs/compress/lib/python3.9/site-packages/transformers/utils/generic.py:309: FutureWarning: `torch.utils._pytree._register_pytree_node` is deprecated. Please use `torch.utils._pytree.register_pytree_node` instead.
+  _torch_pytree._register_pytree_node(
+You are using the default legacy behaviour of the <class 'transformers.models.llama.tokenization_llama.LlamaTokenizer'>. This is expected, and simply means that the `legacy` (previous) behavior will be used so nothing changes for you. If you want to use the new behaviour, set `legacy=False`. This should only be set if you understand what it means, and thouroughly read the reason why this was added as explained in https://github.com/huggingface/transformers/pull/24565
+CUDA_VISIBLE_DEVICES: 5
+============================================================
+FR-SVD v1.3 配置
+============================================================
+  模型: /data/zhangs/LLMs/Models/jeffwan/llama-7b-hf
+  压缩率: 0.2 (保留 80.0%)
+  数据集: wikitext2, 样本数: 128
+  设备: cuda:0
+  r1_ratio: 0.9
+  创新点A (Fisher soft-reweighting): OFF
+  创新点B (CEALC-aware Stage 2): ON
+  eps=0.0001
+  Alpha: [0.4, 0.6], rho=0.95
+============================================================
+
+加载模型...
+Loading checkpoint shards:   0%|          | 0/2 [00:00<?, ?it/s]Loading checkpoint shards:  50%|█████     | 1/2 [00:04<00:04,  4.90s/it]Loading checkpoint shards: 100%|██████████| 2/2 [00:06<00:00,  3.05s/it]Loading checkpoint shards: 100%|██████████| 2/2 [00:06<00:00,  3.32s/it]
+
+加载校准数据...
+
+开始 FR-SVD v1.3 压缩...
+============================================================
+FR-SVD v1.3: Widened-ACES + CEALC-aware Stage 2 + Fisher Soft-Reweighting
+============================================================
+  保留比例: 0.8 (80.0%)
+  秩分配: r1=90% of r / r2=10% of r (r1+r2=r)
+  创新点A (Fisher soft-reweighting): OFF
+  创新点B (CEALC-aware Stage 2): ON (r2>0)
+  H 阻尼: eps=0.0001
+  Alpha 范围: [0.4, 0.6], rho=0.95, beta_cap=0.3750
+============================================================
+
+加载教师模型（fp16 存储，fp32 计算）...
+Loading checkpoint shards:   0%|          | 0/2 [00:00<?, ?it/s]Loading checkpoint shards:  50%|█████     | 1/2 [00:04<00:04,  4.29s/it]Loading checkpoint shards: 100%|██████████| 2/2 [00:06<00:00,  2.78s/it]Loading checkpoint shards: 100%|██████████| 2/2 [00:06<00:00,  3.00s/it]
+收集第 0 层输入激活...
+
+开始逐层 FR-SVD v1.3 压缩...
+FR-SVD v1.3 Compression:   0%|          | 0/32 [00:00<?, ?it/s]FR-SVD v1.3 Compression:   3%|▎         | 1/32 [03:12<1:39:40, 192.92s/it]FR-SVD v1.3 Compression:   6%|▋         | 2/32 [06:13<1:32:50, 185.69s/it]FR-SVD v1.3 Compression:   9%|▉         | 3/32 [09:12<1:28:19, 182.76s/it]FR-SVD v1.3 Compression:  12%|█▎        | 4/32 [12:08<1:23:58, 179.94s/it]FR-SVD v1.3 Compression:  16%|█▌        | 5/32 [15:03<1:20:15, 178.34s/it]FR-SVD v1.3 Compression:  19%|█▉        | 6/32 [17:56<1:16:26, 176.41s/it]FR-SVD v1.3 Compression:  22%|██▏       | 7/32 [20:49<1:12:58, 175.13s/it]FR-SVD v1.3 Compression:  25%|██▌       | 8/32 [23:39<1:09:26, 173.59s/it]FR-SVD v1.3 Compression:  28%|██▊       | 9/32 [26:31<1:06:22, 173.15s/it]FR-SVD v1.3 Compression:  31%|███▏      | 10/32 [29:25<1:03:32, 173.28s/it]FR-SVD v1.3 Compression:  34%|███▍      | 11/32 [32:17<1:00:32, 172.98s/it]FR-SVD v1.3 Compression:  38%|███▊      | 12/32 [35:04<57:05, 171.28s/it]  FR-SVD v1.3 Compression:  41%|████      | 13/32 [37:49<53:36, 169.29s/it]FR-SVD v1.3 Compression:  44%|████▍     | 14/32 [40:41<51:01, 170.07s/it]FR-SVD v1.3 Compression:  47%|████▋     | 15/32 [43:29<48:03, 169.60s/it]FR-SVD v1.3 Compression:  50%|█████     | 16/32 [46:26<45:48, 171.81s/it]FR-SVD v1.3 Compression:  53%|█████▎    | 17/32 [49:20<43:05, 172.34s/it]FR-SVD v1.3 Compression:  56%|█████▋    | 18/32 [52:15<40:22, 173.07s/it]FR-SVD v1.3 Compression:  59%|█████▉    | 19/32 [55:08<37:32, 173.26s/it]FR-SVD v1.3 Compression:  62%|██████▎   | 20/32 [58:02<34:39, 173.32s/it]FR-SVD v1.3 Compression:  66%|██████▌   | 21/32 [1:00:54<31:42, 172.97s/it]FR-SVD v1.3 Compression:  69%|██████▉   | 22/32 [1:03:49<28:56, 173.65s/it]FR-SVD v1.3 Compression:  72%|███████▏  | 23/32 [1:06:42<25:59, 173.29s/it]FR-SVD v1.3 Compression:  75%|███████▌  | 24/32 [1:09:35<23:07, 173.38s/it]FR-SVD v1.3 Compression:  78%|███████▊  | 25/32 [1:12:28<20:12, 173.23s/it]FR-SVD v1.3 Compression:  81%|████████▏ | 26/32 [1:15:21<17:18, 173.08s/it]FR-SVD v1.3 Compression:  84%|████████▍ | 27/32 [1:18:12<14:21, 172.39s/it]FR-SVD v1.3 Compression:  88%|████████▊ | 28/32 [1:21:00<11:24, 171.09s/it]FR-SVD v1.3 Compression:  91%|█████████ | 29/32 [1:23:56<08:37, 172.60s/it]FR-SVD v1.3 Compression:  94%|█████████▍| 30/32 [1:26:51<05:46, 173.36s/it]FR-SVD v1.3 Compression:  97%|█████████▋| 31/32 [1:29:41<02:52, 172.31s/it]FR-SVD v1.3 Compression: 100%|██████████| 32/32 [1:32:33<00:00, 172.31s/it]FR-SVD v1.3 Compression: 100%|██████████| 32/32 [1:32:33<00:00, 173.55s/it]
+  L0 self_attn.q_proj: β₁=0.2714, α*=0.3725, β₂=0.2714, r=1638(r1=1474+r2=164), E_kept=1.0000, W_err=0.0402, D/H=0.0000
+  L0 self_attn.k_proj: β₁=0.2714, α*=0.3725, β₂=0.2714, r=1638(r1=1474+r2=164), E_kept=1.0000, W_err=0.0355, D/H=0.0000
+  L0 self_attn.v_proj: β₁=0.2714, α*=0.3725, β₂=0.2714, r=1638(r1=1474+r2=164), E_kept=0.9932, W_err=0.3288, D/H=0.0000
+  L0 self_attn.o_proj: β₁=0.2714, α*=0.3725, β₂=0.2714, r=1638(r1=1474+r2=164), E_kept=0.9997, W_err=0.3475, D/H=0.0000
+  L0 mlp.gate_proj: β₁=0.2714, α*=0.3725, β₂=0.2714, r=2388(r1=2149+r2=239), E_kept=0.9978, W_err=0.2348, D/H=0.0000
+  L0 mlp.up_proj: β₁=0.2714, α*=0.3725, β₂=0.2714, r=2388(r1=2149+r2=239), E_kept=0.9961, W_err=0.2526, D/H=0.0000
+  L0 mlp.down_proj: β₁=0.2714, α*=0.3725, β₂=0.2714, r=2388(r1=2149+r2=239), E_kept=0.9844, W_err=0.4037, D/H=0.0000
+Layer 0 Summary: avg_β=0.2714, avg_α*=0.3725, avg_D/H=0.0000
+Layer 1 Summary: avg_β=0.2835, avg_α*=0.3984, avg_D/H=0.0210
+Layer 2 Summary: avg_β=0.2957, avg_α*=0.4242, avg_D/H=0.0299
+Layer 3 Summary: avg_β=0.2957, avg_α*=0.4242, avg_D/H=0.0562
+Layer 4 Summary: avg_β=0.3562, avg_α*=0.5534, avg_D/H=0.1595
+Layer 5 Summary: avg_β=0.3562, avg_α*=0.5534, avg_D/H=0.3052
+Layer 6 Summary: avg_β=0.3441, avg_α*=0.5276, avg_D/H=0.4039
+Layer 7 Summary: avg_β=0.3562, avg_α*=0.5534, avg_D/H=0.3979
+  L8 self_attn.q_proj: β₁=0.3562, α*=0.5534, β₂=0.2714, r=1638(r1=1474+r2=164), E_kept=0.9943, W_err=0.3176, D/H=0.3071
+  L8 self_attn.k_proj: β₁=0.3562, α*=0.5534, β₂=0.2714, r=1638(r1=1474+r2=164), E_kept=0.9955, W_err=0.3295, D/H=0.3071
+  L8 self_attn.v_proj: β₁=0.3562, α*=0.5534, β₂=0.2714, r=1638(r1=1474+r2=164), E_kept=0.9619, W_err=0.4087, D/H=0.3071
+  L8 self_attn.o_proj: β₁=0.2714, α*=0.3725, β₂=0.2714, r=1638(r1=1474+r2=164), E_kept=0.9651, W_err=0.4354, D/H=0.5499
+  L8 mlp.gate_proj: β₁=0.3562, α*=0.5534, β₂=0.2714, r=2388(r1=2149+r2=239), E_kept=0.9764, W_err=0.4300, D/H=0.4360
+  L8 mlp.up_proj: β₁=0.3562, α*=0.5534, β₂=0.2714, r=2388(r1=2149+r2=239), E_kept=0.9526, W_err=0.4572, D/H=0.4360
+  L8 mlp.down_proj: β₁=0.3562, α*=0.5534, β₂=0.2714, r=2388(r1=2149+r2=239), E_kept=0.9128, W_err=0.4283, D/H=0.5038
+Layer 8 Summary: avg_β=0.3441, avg_α*=0.5276, avg_D/H=0.4067
+Layer 9 Summary: avg_β=0.3562, avg_α*=0.5534, avg_D/H=0.3513
+Layer 10 Summary: avg_β=0.3562, avg_α*=0.5534, avg_D/H=0.3716
+Layer 11 Summary: avg_β=0.3562, avg_α*=0.5534, avg_D/H=0.3404
+Layer 12 Summary: avg_β=0.3562, avg_α*=0.5534, avg_D/H=0.3609
+Layer 13 Summary: avg_β=0.3562, avg_α*=0.5534, avg_D/H=0.3696
+Layer 14 Summary: avg_β=0.3562, avg_α*=0.5534, avg_D/H=0.3739
+Layer 15 Summary: avg_β=0.3562, avg_α*=0.5534, avg_D/H=0.3576
+  L16 self_attn.q_proj: β₁=0.3562, α*=0.5534, β₂=0.2714, r=1638(r1=1474+r2=164), E_kept=0.9890, W_err=0.3632, D/H=0.2872
+  L16 self_attn.k_proj: β₁=0.3562, α*=0.5534, β₂=0.2714, r=1638(r1=1474+r2=164), E_kept=0.9928, W_err=0.3675, D/H=0.2872
+  L16 self_attn.v_proj: β₁=0.3562, α*=0.5534, β₂=0.2714, r=1638(r1=1474+r2=164), E_kept=0.9326, W_err=0.4460, D/H=0.2872
+  L16 self_attn.o_proj: β₁=0.3562, α*=0.5534, β₂=0.2714, r=1638(r1=1474+r2=164), E_kept=0.9567, W_err=0.4724, D/H=0.4505
+  L16 mlp.gate_proj: β₁=0.3562, α*=0.5534, β₂=0.2714, r=2388(r1=2149+r2=239), E_kept=0.9724, W_err=0.4329, D/H=0.3869
+  L16 mlp.up_proj: β₁=0.3562, α*=0.5534, β₂=0.2714, r=2388(r1=2149+r2=239), E_kept=0.9534, W_err=0.4546, D/H=0.3869
+  L16 mlp.down_proj: β₁=0.3562, α*=0.5534, β₂=0.2714, r=2388(r1=2149+r2=239), E_kept=0.8947, W_err=0.4537, D/H=0.3625
+Layer 16 Summary: avg_β=0.3562, avg_α*=0.5534, avg_D/H=0.3498
+Layer 17 Summary: avg_β=0.3562, avg_α*=0.5534, avg_D/H=0.3782
+Layer 18 Summary: avg_β=0.3562, avg_α*=0.5534, avg_D/H=0.3498
+Layer 19 Summary: avg_β=0.3562, avg_α*=0.5534, avg_D/H=0.3262
+Layer 20 Summary: avg_β=0.3562, avg_α*=0.5534, avg_D/H=0.3234
+Layer 21 Summary: avg_β=0.3562, avg_α*=0.5534, avg_D/H=0.2989
+Layer 22 Summary: avg_β=0.3320, avg_α*=0.5017, avg_D/H=0.2941
+Layer 23 Summary: avg_β=0.3562, avg_α*=0.5534, avg_D/H=0.2682
+  L24 self_attn.q_proj: β₁=0.3562, α*=0.5534, β₂=0.2714, r=1638(r1=1474+r2=164), E_kept=0.9840, W_err=0.3806, D/H=0.2542
+  L24 self_attn.k_proj: β₁=0.3562, α*=0.5534, β₂=0.2714, r=1638(r1=1474+r2=164), E_kept=0.9897, W_err=0.3814, D/H=0.2542
+  L24 self_attn.v_proj: β₁=0.3562, α*=0.5534, β₂=0.2714, r=1638(r1=1474+r2=164), E_kept=0.9228, W_err=0.4625, D/H=0.2542
+  L24 self_attn.o_proj: β₁=0.2714, α*=0.3725, β₂=0.2714, r=1638(r1=1474+r2=164), E_kept=0.9452, W_err=0.5138, D/H=0.5280
+  L24 mlp.gate_proj: β₁=0.3562, α*=0.5534, β₂=0.2714, r=2388(r1=2149+r2=239), E_kept=0.9611, W_err=0.4439, D/H=0.2905
+  L24 mlp.up_proj: β₁=0.3562, α*=0.5534, β₂=0.2714, r=2388(r1=2149+r2=239), E_kept=0.9441, W_err=0.4599, D/H=0.2905
+  L24 mlp.down_proj: β₁=0.3562, α*=0.5534, β₂=0.2714, r=2388(r1=2149+r2=239), E_kept=0.8883, W_err=0.4538, D/H=0.2099
+Layer 24 Summary: avg_β=0.3441, avg_α*=0.5276, avg_D/H=0.2974
+Layer 25 Summary: avg_β=0.3441, avg_α*=0.5276, avg_D/H=0.2950
+Layer 26 Summary: avg_β=0.3441, avg_α*=0.5276, avg_D/H=0.3128
+Layer 27 Summary: avg_β=0.3441, avg_α*=0.5276, avg_D/H=0.3343
+Layer 28 Summary: avg_β=0.3562, avg_α*=0.5534, avg_D/H=0.2858
+Layer 29 Summary: avg_β=0.3562, avg_α*=0.5534, avg_D/H=0.2743
+Layer 30 Summary: avg_β=0.3441, avg_α*=0.5276, avg_D/H=0.2892
+  L31 self_attn.q_proj: β₁=0.3562, α*=0.5534, β₂=0.2714, r=1638(r1=1474+r2=164), E_kept=0.9914, W_err=0.3602, D/H=0.2466
+  L31 self_attn.k_proj: β₁=0.3562, α*=0.5534, β₂=0.2714, r=1638(r1=1474+r2=164), E_kept=0.9950, W_err=0.3630, D/H=0.2466
+  L31 self_attn.v_proj: β₁=0.3562, α*=0.5534, β₂=0.2714, r=1638(r1=1474+r2=164), E_kept=0.9443, W_err=0.4675, D/H=0.2466
+  L31 self_attn.o_proj: β₁=0.3562, α*=0.5534, β₂=0.2714, r=1638(r1=1474+r2=164), E_kept=0.9928, W_err=0.4960, D/H=0.4188
+  L31 mlp.gate_proj: β₁=0.3562, α*=0.5534, β₂=0.2714, r=2388(r1=2149+r2=239), E_kept=0.9883, W_err=0.4474, D/H=0.2486
+  L31 mlp.up_proj: β₁=0.3562, α*=0.5534, β₂=0.2714, r=2388(r1=2149+r2=239), E_kept=0.9862, W_err=0.4532, D/H=0.2486
+  L31 mlp.down_proj: β₁=0.3562, α*=0.5534, β₂=0.2714, r=2388(r1=2149+r2=239), E_kept=0.9971, W_err=0.4953, D/H=0.2756
+Layer 31 Summary: avg_β=0.3562, avg_α*=0.5534, avg_D/H=0.2759
+
+============================================================
+FR-SVD v1.3 压缩完成！
+============================================================
+  平均 beta: 0.3441
+  平均 D/H:  0.2893
+  Beta 范围: [0.2714, 0.3562]
+
+保存压缩模型到: ./result/ablation_v1.3_phase1/exp6_cealc_stage2/_data_zhangs_LLMs_Models_jeffwan_llama_7b_hf_fr_svd_0.8.pt
+
+运行困惑度评估...
+  0%|          | 0/42 [00:00<?, ?it/s]  2%|▏         | 1/42 [00:02<01:42,  2.50s/it]  5%|▍         | 2/42 [00:04<01:38,  2.45s/it]  7%|▋         | 3/42 [00:07<01:35,  2.45s/it] 10%|▉         | 4/42 [00:09<01:32,  2.44s/it] 12%|█▏        | 5/42 [00:12<01:30,  2.44s/it] 14%|█▍        | 6/42 [00:14<01:27,  2.44s/it] 17%|█▋        | 7/42 [00:17<01:25,  2.44s/it] 19%|█▉        | 8/42 [00:19<01:22,  2.44s/it] 21%|██▏       | 9/42 [00:21<01:20,  2.44s/it] 24%|██▍       | 10/42 [00:24<01:18,  2.44s/it] 26%|██▌       | 11/42 [00:26<01:15,  2.44s/it] 29%|██▊       | 12/42 [00:29<01:13,  2.44s/it] 31%|███       | 13/42 [00:31<01:10,  2.44s/it] 33%|███▎      | 14/42 [00:34<01:08,  2.44s/it] 36%|███▌      | 15/42 [00:36<01:05,  2.44s/it] 38%|███▊      | 16/42 [00:39<01:03,  2.44s/it] 40%|████      | 17/42 [00:41<01:01,  2.44s/it] 43%|████▎     | 18/42 [00:43<00:58,  2.44s/it] 45%|████▌     | 19/42 [00:46<00:56,  2.44s/it] 48%|████▊     | 20/42 [00:48<00:53,  2.44s/it] 50%|█████     | 21/42 [00:51<00:51,  2.44s/it] 52%|█████▏    | 22/42 [00:53<00:48,  2.44s/it] 55%|█████▍    | 23/42 [00:56<00:46,  2.44s/it] 57%|█████▋    | 24/42 [00:58<00:44,  2.45s/it] 60%|█████▉    | 25/42 [01:01<00:41,  2.45s/it] 62%|██████▏   | 26/42 [01:03<00:39,  2.45s/it] 64%|██████▍   | 27/42 [01:05<00:36,  2.45s/it] 67%|██████▋   | 28/42 [01:08<00:34,  2.45s/it] 69%|██████▉   | 29/42 [01:10<00:31,  2.45s/it] 71%|███████▏  | 30/42 [01:13<00:29,  2.45s/it] 74%|███████▍  | 31/42 [01:15<00:26,  2.45s/it] 76%|███████▌  | 32/42 [01:18<00:24,  2.45s/it] 79%|███████▊  | 33/42 [01:20<00:22,  2.45s/it] 81%|████████  | 34/42 [01:23<00:19,  2.45s/it] 83%|████████▎ | 35/42 [01:25<00:17,  2.45s/it] 86%|████████▌ | 36/42 [01:28<00:14,  2.45s/it] 88%|████████▊ | 37/42 [01:30<00:12,  2.45s/it] 90%|█████████ | 38/42 [01:32<00:09,  2.45s/it] 93%|█████████▎| 39/42 [01:35<00:07,  2.45s/it] 95%|█████████▌| 40/42 [01:37<00:04,  2.45s/it] 98%|█████████▊| 41/42 [01:40<00:02,  2.45s/it]100%|██████████| 42/42 [01:41<00:00,  2.09s/it]100%|██████████| 42/42 [01:41<00:00,  2.42s/it]
+PPL after pruning: {'wikitext2': 8.033770157877019}
+Weight Memory: 11422.076171875 MiB
+
+
+>>> Exp7: A only (Fisher soft-reweight, v1.2 params)
+/data/zhangs/anaconda3/envs/compress/lib/python3.9/site-packages/transformers/utils/generic.py:441: FutureWarning: `torch.utils._pytree._register_pytree_node` is deprecated. Please use `torch.utils._pytree.register_pytree_node` instead.
+  _torch_pytree._register_pytree_node(
+/data/zhangs/anaconda3/envs/compress/lib/python3.9/site-packages/transformers/utils/generic.py:309: FutureWarning: `torch.utils._pytree._register_pytree_node` is deprecated. Please use `torch.utils._pytree.register_pytree_node` instead.
+  _torch_pytree._register_pytree_node(
+/data/zhangs/anaconda3/envs/compress/lib/python3.9/site-packages/transformers/utils/generic.py:309: FutureWarning: `torch.utils._pytree._register_pytree_node` is deprecated. Please use `torch.utils._pytree.register_pytree_node` instead.
+  _torch_pytree._register_pytree_node(
+You are using the default legacy behaviour of the <class 'transformers.models.llama.tokenization_llama.LlamaTokenizer'>. This is expected, and simply means that the `legacy` (previous) behavior will be used so nothing changes for you. If you want to use the new behaviour, set `legacy=False`. This should only be set if you understand what it means, and thouroughly read the reason why this was added as explained in https://github.com/huggingface/transformers/pull/24565
+CUDA_VISIBLE_DEVICES: 5
+============================================================
+FR-SVD v1.3 配置
+============================================================
+  模型: /data/zhangs/LLMs/Models/jeffwan/llama-7b-hf
+  压缩率: 0.2 (保留 80.0%)
+  数据集: wikitext2, 样本数: 128
+  设备: cuda:0
+  r1_ratio: 1.0
+  创新点A (Fisher soft-reweighting): ON
+  创新点B (CEALC-aware Stage 2): OFF
+  eps=0.0001
+  Alpha: [0.4, 0.6], rho=0.95
+============================================================
+
+加载模型...
+Loading checkpoint shards:   0%|          | 0/2 [00:00<?, ?it/s]Loading checkpoint shards:  50%|█████     | 1/2 [00:05<00:05,  5.08s/it]Loading checkpoint shards: 100%|██████████| 2/2 [00:08<00:00,  4.16s/it]Loading checkpoint shards: 100%|██████████| 2/2 [00:08<00:00,  4.30s/it]
+
+加载校准数据...
+
+开始 FR-SVD v1.3 压缩...
+============================================================
+FR-SVD v1.3: Widened-ACES + CEALC-aware Stage 2 + Fisher Soft-Reweighting
+============================================================
+  保留比例: 0.8 (80.0%)
+  秩分配: r1=100% of r / r2=0% of r (r1+r2=r)
+  创新点A (Fisher soft-reweighting): ON
+  创新点B (CEALC-aware Stage 2): OFF (r2=0)
+  H 阻尼: eps=0.0001
+  Alpha 范围: [0.4, 0.6], rho=0.95, beta_cap=0.3750
+============================================================
+
+加载教师模型（fp16 存储，fp32 计算）...
+Loading checkpoint shards:   0%|          | 0/2 [00:00<?, ?it/s]Loading checkpoint shards:  50%|█████     | 1/2 [00:04<00:04,  4.52s/it]Loading checkpoint shards: 100%|██████████| 2/2 [00:06<00:00,  2.89s/it]Loading checkpoint shards: 100%|██████████| 2/2 [00:06<00:00,  3.13s/it]
+收集第 0 层输入激活...
+
+开始逐层 FR-SVD v1.3 压缩...
+FR-SVD v1.3 Compression:   0%|          | 0/32 [00:00<?, ?it/s]FR-SVD v1.3 Compression:   3%|▎         | 1/32 [02:56<1:31:14, 176.59s/it]FR-SVD v1.3 Compression:   6%|▋         | 2/32 [05:57<1:29:37, 179.25s/it]FR-SVD v1.3 Compression:   9%|▉         | 3/32 [08:55<1:26:14, 178.45s/it]FR-SVD v1.3 Compression:  12%|█▎        | 4/32 [11:47<1:22:07, 175.98s/it]FR-SVD v1.3 Compression:  16%|█▌        | 5/32 [14:37<1:18:14, 173.87s/it]FR-SVD v1.3 Compression:  19%|█▉        | 6/32 [17:29<1:15:02, 173.16s/it]FR-SVD v1.3 Compression:  22%|██▏       | 7/32 [20:20<1:11:55, 172.63s/it]FR-SVD v1.3 Compression:  25%|██▌       | 8/32 [23:13<1:09:04, 172.68s/it]FR-SVD v1.3 Compression:  28%|██▊       | 9/32 [26:04<1:06:00, 172.18s/it]FR-SVD v1.3 Compression:  31%|███▏      | 10/32 [28:57<1:03:14, 172.46s/it]FR-SVD v1.3 Compression:  34%|███▍      | 11/32 [31:48<1:00:08, 171.82s/it]FR-SVD v1.3 Compression:  38%|███▊      | 12/32 [34:37<57:00, 171.03s/it]  FR-SVD v1.3 Compression:  41%|████      | 13/32 [37:27<54:04, 170.78s/it]FR-SVD v1.3 Compression:  44%|████▍     | 14/32 [40:18<51:14, 170.83s/it]FR-SVD v1.3 Compression:  47%|████▋     | 15/32 [43:13<48:45, 172.10s/it]FR-SVD v1.3 Compression:  50%|█████     | 16/32 [46:04<45:48, 171.79s/it]FR-SVD v1.3 Compression:  53%|█████▎    | 17/32 [48:56<42:58, 171.89s/it]FR-SVD v1.3 Compression:  56%|█████▋    | 18/32 [51:49<40:09, 172.08s/it]FR-SVD v1.3 Compression:  59%|█████▉    | 19/32 [54:37<37:03, 171.04s/it]FR-SVD v1.3 Compression:  62%|██████▎   | 20/32 [57:27<34:05, 170.46s/it]FR-SVD v1.3 Compression:  66%|██████▌   | 21/32 [1:00:15<31:09, 169.97s/it]FR-SVD v1.3 Compression:  69%|██████▉   | 22/32 [1:03:06<28:20, 170.07s/it]FR-SVD v1.3 Compression:  72%|███████▏  | 23/32 [1:05:49<25:13, 168.16s/it]FR-SVD v1.3 Compression:  75%|███████▌  | 24/32 [1:08:38<22:26, 168.27s/it]FR-SVD v1.3 Compression:  78%|███████▊  | 25/32 [1:11:22<19:28, 166.92s/it]FR-SVD v1.3 Compression:  81%|████████▏ | 26/32 [1:14:05<16:35, 165.91s/it]FR-SVD v1.3 Compression:  84%|████████▍ | 27/32 [1:16:53<13:52, 166.40s/it]FR-SVD v1.3 Compression:  88%|████████▊ | 28/32 [1:19:36<11:02, 165.55s/it]FR-SVD v1.3 Compression:  91%|█████████ | 29/32 [1:22:19<08:14, 164.73s/it]FR-SVD v1.3 Compression:  94%|█████████▍| 30/32 [1:25:02<05:28, 164.09s/it]FR-SVD v1.3 Compression:  97%|█████████▋| 31/32 [1:27:44<02:43, 163.65s/it]FR-SVD v1.3 Compression: 100%|██████████| 32/32 [1:30:28<00:00, 163.64s/it]FR-SVD v1.3 Compression: 100%|██████████| 32/32 [1:30:28<00:00, 169.64s/it]
+  L0 self_attn.q_proj: β₁=0.2714, α*=0.3725, r=1638(r1=1638+r2=0), E_kept=1.0000, W_err=0.0401, D/H=0.0000
+  L0 self_attn.k_proj: β₁=0.2714, α*=0.3725, r=1638(r1=1638+r2=0), E_kept=1.0000, W_err=0.0354, D/H=0.0000
+  L0 self_attn.v_proj: β₁=0.2714, α*=0.3725, r=1638(r1=1638+r2=0), E_kept=0.9954, W_err=0.3288, D/H=0.0000
+  L0 self_attn.o_proj: β₁=0.2714, α*=0.3725, r=1638(r1=1638+r2=0), E_kept=0.9998, W_err=0.3475, D/H=0.0000
+  L0 mlp.gate_proj: β₁=0.2714, α*=0.3725, r=2388(r1=2388+r2=0), E_kept=0.9986, W_err=0.2348, D/H=0.0000
+  L0 mlp.up_proj: β₁=0.2714, α*=0.3725, r=2388(r1=2388+r2=0), E_kept=0.9975, W_err=0.2526, D/H=0.0000
+  L0 mlp.down_proj: β₁=0.2714, α*=0.3725, r=2388(r1=2388+r2=0), E_kept=0.9891, W_err=0.4037, D/H=0.0000
+Layer 0 Summary: avg_β=0.2714, avg_α*=0.3725, avg_D/H=0.0000
+Layer 1 Summary: avg_β=0.2835, avg_α*=0.3984, avg_D/H=0.0211
+Layer 2 Summary: avg_β=0.2957, avg_α*=0.4242, avg_D/H=0.0276
+Layer 3 Summary: avg_β=0.2957, avg_α*=0.4242, avg_D/H=0.0583
+Layer 4 Summary: avg_β=0.3562, avg_α*=0.5534, avg_D/H=0.1684
+Layer 5 Summary: avg_β=0.3562, avg_α*=0.5534, avg_D/H=0.3389
+Layer 6 Summary: avg_β=0.3441, avg_α*=0.5276, avg_D/H=0.5218
+Layer 7 Summary: avg_β=0.3441, avg_α*=0.5276, avg_D/H=0.5967
+  L8 self_attn.q_proj: β₁=0.3562, α*=0.5534, r=1638(r1=1638+r2=0), E_kept=0.9957, W_err=0.3205, D/H=0.6210
+  L8 self_attn.k_proj: β₁=0.3562, α*=0.5534, r=1638(r1=1638+r2=0), E_kept=0.9965, W_err=0.3326, D/H=0.6210
+  L8 self_attn.v_proj: β₁=0.3562, α*=0.5534, r=1638(r1=1638+r2=0), E_kept=0.9699, W_err=0.4115, D/H=0.6210
+  L8 self_attn.o_proj: β₁=0.2714, α*=0.3725, r=1638(r1=1638+r2=0), E_kept=0.9754, W_err=0.4458, D/H=0.6962
+  L8 mlp.gate_proj: β₁=0.3562, α*=0.5534, r=2388(r1=2388+r2=0), E_kept=0.9789, W_err=0.4409, D/H=0.6329
+  L8 mlp.up_proj: β₁=0.3562, α*=0.5534, r=2388(r1=2388+r2=0), E_kept=0.9606, W_err=0.4640, D/H=0.6329
+  L8 mlp.down_proj: β₁=0.3562, α*=0.5534, r=2388(r1=2388+r2=0), E_kept=0.9340, W_err=0.4426, D/H=0.7478
+Layer 8 Summary: avg_β=0.3441, avg_α*=0.5276, avg_D/H=0.6533
+Layer 9 Summary: avg_β=0.3320, avg_α*=0.5017, avg_D/H=0.6245
+Layer 10 Summary: avg_β=0.3320, avg_α*=0.5017, avg_D/H=0.6150
+Layer 11 Summary: avg_β=0.3320, avg_α*=0.5017, avg_D/H=0.5637
+Layer 12 Summary: avg_β=0.3320, avg_α*=0.5017, avg_D/H=0.5705
+Layer 13 Summary: avg_β=0.3320, avg_α*=0.5017, avg_D/H=0.5671
+Layer 14 Summary: avg_β=0.3320, avg_α*=0.5017, avg_D/H=0.5264
+Layer 15 Summary: avg_β=0.3441, avg_α*=0.5276, avg_D/H=0.4634
+  L16 self_attn.q_proj: β₁=0.3562, α*=0.5534, r=1638(r1=1638+r2=0), E_kept=0.9914, W_err=0.3666, D/H=0.3356
+  L16 self_attn.k_proj: β₁=0.3562, α*=0.5534, r=1638(r1=1638+r2=0), E_kept=0.9942, W_err=0.3712, D/H=0.3356
+  L16 self_attn.v_proj: β₁=0.3562, α*=0.5534, r=1638(r1=1638+r2=0), E_kept=0.9465, W_err=0.4492, D/H=0.3356
+  L16 self_attn.o_proj: β₁=0.3562, α*=0.5534, r=1638(r1=1638+r2=0), E_kept=0.9680, W_err=0.4745, D/H=0.5585
+  L16 mlp.gate_proj: β₁=0.3562, α*=0.5534, r=2388(r1=2388+r2=0), E_kept=0.9779, W_err=0.4360, D/H=0.4863
+  L16 mlp.up_proj: β₁=0.3562, α*=0.5534, r=2388(r1=2388+r2=0), E_kept=0.9633, W_err=0.4577, D/H=0.4863
+  L16 mlp.down_proj: β₁=0.3562, α*=0.5534, r=2388(r1=2388+r2=0), E_kept=0.9202, W_err=0.4593, D/H=0.5319
+Layer 16 Summary: avg_β=0.3562, avg_α*=0.5534, avg_D/H=0.4385
+Layer 17 Summary: avg_β=0.3562, avg_α*=0.5534, avg_D/H=0.4487
+Layer 18 Summary: avg_β=0.3562, avg_α*=0.5534, avg_D/H=0.3984
+Layer 19 Summary: avg_β=0.3562, avg_α*=0.5534, avg_D/H=0.3581
+Layer 20 Summary: avg_β=0.3562, avg_α*=0.5534, avg_D/H=0.3473
+Layer 21 Summary: avg_β=0.3562, avg_α*=0.5534, avg_D/H=0.3173
+Layer 22 Summary: avg_β=0.3320, avg_α*=0.5017, avg_D/H=0.3043
+Layer 23 Summary: avg_β=0.3562, avg_α*=0.5534, avg_D/H=0.2688
+  L24 self_attn.q_proj: β₁=0.3562, α*=0.5534, r=1638(r1=1638+r2=0), E_kept=0.9879, W_err=0.3805, D/H=0.2410
+  L24 self_attn.k_proj: β₁=0.3562, α*=0.5534, r=1638(r1=1638+r2=0), E_kept=0.9921, W_err=0.3814, D/H=0.2410
+  L24 self_attn.v_proj: β₁=0.3562, α*=0.5534, r=1638(r1=1638+r2=0), E_kept=0.9394, W_err=0.4620, D/H=0.2410
+  L24 self_attn.o_proj: β₁=0.3562, α*=0.5534, r=1638(r1=1638+r2=0), E_kept=0.9566, W_err=0.5233, D/H=0.4879
+  L24 mlp.gate_proj: β₁=0.3562, α*=0.5534, r=2388(r1=2388+r2=0), E_kept=0.9696, W_err=0.4451, D/H=0.2772
+  L24 mlp.up_proj: β₁=0.3562, α*=0.5534, r=2388(r1=2388+r2=0), E_kept=0.9563, W_err=0.4610, D/H=0.2772
+  L24 mlp.down_proj: β₁=0.3562, α*=0.5534, r=2388(r1=2388+r2=0), E_kept=0.9137, W_err=0.4546, D/H=0.3013
+Layer 24 Summary: avg_β=0.3562, avg_α*=0.5534, avg_D/H=0.2952
+Layer 25 Summary: avg_β=0.3441, avg_α*=0.5276, avg_D/H=0.2835
+Layer 26 Summary: avg_β=0.3441, avg_α*=0.5276, avg_D/H=0.2938
+Layer 27 Summary: avg_β=0.3441, avg_α*=0.5276, avg_D/H=0.3087
+Layer 28 Summary: avg_β=0.3562, avg_α*=0.5534, avg_D/H=0.2648
+Layer 29 Summary: avg_β=0.3562, avg_α*=0.5534, avg_D/H=0.2600
+Layer 30 Summary: avg_β=0.3441, avg_α*=0.5276, avg_D/H=0.2677
+  L31 self_attn.q_proj: β₁=0.3562, α*=0.5534, r=1638(r1=1638+r2=0), E_kept=0.9936, W_err=0.3591, D/H=0.2221
+  L31 self_attn.k_proj: β₁=0.3562, α*=0.5534, r=1638(r1=1638+r2=0), E_kept=0.9962, W_err=0.3618, D/H=0.2221
+  L31 self_attn.v_proj: β₁=0.3562, α*=0.5534, r=1638(r1=1638+r2=0), E_kept=0.9566, W_err=0.4664, D/H=0.2221
+  L31 self_attn.o_proj: β₁=0.3562, α*=0.5534, r=1638(r1=1638+r2=0), E_kept=0.9942, W_err=0.5349, D/H=0.4473
+  L31 mlp.gate_proj: β₁=0.3562, α*=0.5534, r=2388(r1=2388+r2=0), E_kept=0.9910, W_err=0.4477, D/H=0.2222
+  L31 mlp.up_proj: β₁=0.3562, α*=0.5534, r=2388(r1=2388+r2=0), E_kept=0.9895, W_err=0.4535, D/H=0.2222
+  L31 mlp.down_proj: β₁=0.3562, α*=0.5534, r=2388(r1=2388+r2=0), E_kept=0.9978, W_err=0.5660, D/H=0.2613
+Layer 31 Summary: avg_β=0.3562, avg_α*=0.5534, avg_D/H=0.2599
+
+============================================================
+FR-SVD v1.3 压缩完成！
+============================================================
+  平均 beta: 0.3392
+  平均 D/H:  0.3572
+  Beta 范围: [0.2714, 0.3562]
+
+保存压缩模型到: ./result/ablation_v1.3_phase1/exp7_fisher_soft/_data_zhangs_LLMs_Models_jeffwan_llama_7b_hf_fr_svd_0.8.pt
+
+运行困惑度评估...
+  0%|          | 0/42 [00:00<?, ?it/s]  2%|▏         | 1/42 [00:02<01:41,  2.48s/it]  5%|▍         | 2/42 [00:04<01:37,  2.45s/it]  7%|▋         | 3/42 [00:07<01:35,  2.44s/it] 10%|▉         | 4/42 [00:09<01:32,  2.44s/it] 12%|█▏        | 5/42 [00:12<01:30,  2.44s/it] 14%|█▍        | 6/42 [00:14<01:27,  2.44s/it] 17%|█▋        | 7/42 [00:17<01:25,  2.44s/it] 19%|█▉        | 8/42 [00:19<01:22,  2.44s/it] 21%|██▏       | 9/42 [00:21<01:20,  2.44s/it] 24%|██▍       | 10/42 [00:24<01:18,  2.44s/it] 26%|██▌       | 11/42 [00:26<01:15,  2.44s/it] 29%|██▊       | 12/42 [00:29<01:13,  2.44s/it] 31%|███       | 13/42 [00:31<01:10,  2.44s/it] 33%|███▎      | 14/42 [00:34<01:08,  2.44s/it] 36%|███▌      | 15/42 [00:36<01:05,  2.44s/it] 38%|███▊      | 16/42 [00:39<01:03,  2.44s/it] 40%|████      | 17/42 [00:41<01:00,  2.44s/it] 43%|████▎     | 18/42 [00:43<00:58,  2.44s/it] 45%|████▌     | 19/42 [00:46<00:56,  2.44s/it] 48%|████▊     | 20/42 [00:48<00:53,  2.44s/it] 50%|█████     | 21/42 [00:51<00:51,  2.44s/it] 52%|█████▏    | 22/42 [00:53<00:48,  2.44s/it] 55%|█████▍    | 23/42 [00:56<00:46,  2.44s/it] 57%|█████▋    | 24/42 [00:58<00:43,  2.44s/it] 60%|█████▉    | 25/42 [01:01<00:41,  2.44s/it] 62%|██████▏   | 26/42 [01:03<00:39,  2.44s/it] 64%|██████▍   | 27/42 [01:05<00:36,  2.44s/it] 67%|██████▋   | 28/42 [01:08<00:34,  2.44s/it] 69%|██████▉   | 29/42 [01:10<00:31,  2.44s/it] 71%|███████▏  | 30/42 [01:13<00:29,  2.44s/it] 74%|███████▍  | 31/42 [01:15<00:26,  2.44s/it] 76%|███████▌  | 32/42 [01:18<00:24,  2.44s/it] 79%|███████▊  | 33/42 [01:20<00:22,  2.44s/it] 81%|████████  | 34/42 [01:23<00:19,  2.45s/it] 83%|████████▎ | 35/42 [01:25<00:17,  2.45s/it] 86%|████████▌ | 36/42 [01:27<00:14,  2.45s/it] 88%|████████▊ | 37/42 [01:30<00:12,  2.45s/it] 90%|█████████ | 38/42 [01:32<00:09,  2.45s/it] 93%|█████████▎| 39/42 [01:35<00:07,  2.45s/it] 95%|█████████▌| 40/42 [01:37<00:04,  2.45s/it] 98%|█████████▊| 41/42 [01:40<00:02,  2.45s/it]100%|██████████| 42/42 [01:41<00:00,  2.09s/it]100%|██████████| 42/42 [01:41<00:00,  2.41s/it]
+PPL after pruning: {'wikitext2': 8.082331907213971}
+Weight Memory: 11430.701171875 MiB
+
+
+>>> Exp8: A+B (Both, v1.2 params)
+/data/zhangs/anaconda3/envs/compress/lib/python3.9/site-packages/transformers/utils/generic.py:441: FutureWarning: `torch.utils._pytree._register_pytree_node` is deprecated. Please use `torch.utils._pytree.register_pytree_node` instead.
+  _torch_pytree._register_pytree_node(
+/data/zhangs/anaconda3/envs/compress/lib/python3.9/site-packages/transformers/utils/generic.py:309: FutureWarning: `torch.utils._pytree._register_pytree_node` is deprecated. Please use `torch.utils._pytree.register_pytree_node` instead.
+  _torch_pytree._register_pytree_node(
+/data/zhangs/anaconda3/envs/compress/lib/python3.9/site-packages/transformers/utils/generic.py:309: FutureWarning: `torch.utils._pytree._register_pytree_node` is deprecated. Please use `torch.utils._pytree.register_pytree_node` instead.
+  _torch_pytree._register_pytree_node(
+You are using the default legacy behaviour of the <class 'transformers.models.llama.tokenization_llama.LlamaTokenizer'>. This is expected, and simply means that the `legacy` (previous) behavior will be used so nothing changes for you. If you want to use the new behaviour, set `legacy=False`. This should only be set if you understand what it means, and thouroughly read the reason why this was added as explained in https://github.com/huggingface/transformers/pull/24565
+CUDA_VISIBLE_DEVICES: 5
+============================================================
+FR-SVD v1.3 配置
+============================================================
+  模型: /data/zhangs/LLMs/Models/jeffwan/llama-7b-hf
+  压缩率: 0.2 (保留 80.0%)
+  数据集: wikitext2, 样本数: 128
+  设备: cuda:0
+  r1_ratio: 0.9
+  创新点A (Fisher soft-reweighting): ON
+  创新点B (CEALC-aware Stage 2): ON
+  eps=0.0001
+  Alpha: [0.4, 0.6], rho=0.95
+============================================================
+
+加载模型...
+Loading checkpoint shards:   0%|          | 0/2 [00:00<?, ?it/s]Loading checkpoint shards:  50%|█████     | 1/2 [00:04<00:04,  4.52s/it]Loading checkpoint shards: 100%|██████████| 2/2 [00:06<00:00,  2.90s/it]Loading checkpoint shards: 100%|██████████| 2/2 [00:06<00:00,  3.14s/it]
+
+加载校准数据...
+
+开始 FR-SVD v1.3 压缩...
+============================================================
+FR-SVD v1.3: Widened-ACES + CEALC-aware Stage 2 + Fisher Soft-Reweighting
+============================================================
+  保留比例: 0.8 (80.0%)
+  秩分配: r1=90% of r / r2=10% of r (r1+r2=r)
+  创新点A (Fisher soft-reweighting): ON
+  创新点B (CEALC-aware Stage 2): ON (r2>0)
+  H 阻尼: eps=0.0001
+  Alpha 范围: [0.4, 0.6], rho=0.95, beta_cap=0.3750
+============================================================
+
+加载教师模型（fp16 存储，fp32 计算）...
+Loading checkpoint shards:   0%|          | 0/2 [00:00<?, ?it/s]Loading checkpoint shards:  50%|█████     | 1/2 [00:04<00:04,  4.33s/it]Loading checkpoint shards: 100%|██████████| 2/2 [00:06<00:00,  2.78s/it]Loading checkpoint shards: 100%|██████████| 2/2 [00:06<00:00,  3.01s/it]
+收集第 0 层输入激活...
+
+开始逐层 FR-SVD v1.3 压缩...
+FR-SVD v1.3 Compression:   0%|          | 0/32 [00:00<?, ?it/s]FR-SVD v1.3 Compression:   3%|▎         | 1/32 [03:54<2:01:03, 234.30s/it]FR-SVD v1.3 Compression:   6%|▋         | 2/32 [07:43<1:55:35, 231.17s/it]FR-SVD v1.3 Compression:   9%|▉         | 3/32 [11:28<1:50:24, 228.42s/it]FR-SVD v1.3 Compression:  12%|█▎        | 4/32 [15:09<1:45:16, 225.57s/it]FR-SVD v1.3 Compression:  16%|█▌        | 5/32 [18:49<1:40:34, 223.52s/it]FR-SVD v1.3 Compression:  19%|█▉        | 6/32 [22:29<1:36:21, 222.37s/it]FR-SVD v1.3 Compression:  22%|██▏       | 7/32 [26:09<1:32:20, 221.61s/it]FR-SVD v1.3 Compression:  25%|██▌       | 8/32 [29:50<1:28:31, 221.29s/it]FR-SVD v1.3 Compression:  28%|██▊       | 9/32 [33:31<1:24:46, 221.17s/it]FR-SVD v1.3 Compression:  31%|███▏      | 10/32 [37:05<1:20:18, 219.02s/it]FR-SVD v1.3 Compression:  34%|███▍      | 11/32 [40:42<1:16:24, 218.31s/it]FR-SVD v1.3 Compression:  38%|███▊      | 12/32 [44:18<1:12:36, 217.82s/it]FR-SVD v1.3 Compression:  41%|████      | 13/32 [47:58<1:09:07, 218.30s/it]FR-SVD v1.3 Compression:  44%|████▍     | 14/32 [51:36<1:05:29, 218.33s/it]FR-SVD v1.3 Compression:  47%|████▋     | 15/32 [55:15<1:01:52, 218.37s/it]FR-SVD v1.3 Compression:  50%|█████     | 16/32 [58:49<57:56, 217.30s/it]  FR-SVD v1.3 Compression:  53%|█████▎    | 17/32 [1:02:24<54:08, 216.58s/it]FR-SVD v1.3 Compression:  56%|█████▋    | 18/32 [1:06:00<50:28, 216.35s/it]FR-SVD v1.3 Compression:  59%|█████▉    | 19/32 [1:09:36<46:51, 216.31s/it]FR-SVD v1.3 Compression:  62%|██████▎   | 20/32 [1:13:13<43:17, 216.43s/it]FR-SVD v1.3 Compression:  66%|██████▌   | 21/32 [1:16:47<39:34, 215.84s/it]FR-SVD v1.3 Compression:  69%|██████▉   | 22/32 [1:20:26<36:05, 216.50s/it]FR-SVD v1.3 Compression:  72%|███████▏  | 23/32 [1:24:00<32:23, 215.90s/it]FR-SVD v1.3 Compression:  75%|███████▌  | 24/32 [1:27:39<28:54, 216.81s/it]FR-SVD v1.3 Compression:  78%|███████▊  | 25/32 [1:31:17<25:19, 217.12s/it]FR-SVD v1.3 Compression:  81%|████████▏ | 26/32 [1:34:53<21:40, 216.81s/it]FR-SVD v1.3 Compression:  84%|████████▍ | 27/32 [1:38:28<18:00, 216.18s/it]FR-SVD v1.3 Compression:  88%|████████▊ | 28/32 [1:42:01<14:21, 215.46s/it]FR-SVD v1.3 Compression:  91%|█████████ | 29/32 [1:45:35<10:45, 215.04s/it]FR-SVD v1.3 Compression:  94%|█████████▍| 30/32 [1:49:10<07:09, 214.80s/it]FR-SVD v1.3 Compression:  97%|█████████▋| 31/32 [1:52:44<03:34, 214.79s/it]FR-SVD v1.3 Compression: 100%|██████████| 32/32 [1:56:19<00:00, 214.60s/it]FR-SVD v1.3 Compression: 100%|██████████| 32/32 [1:56:19<00:00, 218.10s/it]
+  L0 self_attn.q_proj: β₁=0.2714, α*=0.3725, β₂=0.2714, r=1638(r1=1474+r2=164), E_kept=1.0000, W_err=0.0402, D/H=0.0000
+  L0 self_attn.k_proj: β₁=0.2714, α*=0.3725, β₂=0.2714, r=1638(r1=1474+r2=164), E_kept=1.0000, W_err=0.0355, D/H=0.0000
+  L0 self_attn.v_proj: β₁=0.2714, α*=0.3725, β₂=0.2714, r=1638(r1=1474+r2=164), E_kept=0.9932, W_err=0.3288, D/H=0.0000
+  L0 self_attn.o_proj: β₁=0.2714, α*=0.3725, β₂=0.2714, r=1638(r1=1474+r2=164), E_kept=0.9997, W_err=0.3475, D/H=0.0000
+  L0 mlp.gate_proj: β₁=0.2714, α*=0.3725, β₂=0.2714, r=2388(r1=2149+r2=239), E_kept=0.9978, W_err=0.2348, D/H=0.0000
+  L0 mlp.up_proj: β₁=0.2714, α*=0.3725, β₂=0.2714, r=2388(r1=2149+r2=239), E_kept=0.9961, W_err=0.2526, D/H=0.0000
+  L0 mlp.down_proj: β₁=0.2714, α*=0.3725, β₂=0.2714, r=2388(r1=2149+r2=239), E_kept=0.9844, W_err=0.4037, D/H=0.0000
+Layer 0 Summary: avg_β=0.2714, avg_α*=0.3725, avg_D/H=0.0000
+Layer 1 Summary: avg_β=0.2835, avg_α*=0.3984, avg_D/H=0.0210
+Layer 2 Summary: avg_β=0.2957, avg_α*=0.4242, avg_D/H=0.0299
+Layer 3 Summary: avg_β=0.2957, avg_α*=0.4242, avg_D/H=0.0562
+Layer 4 Summary: avg_β=0.3562, avg_α*=0.5534, avg_D/H=0.1595
+Layer 5 Summary: avg_β=0.3562, avg_α*=0.5534, avg_D/H=0.3052
+Layer 6 Summary: avg_β=0.3441, avg_α*=0.5276, avg_D/H=0.4039
+Layer 7 Summary: avg_β=0.3562, avg_α*=0.5534, avg_D/H=0.3979
+  L8 self_attn.q_proj: β₁=0.3562, α*=0.5534, β₂=0.2714, r=1638(r1=1474+r2=164), E_kept=0.9943, W_err=0.3176, D/H=0.3071
+  L8 self_attn.k_proj: β₁=0.3562, α*=0.5534, β₂=0.2714, r=1638(r1=1474+r2=164), E_kept=0.9955, W_err=0.3295, D/H=0.3071
+  L8 self_attn.v_proj: β₁=0.3562, α*=0.5534, β₂=0.2714, r=1638(r1=1474+r2=164), E_kept=0.9619, W_err=0.4087, D/H=0.3071
+  L8 self_attn.o_proj: β₁=0.2714, α*=0.3725, β₂=0.2714, r=1638(r1=1474+r2=164), E_kept=0.9651, W_err=0.4354, D/H=0.5499
+  L8 mlp.gate_proj: β₁=0.3562, α*=0.5534, β₂=0.2714, r=2388(r1=2149+r2=239), E_kept=0.9764, W_err=0.4300, D/H=0.4360
+  L8 mlp.up_proj: β₁=0.3562, α*=0.5534, β₂=0.2714, r=2388(r1=2149+r2=239), E_kept=0.9526, W_err=0.4572, D/H=0.4360
+  L8 mlp.down_proj: β₁=0.3562, α*=0.5534, β₂=0.2714, r=2388(r1=2149+r2=239), E_kept=0.9128, W_err=0.4283, D/H=0.5038
+Layer 8 Summary: avg_β=0.3441, avg_α*=0.5276, avg_D/H=0.4067
+Layer 9 Summary: avg_β=0.3562, avg_α*=0.5534, avg_D/H=0.3513
+Layer 10 Summary: avg_β=0.3562, avg_α*=0.5534, avg_D/H=0.3716
+Layer 11 Summary: avg_β=0.3562, avg_α*=0.5534, avg_D/H=0.3404
+Layer 12 Summary: avg_β=0.3562, avg_α*=0.5534, avg_D/H=0.3609
+Layer 13 Summary: avg_β=0.3562, avg_α*=0.5534, avg_D/H=0.3696
+Layer 14 Summary: avg_β=0.3562, avg_α*=0.5534, avg_D/H=0.3739
+Layer 15 Summary: avg_β=0.3562, avg_α*=0.5534, avg_D/H=0.3576
+  L16 self_attn.q_proj: β₁=0.3562, α*=0.5534, β₂=0.2714, r=1638(r1=1474+r2=164), E_kept=0.9890, W_err=0.3632, D/H=0.2872
+  L16 self_attn.k_proj: β₁=0.3562, α*=0.5534, β₂=0.2714, r=1638(r1=1474+r2=164), E_kept=0.9928, W_err=0.3675, D/H=0.2872
+  L16 self_attn.v_proj: β₁=0.3562, α*=0.5534, β₂=0.2714, r=1638(r1=1474+r2=164), E_kept=0.9326, W_err=0.4460, D/H=0.2872
+  L16 self_attn.o_proj: β₁=0.3562, α*=0.5534, β₂=0.2714, r=1638(r1=1474+r2=164), E_kept=0.9567, W_err=0.4724, D/H=0.4505
+  L16 mlp.gate_proj: β₁=0.3562, α*=0.5534, β₂=0.2714, r=2388(r1=2149+r2=239), E_kept=0.9724, W_err=0.4329, D/H=0.3869
+  L16 mlp.up_proj: β₁=0.3562, α*=0.5534, β₂=0.2714, r=2388(r1=2149+r2=239), E_kept=0.9534, W_err=0.4546, D/H=0.3869
+  L16 mlp.down_proj: β₁=0.3562, α*=0.5534, β₂=0.2714, r=2388(r1=2149+r2=239), E_kept=0.8947, W_err=0.4537, D/H=0.3625
+Layer 16 Summary: avg_β=0.3562, avg_α*=0.5534, avg_D/H=0.3498
+Layer 17 Summary: avg_β=0.3562, avg_α*=0.5534, avg_D/H=0.3782
+Layer 18 Summary: avg_β=0.3562, avg_α*=0.5534, avg_D/H=0.3498
+Layer 19 Summary: avg_β=0.3562, avg_α*=0.5534, avg_D/H=0.3262
+Layer 20 Summary: avg_β=0.3562, avg_α*=0.5534, avg_D/H=0.3234
+Layer 21 Summary: avg_β=0.3562, avg_α*=0.5534, avg_D/H=0.2989
+Layer 22 Summary: avg_β=0.3320, avg_α*=0.5017, avg_D/H=0.2941
+Layer 23 Summary: avg_β=0.3562, avg_α*=0.5534, avg_D/H=0.2682
+  L24 self_attn.q_proj: β₁=0.3562, α*=0.5534, β₂=0.2714, r=1638(r1=1474+r2=164), E_kept=0.9840, W_err=0.3806, D/H=0.2542
+  L24 self_attn.k_proj: β₁=0.3562, α*=0.5534, β₂=0.2714, r=1638(r1=1474+r2=164), E_kept=0.9897, W_err=0.3814, D/H=0.2542
+  L24 self_attn.v_proj: β₁=0.3562, α*=0.5534, β₂=0.2714, r=1638(r1=1474+r2=164), E_kept=0.9228, W_err=0.4625, D/H=0.2542
+  L24 self_attn.o_proj: β₁=0.2714, α*=0.3725, β₂=0.2714, r=1638(r1=1474+r2=164), E_kept=0.9452, W_err=0.5138, D/H=0.5280
+  L24 mlp.gate_proj: β₁=0.3562, α*=0.5534, β₂=0.2714, r=2388(r1=2149+r2=239), E_kept=0.9611, W_err=0.4439, D/H=0.2905
+  L24 mlp.up_proj: β₁=0.3562, α*=0.5534, β₂=0.2714, r=2388(r1=2149+r2=239), E_kept=0.9441, W_err=0.4599, D/H=0.2905
+  L24 mlp.down_proj: β₁=0.3562, α*=0.5534, β₂=0.2714, r=2388(r1=2149+r2=239), E_kept=0.8883, W_err=0.4538, D/H=0.2099
+Layer 24 Summary: avg_β=0.3441, avg_α*=0.5276, avg_D/H=0.2974
+Layer 25 Summary: avg_β=0.3441, avg_α*=0.5276, avg_D/H=0.2950
+Layer 26 Summary: avg_β=0.3441, avg_α*=0.5276, avg_D/H=0.3128
+Layer 27 Summary: avg_β=0.3441, avg_α*=0.5276, avg_D/H=0.3343
+Layer 28 Summary: avg_β=0.3562, avg_α*=0.5534, avg_D/H=0.2858
+Layer 29 Summary: avg_β=0.3562, avg_α*=0.5534, avg_D/H=0.2743
+Layer 30 Summary: avg_β=0.3441, avg_α*=0.5276, avg_D/H=0.2892
+  L31 self_attn.q_proj: β₁=0.3562, α*=0.5534, β₂=0.2714, r=1638(r1=1474+r2=164), E_kept=0.9914, W_err=0.3602, D/H=0.2466
+  L31 self_attn.k_proj: β₁=0.3562, α*=0.5534, β₂=0.2714, r=1638(r1=1474+r2=164), E_kept=0.9950, W_err=0.3630, D/H=0.2466
+  L31 self_attn.v_proj: β₁=0.3562, α*=0.5534, β₂=0.2714, r=1638(r1=1474+r2=164), E_kept=0.9443, W_err=0.4675, D/H=0.2466
+  L31 self_attn.o_proj: β₁=0.3562, α*=0.5534, β₂=0.2714, r=1638(r1=1474+r2=164), E_kept=0.9928, W_err=0.4960, D/H=0.4188
+  L31 mlp.gate_proj: β₁=0.3562, α*=0.5534, β₂=0.2714, r=2388(r1=2149+r2=239), E_kept=0.9883, W_err=0.4474, D/H=0.2486
+  L31 mlp.up_proj: β₁=0.3562, α*=0.5534, β₂=0.2714, r=2388(r1=2149+r2=239), E_kept=0.9862, W_err=0.4532, D/H=0.2486
+  L31 mlp.down_proj: β₁=0.3562, α*=0.5534, β₂=0.2714, r=2388(r1=2149+r2=239), E_kept=0.9971, W_err=0.4953, D/H=0.2756
+Layer 31 Summary: avg_β=0.3562, avg_α*=0.5534, avg_D/H=0.2759
+
+============================================================
+FR-SVD v1.3 压缩完成！
+============================================================
+  平均 beta: 0.3441
+  平均 D/H:  0.2893
+  Beta 范围: [0.2714, 0.3562]
+
+保存压缩模型到: ./result/ablation_v1.3_phase1/exp8_both/_data_zhangs_LLMs_Models_jeffwan_llama_7b_hf_fr_svd_0.8.pt
+
+运行困惑度评估...
+  0%|          | 0/42 [00:00<?, ?it/s]  2%|▏         | 1/42 [00:02<01:41,  2.48s/it]  5%|▍         | 2/42 [00:04<01:37,  2.45s/it]  7%|▋         | 3/42 [00:07<01:35,  2.44s/it] 10%|▉         | 4/42 [00:09<01:32,  2.43s/it] 12%|█▏        | 5/42 [00:12<01:30,  2.43s/it] 14%|█▍        | 6/42 [00:14<01:27,  2.43s/it] 17%|█▋        | 7/42 [00:17<01:25,  2.43s/it] 19%|█▉        | 8/42 [00:19<01:22,  2.43s/it] 21%|██▏       | 9/42 [00:21<01:20,  2.43s/it] 24%|██▍       | 10/42 [00:24<01:17,  2.43s/it] 26%|██▌       | 11/42 [00:26<01:15,  2.44s/it] 29%|██▊       | 12/42 [00:29<01:13,  2.44s/it] 31%|███       | 13/42 [00:31<01:10,  2.44s/it] 33%|███▎      | 14/42 [00:34<01:08,  2.44s/it] 36%|███▌      | 15/42 [00:36<01:05,  2.44s/it] 38%|███▊      | 16/42 [00:39<01:03,  2.44s/it] 40%|████      | 17/42 [00:41<01:01,  2.44s/it] 43%|████▎     | 18/42 [00:43<00:58,  2.44s/it] 45%|████▌     | 19/42 [00:46<00:56,  2.44s/it] 48%|████▊     | 20/42 [00:48<00:53,  2.44s/it] 50%|█████     | 21/42 [00:51<00:51,  2.44s/it] 52%|█████▏    | 22/42 [00:53<00:48,  2.44s/it] 55%|█████▍    | 23/42 [00:56<00:46,  2.44s/it] 57%|█████▋    | 24/42 [00:58<00:44,  2.44s/it] 60%|█████▉    | 25/42 [01:01<00:41,  2.45s/it] 62%|██████▏   | 26/42 [01:03<00:39,  2.45s/it] 64%|██████▍   | 27/42 [01:05<00:36,  2.45s/it] 67%|██████▋   | 28/42 [01:08<00:34,  2.45s/it] 69%|██████▉   | 29/42 [01:10<00:31,  2.45s/it] 71%|███████▏  | 30/42 [01:13<00:29,  2.45s/it] 74%|███████▍  | 31/42 [01:15<00:26,  2.45s/it] 76%|███████▌  | 32/42 [01:18<00:24,  2.45s/it] 79%|███████▊  | 33/42 [01:20<00:22,  2.45s/it] 81%|████████  | 34/42 [01:23<00:19,  2.45s/it] 83%|████████▎ | 35/42 [01:25<00:17,  2.45s/it] 86%|████████▌ | 36/42 [01:27<00:14,  2.45s/it] 88%|████████▊ | 37/42 [01:30<00:12,  2.45s/it] 90%|█████████ | 38/42 [01:32<00:09,  2.45s/it] 93%|█████████▎| 39/42 [01:35<00:07,  2.45s/it] 95%|█████████▌| 40/42 [01:37<00:04,  2.45s/it] 98%|█████████▊| 41/42 [01:40<00:02,  2.45s/it]100%|██████████| 42/42 [01:41<00:00,  2.09s/it]100%|██████████| 42/42 [01:41<00:00,  2.42s/it]
+PPL after pruning: {'wikitext2': 8.033770157877019}
+Weight Memory: 11430.701171875 MiB
+
+
+>>> Exp8b: A+B (Both, v1.3 params, 验证宽范围下联合 + 退化分支)
+/data/zhangs/anaconda3/envs/compress/lib/python3.9/site-packages/transformers/utils/generic.py:441: FutureWarning: `torch.utils._pytree._register_pytree_node` is deprecated. Please use `torch.utils._pytree.register_pytree_node` instead.
+  _torch_pytree._register_pytree_node(
+/data/zhangs/anaconda3/envs/compress/lib/python3.9/site-packages/transformers/utils/generic.py:309: FutureWarning: `torch.utils._pytree._register_pytree_node` is deprecated. Please use `torch.utils._pytree.register_pytree_node` instead.
+  _torch_pytree._register_pytree_node(
+/data/zhangs/anaconda3/envs/compress/lib/python3.9/site-packages/transformers/utils/generic.py:309: FutureWarning: `torch.utils._pytree._register_pytree_node` is deprecated. Please use `torch.utils._pytree.register_pytree_node` instead.
+  _torch_pytree._register_pytree_node(
+You are using the default legacy behaviour of the <class 'transformers.models.llama.tokenization_llama.LlamaTokenizer'>. This is expected, and simply means that the `legacy` (previous) behavior will be used so nothing changes for you. If you want to use the new behaviour, set `legacy=False`. This should only be set if you understand what it means, and thouroughly read the reason why this was added as explained in https://github.com/huggingface/transformers/pull/24565
+CUDA_VISIBLE_DEVICES: 5
+============================================================
+FR-SVD v1.3 配置
+============================================================
+  模型: /data/zhangs/LLMs/Models/jeffwan/llama-7b-hf
+  压缩率: 0.2 (保留 80.0%)
+  数据集: wikitext2, 样本数: 128
+  设备: cuda:0
+  r1_ratio: 0.9
+  创新点A (Fisher soft-reweighting): ON
+  创新点B (CEALC-aware Stage 2): ON
+  eps=0.0001
+  Alpha: [0.25, 0.75], rho=1.0
+============================================================
+
+加载模型...
+Loading checkpoint shards:   0%|          | 0/2 [00:00<?, ?it/s]Loading checkpoint shards:  50%|█████     | 1/2 [00:04<00:04,  4.77s/it]Loading checkpoint shards: 100%|██████████| 2/2 [00:06<00:00,  3.00s/it]Loading checkpoint shards: 100%|██████████| 2/2 [00:06<00:00,  3.26s/it]
+
+加载校准数据...
+
+开始 FR-SVD v1.3 压缩...
+============================================================
+FR-SVD v1.3: Widened-ACES + CEALC-aware Stage 2 + Fisher Soft-Reweighting
+============================================================
+  保留比例: 0.8 (80.0%)
+  秩分配: r1=90% of r / r2=10% of r (r1+r2=r)
+  创新点A (Fisher soft-reweighting): ON
+  创新点B (CEALC-aware Stage 2): ON (r2>0)
+  H 阻尼: eps=0.0001
+  Alpha 范围: [0.25, 0.75], rho=1.0, beta_cap=0.4286
+============================================================
+
+加载教师模型（fp16 存储，fp32 计算）...
+Loading checkpoint shards:   0%|          | 0/2 [00:00<?, ?it/s]Loading checkpoint shards:  50%|█████     | 1/2 [00:04<00:04,  4.44s/it]Loading checkpoint shards: 100%|██████████| 2/2 [00:06<00:00,  2.82s/it]Loading checkpoint shards: 100%|██████████| 2/2 [00:06<00:00,  3.06s/it]
+收集第 0 层输入激活...
+
+开始逐层 FR-SVD v1.3 压缩...
+FR-SVD v1.3 Compression:   0%|          | 0/32 [00:00<?, ?it/s]FR-SVD v1.3 Compression:   3%|▎         | 1/32 [03:51<1:59:46, 231.82s/it]FR-SVD v1.3 Compression:   6%|▋         | 2/32 [07:41<1:55:13, 230.43s/it]FR-SVD v1.3 Compression:   9%|▉         | 3/32 [11:26<1:50:11, 228.00s/it]FR-SVD v1.3 Compression:  12%|█▎        | 4/32 [15:08<1:45:23, 225.85s/it]FR-SVD v1.3 Compression:  16%|█▌        | 5/32 [18:47<1:40:30, 223.36s/it]FR-SVD v1.3 Compression:  19%|█▉        | 6/32 [22:25<1:35:56, 221.39s/it]FR-SVD v1.3 Compression:  22%|██▏       | 7/32 [26:03<1:31:44, 220.19s/it]FR-SVD v1.3 Compression:  25%|██▌       | 8/32 [29:40<1:27:42, 219.26s/it]FR-SVD v1.3 Compression:  28%|██▊       | 9/32 [33:17<1:23:49, 218.69s/it]FR-SVD v1.3 Compression:  31%|███▏      | 10/32 [36:56<1:20:09, 218.62s/it]FR-SVD v1.3 Compression:  34%|███▍      | 11/32 [40:35<1:16:32, 218.70s/it]FR-SVD v1.3 Compression:  38%|███▊      | 12/32 [44:18<1:13:24, 220.24s/it]FR-SVD v1.3 Compression:  41%|████      | 13/32 [47:59<1:09:47, 220.39s/it]FR-SVD v1.3 Compression:  44%|████▍     | 14/32 [51:37<1:05:51, 219.51s/it]FR-SVD v1.3 Compression:  47%|████▋     | 15/32 [55:12<1:01:50, 218.24s/it]FR-SVD v1.3 Compression:  50%|█████     | 16/32 [58:50<58:10, 218.17s/it]  FR-SVD v1.3 Compression:  53%|█████▎    | 17/32 [1:02:25<54:17, 217.16s/it]FR-SVD v1.3 Compression:  56%|█████▋    | 18/32 [1:06:01<50:37, 216.96s/it]FR-SVD v1.3 Compression:  59%|█████▉    | 19/32 [1:09:37<46:57, 216.72s/it]FR-SVD v1.3 Compression:  62%|██████▎   | 20/32 [1:13:14<43:21, 216.80s/it]FR-SVD v1.3 Compression:  66%|██████▌   | 21/32 [1:16:52<39:46, 216.92s/it]FR-SVD v1.3 Compression:  69%|██████▉   | 22/32 [1:20:27<36:03, 216.39s/it]FR-SVD v1.3 Compression:  72%|███████▏  | 23/32 [1:24:04<32:31, 216.78s/it]FR-SVD v1.3 Compression:  75%|███████▌  | 24/32 [1:27:43<28:59, 217.44s/it]FR-SVD v1.3 Compression:  78%|███████▊  | 25/32 [1:31:19<25:17, 216.77s/it]FR-SVD v1.3 Compression:  81%|████████▏ | 26/32 [1:34:54<21:37, 216.31s/it]FR-SVD v1.3 Compression:  84%|████████▍ | 27/32 [1:38:30<18:01, 216.22s/it]FR-SVD v1.3 Compression:  88%|████████▊ | 28/32 [1:42:03<14:20, 215.24s/it]FR-SVD v1.3 Compression:  91%|█████████ | 29/32 [1:45:38<10:45, 215.09s/it]FR-SVD v1.3 Compression:  94%|█████████▍| 30/32 [1:49:12<07:09, 214.93s/it]FR-SVD v1.3 Compression:  97%|█████████▋| 31/32 [1:52:45<03:34, 214.45s/it]FR-SVD v1.3 Compression: 100%|██████████| 32/32 [1:56:18<00:00, 213.84s/it]FR-SVD v1.3 Compression: 100%|██████████| 32/32 [1:56:18<00:00, 218.08s/it]
+  L0 self_attn.q_proj: β₁=0.2000, α*=0.2500, β₂=0.2000, r=1638(r1=1474+r2=164), E_kept=1.0000, W_err=0.0402, D/H=0.0000
+  L0 self_attn.k_proj: β₁=0.2000, α*=0.2500, β₂=0.2000, r=1638(r1=1474+r2=164), E_kept=1.0000, W_err=0.0355, D/H=0.0000
+  L0 self_attn.v_proj: β₁=0.2000, α*=0.2500, β₂=0.2000, r=1638(r1=1474+r2=164), E_kept=0.9932, W_err=0.3288, D/H=0.0000
+  L0 self_attn.o_proj: β₁=0.2000, α*=0.2500, β₂=0.2000, r=1638(r1=1474+r2=164), E_kept=0.9997, W_err=0.3475, D/H=0.0000
+  L0 mlp.gate_proj: β₁=0.2000, α*=0.2500, β₂=0.2000, r=2388(r1=2149+r2=239), E_kept=0.9978, W_err=0.2348, D/H=0.0000
+  L0 mlp.up_proj: β₁=0.2000, α*=0.2500, β₂=0.2000, r=2388(r1=2149+r2=239), E_kept=0.9961, W_err=0.2526, D/H=0.0000
+  L0 mlp.down_proj: β₁=0.2000, α*=0.2500, β₂=0.2000, r=2388(r1=2149+r2=239), E_kept=0.9844, W_err=0.4037, D/H=0.0000
+Layer 0 Summary: avg_β=0.2000, avg_α*=0.2500, avg_D/H=0.0000
+Layer 1 Summary: avg_β=0.2327, avg_α*=0.3214, avg_D/H=0.0210
+Layer 2 Summary: avg_β=0.2653, avg_α*=0.3929, avg_D/H=0.0298
+Layer 3 Summary: avg_β=0.2653, avg_α*=0.3929, avg_D/H=0.0562
+Layer 4 Summary: avg_β=0.4286, avg_α*=0.7500, avg_D/H=0.1609
+Layer 5 Summary: avg_β=0.4286, avg_α*=0.7500, avg_D/H=0.3052
+Layer 6 Summary: avg_β=0.3959, avg_α*=0.6786, avg_D/H=0.4062
+Layer 7 Summary: avg_β=0.4286, avg_α*=0.7500, avg_D/H=0.3952
+  L8 self_attn.q_proj: β₁=0.4286, α*=0.7500, β₂=0.2000, r=1638(r1=1474+r2=164), E_kept=0.9945, W_err=0.3259, D/H=0.3004
+  L8 self_attn.k_proj: β₁=0.4286, α*=0.7500, β₂=0.2000, r=1638(r1=1474+r2=164), E_kept=0.9956, W_err=0.3375, D/H=0.3004
+  L8 self_attn.v_proj: β₁=0.4286, α*=0.7500, β₂=0.2000, r=1638(r1=1474+r2=164), E_kept=0.9626, W_err=0.4157, D/H=0.3004
+  L8 self_attn.o_proj: β₁=0.2000, α*=0.2500, β₂=0.2000, r=1638(r1=1474+r2=164), E_kept=0.9654, W_err=0.4284, D/H=0.5478
+  L8 mlp.gate_proj: β₁=0.4286, α*=0.7500, β₂=0.2000, r=2388(r1=2149+r2=239), E_kept=0.9774, W_err=0.4358, D/H=0.4348
+  L8 mlp.up_proj: β₁=0.4286, α*=0.7500, β₂=0.2000, r=2388(r1=2149+r2=239), E_kept=0.9540, W_err=0.4626, D/H=0.4348
+  L8 mlp.down_proj: β₁=0.4286, α*=0.7500, β₂=0.2000, r=2388(r1=2149+r2=239), E_kept=0.9141, W_err=0.4372, D/H=0.5024
+Layer 8 Summary: avg_β=0.3959, avg_α*=0.6786, avg_D/H=0.4030
+Layer 9 Summary: avg_β=0.3959, avg_α*=0.6786, avg_D/H=0.3526
+Layer 10 Summary: avg_β=0.4286, avg_α*=0.7500, avg_D/H=0.3743
+Layer 11 Summary: avg_β=0.4286, avg_α*=0.7500, avg_D/H=0.3445
+Layer 12 Summary: avg_β=0.4286, avg_α*=0.7500, avg_D/H=0.3663
+Layer 13 Summary: avg_β=0.4286, avg_α*=0.7500, avg_D/H=0.3744
+Layer 14 Summary: avg_β=0.4286, avg_α*=0.7500, avg_D/H=0.3821
+Layer 15 Summary: avg_β=0.4286, avg_α*=0.7500, avg_D/H=0.3659
+  L16 self_attn.q_proj: β₁=0.4286, α*=0.7500, β₂=0.2000, r=1638(r1=1474+r2=164), E_kept=0.9892, W_err=0.3708, D/H=0.2932
+  L16 self_attn.k_proj: β₁=0.4286, α*=0.7500, β₂=0.2000, r=1638(r1=1474+r2=164), E_kept=0.9929, W_err=0.3744, D/H=0.2932
+  L16 self_attn.v_proj: β₁=0.4286, α*=0.7500, β₂=0.2000, r=1638(r1=1474+r2=164), E_kept=0.9337, W_err=0.4512, D/H=0.2932
+  L16 self_attn.o_proj: β₁=0.4286, α*=0.7500, β₂=0.2000, r=1638(r1=1474+r2=164), E_kept=0.9575, W_err=0.4825, D/H=0.4592
+  L16 mlp.gate_proj: β₁=0.4286, α*=0.7500, β₂=0.2000, r=2388(r1=2149+r2=239), E_kept=0.9735, W_err=0.4383, D/H=0.3957
+  L16 mlp.up_proj: β₁=0.4286, α*=0.7500, β₂=0.2000, r=2388(r1=2149+r2=239), E_kept=0.9548, W_err=0.4596, D/H=0.3957
+  L16 mlp.down_proj: β₁=0.4286, α*=0.7500, β₂=0.2000, r=2388(r1=2149+r2=239), E_kept=0.8959, W_err=0.4596, D/H=0.3631
+Layer 16 Summary: avg_β=0.4286, avg_α*=0.7500, avg_D/H=0.3562
+Layer 17 Summary: avg_β=0.4286, avg_α*=0.7500, avg_D/H=0.3866
+Layer 18 Summary: avg_β=0.4286, avg_α*=0.7500, avg_D/H=0.3581
+Layer 19 Summary: avg_β=0.4286, avg_α*=0.7500, avg_D/H=0.3341
+Layer 20 Summary: avg_β=0.4286, avg_α*=0.7500, avg_D/H=0.3313
+Layer 21 Summary: avg_β=0.4286, avg_α*=0.7500, avg_D/H=0.3065
+Layer 22 Summary: avg_β=0.3633, avg_α*=0.6071, avg_D/H=0.3023
+Layer 23 Summary: avg_β=0.4286, avg_α*=0.7500, avg_D/H=0.2758
+  L24 self_attn.q_proj: β₁=0.4286, α*=0.7500, β₂=0.2000, r=1638(r1=1474+r2=164), E_kept=0.9843, W_err=0.3846, D/H=0.2614
+  L24 self_attn.k_proj: β₁=0.4286, α*=0.7500, β₂=0.2000, r=1638(r1=1474+r2=164), E_kept=0.9899, W_err=0.3849, D/H=0.2614
+  L24 self_attn.v_proj: β₁=0.4286, α*=0.7500, β₂=0.2000, r=1638(r1=1474+r2=164), E_kept=0.9236, W_err=0.4650, D/H=0.2614
+  L24 self_attn.o_proj: β₁=0.2000, α*=0.2500, β₂=0.2000, r=1638(r1=1474+r2=164), E_kept=0.9457, W_err=0.5100, D/H=0.5379
+  L24 mlp.gate_proj: β₁=0.4286, α*=0.7500, β₂=0.2000, r=2388(r1=2149+r2=239), E_kept=0.9620, W_err=0.4468, D/H=0.3006
+  L24 mlp.up_proj: β₁=0.4286, α*=0.7500, β₂=0.2000, r=2388(r1=2149+r2=239), E_kept=0.9452, W_err=0.4626, D/H=0.3006
+  L24 mlp.down_proj: β₁=0.4286, α*=0.7500, β₂=0.2000, r=2388(r1=2149+r2=239), E_kept=0.8895, W_err=0.4579, D/H=0.2163
+Layer 24 Summary: avg_β=0.3959, avg_α*=0.6786, avg_D/H=0.3057
+Layer 25 Summary: avg_β=0.3959, avg_α*=0.6786, avg_D/H=0.3029
+Layer 26 Summary: avg_β=0.3959, avg_α*=0.6786, avg_D/H=0.3209
+Layer 27 Summary: avg_β=0.3959, avg_α*=0.6786, avg_D/H=0.3408
+Layer 28 Summary: avg_β=0.4286, avg_α*=0.7500, avg_D/H=0.2914
+Layer 29 Summary: avg_β=0.4286, avg_α*=0.7500, avg_D/H=0.2796
+Layer 30 Summary: avg_β=0.3959, avg_α*=0.6786, avg_D/H=0.2939
+  L31 self_attn.q_proj: β₁=0.4286, α*=0.7500, β₂=0.2000, r=1638(r1=1474+r2=164), E_kept=0.9917, W_err=0.3651, D/H=0.2523
+  L31 self_attn.k_proj: β₁=0.4286, α*=0.7500, β₂=0.2000, r=1638(r1=1474+r2=164), E_kept=0.9952, W_err=0.3678, D/H=0.2523
+  L31 self_attn.v_proj: β₁=0.4286, α*=0.7500, β₂=0.2000, r=1638(r1=1474+r2=164), E_kept=0.9450, W_err=0.4711, D/H=0.2523
+  L31 self_attn.o_proj: β₁=0.4286, α*=0.7500, β₂=0.2000, r=1638(r1=1474+r2=164), E_kept=0.9929, W_err=0.5072, D/H=0.4267
+  L31 mlp.gate_proj: β₁=0.4286, α*=0.7500, β₂=0.2000, r=2388(r1=2149+r2=239), E_kept=0.9887, W_err=0.4509, D/H=0.2548
+  L31 mlp.up_proj: β₁=0.4286, α*=0.7500, β₂=0.2000, r=2388(r1=2149+r2=239), E_kept=0.9867, W_err=0.4567, D/H=0.2548
+  L31 mlp.down_proj: β₁=0.4286, α*=0.7500, β₂=0.2000, r=2388(r1=2149+r2=239), E_kept=0.9972, W_err=0.5236, D/H=0.2782
+Layer 31 Summary: avg_β=0.4286, avg_α*=0.7500, avg_D/H=0.2816
+
+============================================================
+FR-SVD v1.3 压缩完成！
+============================================================
+  平均 beta: 0.3949
+  平均 D/H:  0.2939
+  Beta 范围: [0.2000, 0.4286]
+
+保存压缩模型到: ./result/ablation_v1.3_phase1/exp8b_both_wide/_data_zhangs_LLMs_Models_jeffwan_llama_7b_hf_fr_svd_0.8.pt
+
+运行困惑度评估...
+  0%|          | 0/42 [00:00<?, ?it/s]  2%|▏         | 1/42 [00:02<01:41,  2.48s/it]  5%|▍         | 2/42 [00:04<01:37,  2.44s/it]  7%|▋         | 3/42 [00:07<01:35,  2.44s/it] 10%|▉         | 4/42 [00:09<01:32,  2.44s/it] 12%|█▏        | 5/42 [00:12<01:30,  2.43s/it] 14%|█▍        | 6/42 [00:14<01:27,  2.43s/it] 17%|█▋        | 7/42 [00:17<01:25,  2.43s/it] 19%|█▉        | 8/42 [00:19<01:22,  2.43s/it] 21%|██▏       | 9/42 [00:21<01:20,  2.43s/it] 24%|██▍       | 10/42 [00:24<01:17,  2.44s/it] 26%|██▌       | 11/42 [00:26<01:15,  2.44s/it] 29%|██▊       | 12/42 [00:29<01:13,  2.44s/it] 31%|███       | 13/42 [00:31<01:10,  2.44s/it] 33%|███▎      | 14/42 [00:34<01:08,  2.44s/it] 36%|███▌      | 15/42 [00:36<01:05,  2.44s/it] 38%|███▊      | 16/42 [00:39<01:03,  2.44s/it] 40%|████      | 17/42 [00:41<01:01,  2.44s/it] 43%|████▎     | 18/42 [00:43<00:58,  2.44s/it] 45%|████▌     | 19/42 [00:46<00:56,  2.44s/it] 48%|████▊     | 20/42 [00:48<00:53,  2.44s/it] 50%|█████     | 21/42 [00:51<00:51,  2.44s/it] 52%|█████▏    | 22/42 [00:53<00:48,  2.44s/it] 55%|█████▍    | 23/42 [00:56<00:46,  2.44s/it] 57%|█████▋    | 24/42 [00:58<00:43,  2.44s/it] 60%|█████▉    | 25/42 [01:01<00:41,  2.44s/it] 62%|██████▏   | 26/42 [01:03<00:39,  2.45s/it] 64%|██████▍   | 27/42 [01:05<00:36,  2.45s/it] 67%|██████▋   | 28/42 [01:08<00:34,  2.45s/it] 69%|██████▉   | 29/42 [01:10<00:31,  2.45s/it] 71%|███████▏  | 30/42 [01:13<00:29,  2.45s/it] 74%|███████▍  | 31/42 [01:15<00:26,  2.45s/it] 76%|███████▌  | 32/42 [01:18<00:24,  2.45s/it] 79%|███████▊  | 33/42 [01:20<00:22,  2.45s/it] 81%|████████  | 34/42 [01:23<00:19,  2.45s/it] 83%|████████▎ | 35/42 [01:25<00:17,  2.45s/it] 86%|████████▌ | 36/42 [01:27<00:14,  2.45s/it] 88%|████████▊ | 37/42 [01:30<00:12,  2.45s/it] 90%|█████████ | 38/42 [01:32<00:09,  2.45s/it] 93%|█████████▎| 39/42 [01:35<00:07,  2.45s/it] 95%|█████████▌| 40/42 [01:37<00:04,  2.45s/it] 98%|█████████▊| 41/42 [01:40<00:02,  2.45s/it]100%|██████████| 42/42 [01:41<00:00,  2.09s/it]100%|██████████| 42/42 [01:41<00:00,  2.42s/it]
+PPL after pruning: {'wikitext2': 8.135703511840001}
+Weight Memory: 11430.701171875 MiB
+
+
+============================================
+Phase 1 全部完成！结果汇总：
+============================================
+
+─── ACES 线性退化分支验证 ───
+  Exp5  窄alpha基线 (对照v1.2 Exp1=7.894): PPL=8.082331907213971
+  Exp5b 宽alpha基线 (对照v1.3 Exp1=8.175): PPL=8.174956624052129
+
+─── 算法改进验证（v1.2 参数下）───
+  Exp6  CEALC-aware Stage2 (对照v1.2 Exp3=7.869): PPL=8.033770157877019
+  Exp7  Fisher soft-reweight (对照v1.2 Exp2=7.871): PPL=8.082331907213971
+  Exp8  Both v1.2参数 (对照v1.2 Exp4=7.848):       PPL=8.033770157877019
+  Exp8b Both v1.3参数 (对照v1.3 Exp4=?):           PPL=8.135703511840001
+============================================

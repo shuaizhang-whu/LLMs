@@ -1,0 +1,643 @@
+CUDA_VISIBLE_DEVICES: 4
+============================================================
+SAES-SVD v3 配置
+============================================================
+  模型: /data/zhangs/LLMs/Models/Qwen/Qwen2.5-7B
+  压缩率: 0.2 (保留 80.0%)
+  数据集: wikitext2, 样本数: 256
+  设备: cuda:0
+  eps=0.0001
+  Alpha: [0.4, 0.6], rho=0.95
+  min_dim: 64, skip_moe_experts: False
+============================================================
+
+加载模型...
+  Tokenizer: AutoTokenizer (tokenizer.json=found)
+  模型加载 dtype: bf16
+  Tokenizer loaded: Qwen2Tokenizer, vocab_size=151643, len=151665
+`torch_dtype` is deprecated! Use `dtype` instead!
+Loading weights:   0%|          | 0/339 [00:00<?, ?it/s]Loading weights: 100%|██████████| 339/339 [00:00<00:00, 5895.52it/s]
+  压缩运行 dtype: bf16
+
+加载校准数据...
+  读取 SAES-SVD v3 专属校准缓存: /data/zhangs/LLMs/SAES-SVD/cache/saes_svd_v3_wikitext2_256_2048_3_1_Qwen2Tokenizer_tokv151643_modelv152064_m95e84f68d9.pt
+  校准 token id 范围: min=1, max=150446, model_vocab_size=152064
+
+开始 SAES-SVD v3 压缩...
+============================================================
+SAES-SVD v3: model-agnostic Qwen-compatible compression
+============================================================
+  保留比例: 0.8 (80.0%)
+  H 阻尼: eps=0.0001
+  Alpha 范围: [0.4, 0.6], rho=0.95, beta_cap=0.3750
+  skip_moe_experts: False, min_dim=64
+============================================================
+  检测到架构家族: qwen
+  闭环 activation cache dtype: bf16
+  Qwen safety guard: TSVD min_W_err=0.1, margin=0.98, layer激活阈值=max(10.0x teacher, 1.0e+04), output_rel_l2阈值=0.5, output_rms_ratio范围=[0.5, 2.0]
+收集第 0 层输入激活...
+  扫描 layer.forward 签名（hybrid-attention 兼容性诊断）...
+    [L0] Qwen2DecoderLayer: forward(hidden_states, attention_mask, position_ids, past_key_values, use_cache, position_embeddings, kwargs)
+
+开始逐层 SAES-SVD v3 压缩...
+SAES-SVD v3 Compression:   0%|          | 0/28 [00:00<?, ?it/s]  L0 student_precompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.9395e+01, pre_max=8.6840e+00, pre_max_abs=1.9395e+01, post_min=-1.9375e+01, post_max=8.6875e+00, post_max_abs=1.9375e+01
+  L0 teacher_precompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.9395e+01, pre_max=8.6840e+00, pre_max_abs=1.9395e+01, post_min=-1.9375e+01, post_max=8.6875e+00, post_max_abs=1.9375e+01
+  警告: L0 self_attn.q_proj SAES 重建触发回退 (W_err=2.3405e-01, TSVD=0.1932, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L0 self_attn.q_proj: β=0.2714, α*=0.3725, rank=1433, G_err=0.0241, E_kept=0.9994, W_err=0.1932, TSVD=0.1932, fallback=qwen_tsvd_guard, Δ/H=0.0000
+  警告: L0 self_attn.k_proj SAES 重建触发回退 (W_err=3.0200e-01, TSVD=0.2616, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L0 self_attn.k_proj: β=0.2714, α*=0.3725, rank=358, G_err=0.1140, E_kept=0.9870, W_err=0.2616, TSVD=0.2616, fallback=qwen_tsvd_guard, Δ/H=0.0000
+  警告: L0 self_attn.v_proj SAES 重建触发回退 (W_err=5.0643e-01, TSVD=0.4443, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L0 self_attn.v_proj: β=0.2714, α*=0.3725, rank=358, G_err=0.2250, E_kept=0.9494, W_err=0.4443, TSVD=0.4443, fallback=qwen_tsvd_guard, Δ/H=0.0000
+  警告: L0 self_attn.o_proj SAES 重建触发回退 (W_err=4.8428e-01, TSVD=0.3899, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L0 self_attn.o_proj: β=0.2714, α*=0.3725, rank=1433, G_err=0.0926, E_kept=0.9914, W_err=0.3899, TSVD=0.3899, fallback=qwen_tsvd_guard, Δ/H=0.0000
+  警告: L0 mlp.gate_proj SAES 重建触发回退 (W_err=3.5606e+03, TSVD=0.1213, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L0 mlp.gate_proj: β=0.2714, α*=0.3725, rank=2411, G_err=0.0011, E_kept=1.0000, W_err=0.1213, TSVD=0.1213, fallback=qwen_weight_err_gt_1, Δ/H=0.0000
+  警告: L0 mlp.up_proj SAES 重建触发回退 (W_err=3.8460e+03, TSVD=0.1536, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L0 mlp.up_proj: β=0.2714, α*=0.3725, rank=2411, G_err=0.0096, E_kept=0.9999, W_err=0.1536, TSVD=0.1536, fallback=qwen_weight_err_gt_1, Δ/H=0.0000
+  警告: L0 mlp.down_proj SAES 重建触发回退 (W_err=3.9359e+01, TSVD=0.3587, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L0 mlp.down_proj: β=0.2714, α*=0.3725, rank=2411, G_err=0.1667, E_kept=0.9722, W_err=0.3587, TSVD=0.3587, fallback=qwen_weight_err_gt_1, Δ/H=0.0000
+Layer 0 Summary: avg_β=0.2714, avg_α*=0.3725, avg_ρₑ=0.014381, avg_Δ/H=0.0000
+  L0 student_postcompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-7.2708e+00, pre_max=4.2691e+00, pre_max_abs=7.2708e+00, post_min=-7.2812e+00, post_max=4.2812e+00, post_max_abs=7.2812e+00
+  L0 student_postcompress teacher对齐诊断: rel_l2=0.5881, student_rms=1.5463e-01, teacher_rms=2.2256e-01, rms_ratio=0.6948
+  警告: L0 触发层级激活保护，强制本层 Linear 回退 TSVD [qwen_layer_activation_guard]
+    L0 teacher对齐保护触发: student_max_abs=7.2708e+00, teacher_max_abs=1.9395e+01, threshold=1.0000e+04; rel_l2=0.5881, rms_ratio=0.6948; 已强制回退 7 个 Linear，重新前向
+  L0 student_postcompress_after_layer_tsvd cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-7.2708e+00, pre_max=4.2691e+00, pre_max_abs=7.2708e+00, post_min=-7.2812e+00, post_max=4.2812e+00, post_max_abs=7.2812e+00
+  L0 student_postcompress_after_layer_tsvd teacher对齐诊断: rel_l2=0.5881, student_rms=1.5463e-01, teacher_rms=2.2256e-01, rms_ratio=0.6948
+  警告: L0 强制 TSVD 后仍未通过 teacher 对齐保护 (student_max_abs=7.2708e+00, threshold=1.0000e+04, rel_l2=0.5881, rms_ratio=0.6948)
+SAES-SVD v3 Compression:   4%|▎         | 1/28 [04:08<1:51:44, 248.33s/it]  L1 student_precompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-2.4352e+01, pre_max=6.5844e+00, pre_max_abs=2.4352e+01, post_min=-2.4375e+01, post_max=6.5938e+00, post_max_abs=2.4375e+01
+  L1 teacher_precompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-5.6944e+01, pre_max=1.4818e+01, pre_max_abs=5.6944e+01, post_min=-5.7000e+01, post_max=1.4812e+01, post_max_abs=5.7000e+01
+  警告: L1 self_attn.q_proj SAES 重建触发回退 (W_err=6.8362e+03, TSVD=0.1424, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L1 self_attn.q_proj: β=0.2714, α*=0.3725, rank=1433, G_err=0.0068, E_kept=1.0000, W_err=0.1424, TSVD=0.1424, fallback=qwen_weight_err_gt_1, Δ/H=1.2073
+  警告: L1 self_attn.k_proj SAES 重建触发回退 (W_err=6.4317e+03, TSVD=0.1192, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L1 self_attn.k_proj: β=0.2714, α*=0.3725, rank=358, G_err=0.0152, E_kept=0.9998, W_err=0.1192, TSVD=0.1192, fallback=qwen_weight_err_gt_1, Δ/H=1.2073
+  警告: L1 self_attn.v_proj SAES 重建触发回退 (W_err=4.0142e+03, TSVD=0.3567, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L1 self_attn.v_proj: β=0.2714, α*=0.3725, rank=358, G_err=0.1036, E_kept=0.9893, W_err=0.3567, TSVD=0.3567, fallback=qwen_weight_err_gt_1, Δ/H=1.2073
+  警告: L1 self_attn.o_proj SAES 重建触发回退 (W_err=7.9839e-01, TSVD=0.3204, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L1 self_attn.o_proj: β=0.2714, α*=0.3725, rank=1433, G_err=0.0512, E_kept=0.9974, W_err=0.3204, TSVD=0.3204, fallback=qwen_tsvd_guard, Δ/H=0.8634
+  警告: L1 mlp.gate_proj SAES 重建触发回退 (W_err=1.4917e+00, TSVD=0.2332, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L1 mlp.gate_proj: β=0.3562, α*=0.5534, rank=2411, G_err=0.0030, E_kept=1.0000, W_err=0.2332, TSVD=0.2332, fallback=qwen_weight_err_gt_1, Δ/H=0.1424
+  警告: L1 mlp.up_proj SAES 重建触发回退 (W_err=1.3009e+00, TSVD=0.2597, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L1 mlp.up_proj: β=0.3562, α*=0.5534, rank=2411, G_err=0.0147, E_kept=0.9998, W_err=0.2597, TSVD=0.2597, fallback=qwen_weight_err_gt_1, Δ/H=0.1424
+  警告: L1 mlp.down_proj SAES 重建触发回退 (W_err=2.4691e+02, TSVD=0.3280, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L1 mlp.down_proj: β=0.2714, α*=0.3725, rank=2411, G_err=0.1233, E_kept=0.9848, W_err=0.3280, TSVD=0.3280, fallback=qwen_weight_err_gt_1, Δ/H=0.5785
+Layer 1 Summary: avg_β=0.2957, avg_α*=0.4242, avg_ρₑ=0.004407, avg_Δ/H=0.7641
+  L1 student_postcompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-2.4370e+01, pre_max=6.8245e+00, pre_max_abs=2.4370e+01, post_min=-2.4375e+01, post_max=6.8125e+00, post_max_abs=2.4375e+01
+  L1 student_postcompress teacher对齐诊断: rel_l2=0.6105, student_rms=2.0624e-01, teacher_rms=3.0951e-01, rms_ratio=0.6663
+  警告: L1 触发层级激活保护，强制本层 Linear 回退 TSVD [qwen_layer_activation_guard]
+    L1 teacher对齐保护触发: student_max_abs=2.4370e+01, teacher_max_abs=5.6944e+01, threshold=1.0000e+04; rel_l2=0.6105, rms_ratio=0.6663; 已强制回退 7 个 Linear，重新前向
+  L1 student_postcompress_after_layer_tsvd cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-2.4370e+01, pre_max=6.8245e+00, pre_max_abs=2.4370e+01, post_min=-2.4375e+01, post_max=6.8125e+00, post_max_abs=2.4375e+01
+  L1 student_postcompress_after_layer_tsvd teacher对齐诊断: rel_l2=0.6105, student_rms=2.0624e-01, teacher_rms=3.0951e-01, rms_ratio=0.6663
+  警告: L1 强制 TSVD 后仍未通过 teacher 对齐保护 (student_max_abs=2.4370e+01, threshold=1.0000e+04, rel_l2=0.6105, rms_ratio=0.6663)
+SAES-SVD v3 Compression:   7%|▋         | 2/28 [08:31<1:51:22, 257.04s/it]  L2 student_precompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.3212e+01, pre_max=7.5044e+00, pre_max_abs=1.3212e+01, post_min=-1.3188e+01, post_max=7.5000e+00, post_max_abs=1.3188e+01
+  L2 teacher_precompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-5.3741e+01, pre_max=1.2704e+01, pre_max_abs=5.3741e+01, post_min=-5.3750e+01, post_max=1.2688e+01, post_max_abs=5.3750e+01
+  警告: L2 self_attn.q_proj SAES 重建触发回退 (W_err=1.3142e+04, TSVD=0.2867, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L2 self_attn.q_proj: β=0.2714, α*=0.3725, rank=1433, G_err=0.0566, E_kept=0.9968, W_err=0.2867, TSVD=0.2867, fallback=qwen_weight_err_gt_1, Δ/H=0.7383
+  警告: L2 self_attn.k_proj SAES 重建触发回退 (W_err=1.3009e+04, TSVD=0.2440, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L2 self_attn.k_proj: β=0.2714, α*=0.3725, rank=358, G_err=0.0616, E_kept=0.9962, W_err=0.2440, TSVD=0.2440, fallback=qwen_weight_err_gt_1, Δ/H=0.7383
+  警告: L2 self_attn.v_proj SAES 重建触发回退 (W_err=1.2444e+04, TSVD=0.3719, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L2 self_attn.v_proj: β=0.2714, α*=0.3725, rank=358, G_err=0.1534, E_kept=0.9765, W_err=0.3719, TSVD=0.3719, fallback=qwen_weight_err_gt_1, Δ/H=0.7383
+  警告: L2 self_attn.o_proj SAES 重建触发回退 (W_err=5.5153e-01, TSVD=0.3419, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L2 self_attn.o_proj: β=0.2714, α*=0.3725, rank=1433, G_err=0.0929, E_kept=0.9914, W_err=0.3419, TSVD=0.3419, fallback=qwen_tsvd_guard, Δ/H=0.9378
+  警告: L2 mlp.gate_proj SAES 重建触发回退 (W_err=5.6045e-01, TSVD=0.2771, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L2 mlp.gate_proj: β=0.3562, α*=0.5534, rank=2411, G_err=0.0062, E_kept=1.0000, W_err=0.2771, TSVD=0.2771, fallback=qwen_tsvd_guard, Δ/H=0.2584
+  警告: L2 mlp.up_proj SAES 重建触发回退 (W_err=4.9575e-01, TSVD=0.3147, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L2 mlp.up_proj: β=0.3562, α*=0.5534, rank=2411, G_err=0.0501, E_kept=0.9975, W_err=0.3147, TSVD=0.3147, fallback=qwen_tsvd_guard, Δ/H=0.2584
+  警告: L2 mlp.down_proj SAES 重建触发回退 (W_err=5.3568e+02, TSVD=0.3636, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L2 mlp.down_proj: β=0.2714, α*=0.3725, rank=2411, G_err=0.2003, E_kept=0.9598, W_err=0.3636, TSVD=0.3636, fallback=qwen_weight_err_gt_1, Δ/H=0.7663
+Layer 2 Summary: avg_β=0.2957, avg_α*=0.4242, avg_ρₑ=0.012692, avg_Δ/H=0.6337
+  L2 student_postcompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.0415e+01, pre_max=7.1058e+00, pre_max_abs=1.0415e+01, post_min=-1.0438e+01, post_max=7.0938e+00, post_max_abs=1.0438e+01
+  L2 student_postcompress teacher对齐诊断: rel_l2=0.6478, student_rms=2.6548e-01, teacher_rms=4.0863e-01, rms_ratio=0.6497
+  警告: L2 触发层级激活保护，强制本层 Linear 回退 TSVD [qwen_layer_activation_guard]
+    L2 teacher对齐保护触发: student_max_abs=1.0415e+01, teacher_max_abs=5.3741e+01, threshold=1.0000e+04; rel_l2=0.6478, rms_ratio=0.6497; 已强制回退 7 个 Linear，重新前向
+  L2 student_postcompress_after_layer_tsvd cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.0415e+01, pre_max=7.1058e+00, pre_max_abs=1.0415e+01, post_min=-1.0438e+01, post_max=7.0938e+00, post_max_abs=1.0438e+01
+  L2 student_postcompress_after_layer_tsvd teacher对齐诊断: rel_l2=0.6478, student_rms=2.6548e-01, teacher_rms=4.0863e-01, rms_ratio=0.6497
+  警告: L2 强制 TSVD 后仍未通过 teacher 对齐保护 (student_max_abs=1.0415e+01, threshold=1.0000e+04, rel_l2=0.6478, rms_ratio=0.6497)
+SAES-SVD v3 Compression:  11%|█         | 3/28 [12:57<1:48:45, 261.02s/it]  L3 student_precompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.1687e+04, pre_max=3.8140e+03, pre_max_abs=1.1687e+04, post_min=-1.1712e+04, post_max=3.8080e+03, post_max_abs=1.1712e+04
+  L3 teacher_precompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-9.9056e+03, pre_max=3.2039e+03, pre_max_abs=9.9056e+03, post_min=-9.9200e+03, post_max=3.2000e+03, post_max_abs=9.9200e+03
+  警告: L3 self_attn.q_proj SAES 重建触发回退 (W_err=1.4843e+04, TSVD=0.2992, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L3 self_attn.q_proj: β=0.3562, α*=0.5534, rank=1433, G_err=0.0462, E_kept=0.9979, W_err=0.2992, TSVD=0.2992, fallback=qwen_weight_err_gt_1, Δ/H=0.7356
+  警告: L3 self_attn.k_proj SAES 重建触发回退 (W_err=1.4981e+04, TSVD=0.2496, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L3 self_attn.k_proj: β=0.2714, α*=0.3725, rank=358, G_err=0.0520, E_kept=0.9973, W_err=0.2496, TSVD=0.2496, fallback=qwen_weight_err_gt_1, Δ/H=0.7356
+  警告: L3 self_attn.v_proj SAES 重建触发回退 (W_err=1.5269e+04, TSVD=0.3869, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L3 self_attn.v_proj: β=0.2714, α*=0.3725, rank=358, G_err=0.1399, E_kept=0.9804, W_err=0.3869, TSVD=0.3869, fallback=qwen_weight_err_gt_1, Δ/H=0.7356
+  警告: L3 self_attn.o_proj SAES 重建触发回退 (W_err=4.9742e-01, TSVD=0.3517, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L3 self_attn.o_proj: β=0.2714, α*=0.3725, rank=1433, G_err=0.1181, E_kept=0.9861, W_err=0.3517, TSVD=0.3517, fallback=qwen_tsvd_guard, Δ/H=1.0095
+  警告: L3 mlp.gate_proj SAES 重建触发回退 (W_err=1.9267e+00, TSVD=0.3324, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L3 mlp.gate_proj: β=0.3562, α*=0.5534, rank=2411, G_err=0.0188, E_kept=0.9996, W_err=0.3324, TSVD=0.3324, fallback=qwen_weight_err_gt_1, Δ/H=0.3832
+  警告: L3 mlp.up_proj SAES 重建触发回退 (W_err=1.4132e+00, TSVD=0.3637, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L3 mlp.up_proj: β=0.3562, α*=0.5534, rank=2411, G_err=0.0755, E_kept=0.9943, W_err=0.3637, TSVD=0.3637, fallback=qwen_weight_err_gt_1, Δ/H=0.3832
+  警告: L3 mlp.down_proj SAES 重建触发回退 (W_err=3.7121e+00, TSVD=0.3872, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L3 mlp.down_proj: β=0.3562, α*=0.5534, rank=2411, G_err=0.0133, E_kept=0.9998, W_err=0.3872, TSVD=0.3872, fallback=qwen_weight_err_gt_1, Δ/H=0.2304
+Layer 3 Summary: avg_β=0.3199, avg_α*=0.4759, avg_ρₑ=0.006603, avg_Δ/H=0.6019
+  L3 student_postcompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.2492e+04, pre_max=4.0252e+03, pre_max_abs=1.2492e+04, post_min=-1.2480e+04, post_max=4.0320e+03, post_max_abs=1.2480e+04
+  L3 student_postcompress teacher对齐诊断: rel_l2=0.3061, student_rms=4.5626e+00, teacher_rms=4.0760e+00, rms_ratio=1.1194
+SAES-SVD v3 Compression:  14%|█▍        | 4/28 [16:38<1:38:04, 245.20s/it]  L4 student_precompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.4489e+04, pre_max=4.6658e+03, pre_max_abs=1.4489e+04, post_min=-1.4464e+04, post_max=4.6720e+03, post_max_abs=1.4464e+04
+  L4 teacher_precompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.1963e+04, pre_max=3.8447e+03, pre_max_abs=1.1963e+04, post_min=-1.1968e+04, post_max=3.8400e+03, post_max_abs=1.1968e+04
+  警告: L4 self_attn.q_proj SAES 重建触发回退 (W_err=1.4812e+04, TSVD=0.2897, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L4 self_attn.q_proj: β=0.3562, α*=0.5534, rank=1433, G_err=0.0398, E_kept=0.9984, W_err=0.2897, TSVD=0.2897, fallback=qwen_weight_err_gt_1, Δ/H=0.6933
+  警告: L4 self_attn.k_proj SAES 重建触发回退 (W_err=1.5071e+04, TSVD=0.2255, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L4 self_attn.k_proj: β=0.3562, α*=0.5534, rank=358, G_err=0.0406, E_kept=0.9984, W_err=0.2255, TSVD=0.2255, fallback=qwen_weight_err_gt_1, Δ/H=0.6933
+  警告: L4 self_attn.v_proj SAES 重建触发回退 (W_err=1.3982e+04, TSVD=0.3304, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L4 self_attn.v_proj: β=0.2714, α*=0.3725, rank=358, G_err=0.1351, E_kept=0.9817, W_err=0.3304, TSVD=0.3304, fallback=qwen_weight_err_gt_1, Δ/H=0.6933
+  警告: L4 self_attn.o_proj SAES 重建触发回退 (W_err=2.3635e+03, TSVD=0.3398, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L4 self_attn.o_proj: β=0.3562, α*=0.5534, rank=1433, G_err=0.0880, E_kept=0.9923, W_err=0.3398, TSVD=0.3398, fallback=qwen_weight_err_gt_1, Δ/H=1.0240
+  警告: L4 mlp.gate_proj SAES 重建触发回退 (W_err=5.1258e-01, TSVD=0.3521, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L4 mlp.gate_proj: β=0.3562, α*=0.5534, rank=2411, G_err=0.0247, E_kept=0.9994, W_err=0.3521, TSVD=0.3521, fallback=qwen_tsvd_guard, Δ/H=0.4321
+  警告: L4 mlp.up_proj SAES 重建触发回退 (W_err=4.9507e-01, TSVD=0.3783, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L4 mlp.up_proj: β=0.2714, α*=0.3725, rank=2411, G_err=0.1312, E_kept=0.9828, W_err=0.3783, TSVD=0.3783, fallback=qwen_tsvd_guard, Δ/H=0.4321
+  警告: L4 mlp.down_proj SAES 重建触发回退 (W_err=1.2466e+03, TSVD=0.3860, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L4 mlp.down_proj: β=0.3562, α*=0.5534, rank=2411, G_err=0.0424, E_kept=0.9982, W_err=0.3860, TSVD=0.3860, fallback=qwen_weight_err_gt_1, Δ/H=0.0818
+Layer 4 Summary: avg_β=0.3320, avg_α*=0.5017, avg_ρₑ=0.007314, avg_Δ/H=0.5786
+  L4 student_postcompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.3295e+04, pre_max=4.2911e+03, pre_max_abs=1.3295e+04, post_min=-1.3312e+04, post_max=4.2880e+03, post_max_abs=1.3312e+04
+  L4 student_postcompress teacher对齐诊断: rel_l2=0.2524, student_rms=4.9324e+00, teacher_rms=5.0475e+00, rms_ratio=0.9772
+SAES-SVD v3 Compression:  18%|█▊        | 5/28 [20:07<1:28:59, 232.14s/it]  L5 student_precompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.3408e+04, pre_max=4.2917e+03, pre_max_abs=1.3408e+04, post_min=-1.3376e+04, post_max=4.2880e+03, post_max_abs=1.3376e+04
+  L5 teacher_precompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.2102e+04, pre_max=3.8554e+03, pre_max_abs=1.2102e+04, post_min=-1.2096e+04, post_max=3.8560e+03, post_max_abs=1.2096e+04
+  警告: L5 self_attn.q_proj SAES 重建触发回退 (W_err=1.1574e+04, TSVD=0.3059, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L5 self_attn.q_proj: β=0.3562, α*=0.5534, rank=1433, G_err=0.0613, E_kept=0.9962, W_err=0.3059, TSVD=0.3059, fallback=qwen_weight_err_gt_1, Δ/H=0.7557
+  警告: L5 self_attn.k_proj SAES 重建触发回退 (W_err=1.3535e+04, TSVD=0.2494, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L5 self_attn.k_proj: β=0.3562, α*=0.5534, rank=358, G_err=0.0621, E_kept=0.9961, W_err=0.2494, TSVD=0.2494, fallback=qwen_weight_err_gt_1, Δ/H=0.7557
+  警告: L5 self_attn.v_proj SAES 重建触发回退 (W_err=1.1043e+04, TSVD=0.3520, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L5 self_attn.v_proj: β=0.2714, α*=0.3725, rank=358, G_err=0.1566, E_kept=0.9755, W_err=0.3520, TSVD=0.3520, fallback=qwen_weight_err_gt_1, Δ/H=0.7557
+  警告: L5 self_attn.o_proj SAES 重建触发回退 (W_err=6.5323e-01, TSVD=0.3221, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L5 self_attn.o_proj: β=0.2714, α*=0.3725, rank=1433, G_err=0.0766, E_kept=0.9941, W_err=0.3221, TSVD=0.3221, fallback=qwen_tsvd_guard, Δ/H=1.1885
+  警告: L5 mlp.gate_proj SAES 重建触发回退 (W_err=4.8267e-01, TSVD=0.3691, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L5 mlp.gate_proj: β=0.3562, α*=0.5534, rank=2411, G_err=0.0280, E_kept=0.9992, W_err=0.3691, TSVD=0.3691, fallback=qwen_tsvd_guard, Δ/H=0.4659
+  警告: L5 mlp.up_proj SAES 重建触发回退 (W_err=4.7281e-01, TSVD=0.3870, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L5 mlp.up_proj: β=0.2714, α*=0.3725, rank=2411, G_err=0.1586, E_kept=0.9748, W_err=0.3870, TSVD=0.3870, fallback=qwen_tsvd_guard, Δ/H=0.4659
+  警告: L5 mlp.down_proj SAES 重建触发回退 (W_err=5.4163e-01, TSVD=0.3904, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L5 mlp.down_proj: β=0.2714, α*=0.3725, rank=2411, G_err=0.1721, E_kept=0.9704, W_err=0.3904, TSVD=0.3904, fallback=qwen_tsvd_guard, Δ/H=0.9400
+Layer 5 Summary: avg_β=0.3078, avg_α*=0.4501, avg_ρₑ=0.013920, avg_Δ/H=0.7610
+  L5 student_postcompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.3339e+04, pre_max=4.2881e+03, pre_max_abs=1.3339e+04, post_min=-1.3312e+04, post_max=4.2880e+03, post_max_abs=1.3312e+04
+  L5 student_postcompress teacher对齐诊断: rel_l2=0.2570, student_rms=4.9439e+00, teacher_rms=5.1196e+00, rms_ratio=0.9657
+SAES-SVD v3 Compression:  21%|██▏       | 6/28 [23:38<1:22:27, 224.90s/it]  L6 student_precompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.3450e+04, pre_max=4.3009e+03, pre_max_abs=1.3450e+04, post_min=-1.3440e+04, post_max=4.2880e+03, post_max_abs=1.3440e+04
+  L6 teacher_precompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.2232e+04, pre_max=3.8685e+03, pre_max_abs=1.2232e+04, post_min=-1.2224e+04, post_max=3.8720e+03, post_max_abs=1.2224e+04
+  警告: L6 self_attn.q_proj SAES 重建触发回退 (W_err=2.5694e+03, TSVD=0.3149, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L6 self_attn.q_proj: β=0.3562, α*=0.5534, rank=1433, G_err=0.0579, E_kept=0.9966, W_err=0.3149, TSVD=0.3149, fallback=qwen_weight_err_gt_1, Δ/H=0.7043
+  警告: L6 self_attn.k_proj SAES 重建触发回退 (W_err=2.6721e+03, TSVD=0.2384, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L6 self_attn.k_proj: β=0.3562, α*=0.5534, rank=358, G_err=0.0547, E_kept=0.9970, W_err=0.2384, TSVD=0.2384, fallback=qwen_weight_err_gt_1, Δ/H=0.7043
+  警告: L6 self_attn.v_proj SAES 重建触发回退 (W_err=2.3941e+03, TSVD=0.3695, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L6 self_attn.v_proj: β=0.2714, α*=0.3725, rank=358, G_err=0.1954, E_kept=0.9618, W_err=0.3695, TSVD=0.3695, fallback=qwen_weight_err_gt_1, Δ/H=0.7043
+  警告: L6 self_attn.o_proj SAES 重建触发回退 (W_err=8.6775e-01, TSVD=0.3237, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L6 self_attn.o_proj: β=0.2714, α*=0.3725, rank=1433, G_err=0.0465, E_kept=0.9978, W_err=0.3237, TSVD=0.3237, fallback=qwen_tsvd_guard, Δ/H=1.1043
+  警告: L6 mlp.gate_proj SAES 重建触发回退 (W_err=1.1483e+04, TSVD=0.3728, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L6 mlp.gate_proj: β=0.3562, α*=0.5534, rank=2411, G_err=0.0508, E_kept=0.9974, W_err=0.3728, TSVD=0.3728, fallback=qwen_weight_err_gt_1, Δ/H=0.6109
+  警告: L6 mlp.up_proj SAES 重建触发回退 (W_err=8.9110e+03, TSVD=0.4039, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L6 mlp.up_proj: β=0.2714, α*=0.3725, rank=2411, G_err=0.2012, E_kept=0.9595, W_err=0.4039, TSVD=0.4039, fallback=qwen_weight_err_gt_1, Δ/H=0.6109
+  警告: L6 mlp.down_proj SAES 重建触发回退 (W_err=4.8589e-01, TSVD=0.3756, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L6 mlp.down_proj: β=0.2714, α*=0.3725, rank=2411, G_err=0.2302, E_kept=0.9470, W_err=0.3756, TSVD=0.3756, fallback=qwen_tsvd_guard, Δ/H=1.0048
+Layer 6 Summary: avg_β=0.3078, avg_α*=0.4501, avg_ρₑ=0.021110, avg_Δ/H=0.7777
+  L6 student_postcompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.3321e+04, pre_max=4.2878e+03, pre_max_abs=1.3321e+04, post_min=-1.3312e+04, post_max=4.2880e+03, post_max_abs=1.3312e+04
+  L6 student_postcompress teacher对齐诊断: rel_l2=0.2652, student_rms=4.9425e+00, teacher_rms=5.1956e+00, rms_ratio=0.9513
+SAES-SVD v3 Compression:  25%|██▌       | 7/28 [27:19<1:18:18, 223.73s/it]  L7 student_precompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.3390e+04, pre_max=4.2924e+03, pre_max_abs=1.3390e+04, post_min=-1.3376e+04, post_max=4.2880e+03, post_max_abs=1.3376e+04
+  L7 teacher_precompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.2302e+04, pre_max=3.8764e+03, pre_max_abs=1.2302e+04, post_min=-1.2288e+04, post_max=3.8720e+03, post_max_abs=1.2288e+04
+  警告: L7 self_attn.q_proj SAES 重建触发回退 (W_err=3.6467e+01, TSVD=0.3159, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L7 self_attn.q_proj: β=0.3562, α*=0.5534, rank=1433, G_err=0.0996, E_kept=0.9901, W_err=0.3159, TSVD=0.3159, fallback=qwen_weight_err_gt_1, Δ/H=0.8081
+  警告: L7 self_attn.k_proj SAES 重建触发回退 (W_err=4.5277e+01, TSVD=0.2499, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L7 self_attn.k_proj: β=0.3562, α*=0.5534, rank=358, G_err=0.0682, E_kept=0.9954, W_err=0.2499, TSVD=0.2499, fallback=qwen_weight_err_gt_1, Δ/H=0.8081
+  警告: L7 self_attn.v_proj SAES 重建触发回退 (W_err=4.7924e+01, TSVD=0.4142, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L7 self_attn.v_proj: β=0.2714, α*=0.3725, rank=358, G_err=0.2677, E_kept=0.9283, W_err=0.4142, TSVD=0.4142, fallback=qwen_weight_err_gt_1, Δ/H=0.8081
+  警告: L7 self_attn.o_proj SAES 重建触发回退 (W_err=5.9604e-01, TSVD=0.3285, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L7 self_attn.o_proj: β=0.2714, α*=0.3725, rank=1433, G_err=0.1002, E_kept=0.9900, W_err=0.3285, TSVD=0.3285, fallback=qwen_tsvd_guard, Δ/H=1.0433
+  警告: L7 mlp.gate_proj SAES 重建触发回退 (W_err=1.8111e+04, TSVD=0.3706, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L7 mlp.gate_proj: β=0.3562, α*=0.5534, rank=2411, G_err=0.1036, E_kept=0.9892, W_err=0.3706, TSVD=0.3706, fallback=qwen_weight_err_gt_1, Δ/H=0.9345
+  警告: L7 mlp.up_proj SAES 重建触发回退 (W_err=1.7111e+04, TSVD=0.3993, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L7 mlp.up_proj: β=0.2714, α*=0.3725, rank=2411, G_err=0.1696, E_kept=0.9712, W_err=0.3993, TSVD=0.3993, fallback=qwen_weight_err_gt_1, Δ/H=0.9345
+  警告: L7 mlp.down_proj SAES 重建触发回退 (W_err=5.0262e-01, TSVD=0.3984, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L7 mlp.down_proj: β=0.2714, α*=0.3725, rank=2411, G_err=0.2098, E_kept=0.9560, W_err=0.3984, TSVD=0.3984, fallback=qwen_tsvd_guard, Δ/H=1.0020
+Layer 7 Summary: avg_β=0.3078, avg_α*=0.4501, avg_ρₑ=0.026788, avg_Δ/H=0.9055
+  L7 student_postcompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.3316e+04, pre_max=4.2881e+03, pre_max_abs=1.3316e+04, post_min=-1.3312e+04, post_max=4.2880e+03, post_max_abs=1.3312e+04
+  L7 student_postcompress teacher对齐诊断: rel_l2=0.2761, student_rms=4.9473e+00, teacher_rms=5.2412e+00, rms_ratio=0.9439
+SAES-SVD v3 Compression:  29%|██▊       | 8/28 [30:47<1:12:58, 218.91s/it]  L8 student_precompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.3365e+04, pre_max=4.2915e+03, pre_max_abs=1.3365e+04, post_min=-1.3376e+04, post_max=4.2880e+03, post_max_abs=1.3376e+04
+  L8 teacher_precompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.2340e+04, pre_max=3.8753e+03, pre_max_abs=1.2340e+04, post_min=-1.2352e+04, post_max=3.8720e+03, post_max_abs=1.2352e+04
+  警告: L8 self_attn.q_proj SAES 重建触发回退 (W_err=5.8990e-01, TSVD=0.3012, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L8 self_attn.q_proj: β=0.3562, α*=0.5534, rank=1433, G_err=0.0825, E_kept=0.9932, W_err=0.3012, TSVD=0.3012, fallback=qwen_tsvd_guard, Δ/H=0.8356
+  警告: L8 self_attn.k_proj SAES 重建触发回退 (W_err=6.0010e-01, TSVD=0.2074, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L8 self_attn.k_proj: β=0.3562, α*=0.5534, rank=358, G_err=0.0569, E_kept=0.9968, W_err=0.2074, TSVD=0.2074, fallback=qwen_tsvd_guard, Δ/H=0.8356
+  警告: L8 self_attn.v_proj SAES 重建触发回退 (W_err=5.4428e-01, TSVD=0.3879, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L8 self_attn.v_proj: β=0.2714, α*=0.3725, rank=358, G_err=0.1940, E_kept=0.9624, W_err=0.3879, TSVD=0.3879, fallback=qwen_tsvd_guard, Δ/H=0.8356
+  警告: L8 self_attn.o_proj SAES 重建触发回退 (W_err=1.4440e+00, TSVD=0.3278, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L8 self_attn.o_proj: β=0.2714, α*=0.3725, rank=1433, G_err=0.0543, E_kept=0.9970, W_err=0.3278, TSVD=0.3278, fallback=qwen_weight_err_gt_1, Δ/H=1.1176
+  警告: L8 mlp.gate_proj SAES 重建触发回退 (W_err=2.2699e+02, TSVD=0.3721, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L8 mlp.gate_proj: β=0.3562, α*=0.5534, rank=2411, G_err=0.1185, E_kept=0.9859, W_err=0.3721, TSVD=0.3721, fallback=qwen_weight_err_gt_1, Δ/H=0.9842
+  警告: L8 mlp.up_proj SAES 重建触发回退 (W_err=2.0794e+02, TSVD=0.3943, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L8 mlp.up_proj: β=0.2714, α*=0.3725, rank=2411, G_err=0.1863, E_kept=0.9653, W_err=0.3943, TSVD=0.3943, fallback=qwen_weight_err_gt_1, Δ/H=0.9842
+  警告: L8 mlp.down_proj SAES 重建触发回退 (W_err=4.9044e-01, TSVD=0.3811, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L8 mlp.down_proj: β=0.2714, α*=0.3725, rank=2411, G_err=0.2340, E_kept=0.9452, W_err=0.3811, TSVD=0.3811, fallback=qwen_tsvd_guard, Δ/H=1.0247
+Layer 8 Summary: avg_β=0.3078, avg_α*=0.4501, avg_ρₑ=0.022990, avg_Δ/H=0.9454
+  L8 student_postcompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.3312e+04, pre_max=4.2874e+03, pre_max_abs=1.3312e+04, post_min=-1.3312e+04, post_max=4.2880e+03, post_max_abs=1.3312e+04
+  L8 student_postcompress teacher对齐诊断: rel_l2=0.2866, student_rms=4.9460e+00, teacher_rms=5.2860e+00, rms_ratio=0.9357
+SAES-SVD v3 Compression:  32%|███▏      | 9/28 [34:55<1:12:08, 227.79s/it]  L9 student_precompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.3464e+04, pre_max=4.3048e+03, pre_max_abs=1.3464e+04, post_min=-1.3440e+04, post_max=4.3200e+03, post_max_abs=1.3440e+04
+  L9 teacher_precompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.2507e+04, pre_max=3.8895e+03, pre_max_abs=1.2507e+04, post_min=-1.2480e+04, post_max=3.8880e+03, post_max_abs=1.2480e+04
+  警告: L9 self_attn.q_proj SAES 重建触发回退 (W_err=5.5482e-01, TSVD=0.3045, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L9 self_attn.q_proj: β=0.3562, α*=0.5534, rank=1433, G_err=0.0780, E_kept=0.9939, W_err=0.3045, TSVD=0.3045, fallback=qwen_tsvd_guard, Δ/H=0.8456
+  警告: L9 self_attn.k_proj SAES 重建触发回退 (W_err=5.3509e-01, TSVD=0.2247, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L9 self_attn.k_proj: β=0.3562, α*=0.5534, rank=358, G_err=0.0617, E_kept=0.9962, W_err=0.2247, TSVD=0.2247, fallback=qwen_tsvd_guard, Δ/H=0.8456
+  警告: L9 self_attn.v_proj SAES 重建触发回退 (W_err=5.8361e-01, TSVD=0.4312, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L9 self_attn.v_proj: β=0.2714, α*=0.3725, rank=358, G_err=0.2665, E_kept=0.9290, W_err=0.4312, TSVD=0.4312, fallback=qwen_tsvd_guard, Δ/H=0.8456
+  警告: L9 self_attn.o_proj SAES 重建触发回退 (W_err=7.9330e-01, TSVD=0.3138, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L9 self_attn.o_proj: β=0.2714, α*=0.3725, rank=1433, G_err=0.0535, E_kept=0.9971, W_err=0.3138, TSVD=0.3138, fallback=qwen_tsvd_guard, Δ/H=1.0422
+  警告: L9 mlp.gate_proj SAES 重建触发回退 (W_err=4.9754e+00, TSVD=0.3506, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L9 mlp.gate_proj: β=0.3562, α*=0.5534, rank=2411, G_err=0.0460, E_kept=0.9979, W_err=0.3506, TSVD=0.3506, fallback=qwen_weight_err_gt_1, Δ/H=0.9096
+  警告: L9 mlp.up_proj SAES 重建触发回退 (W_err=4.5197e+00, TSVD=0.3935, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L9 mlp.up_proj: β=0.2714, α*=0.3725, rank=2411, G_err=0.1789, E_kept=0.9680, W_err=0.3935, TSVD=0.3935, fallback=qwen_weight_err_gt_1, Δ/H=0.9096
+  警告: L9 mlp.down_proj SAES 重建触发回退 (W_err=5.3062e-01, TSVD=0.3738, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L9 mlp.down_proj: β=0.2714, α*=0.3725, rank=2411, G_err=0.1580, E_kept=0.9750, W_err=0.3738, TSVD=0.3738, fallback=qwen_tsvd_guard, Δ/H=0.9742
+Layer 9 Summary: avg_β=0.3078, avg_α*=0.4501, avg_ρₑ=0.021122, avg_Δ/H=0.9104
+  L9 student_postcompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.3316e+04, pre_max=4.2878e+03, pre_max_abs=1.3316e+04, post_min=-1.3312e+04, post_max=4.2880e+03, post_max_abs=1.3312e+04
+  L9 student_postcompress teacher对齐诊断: rel_l2=0.2949, student_rms=4.9458e+00, teacher_rms=5.3626e+00, rms_ratio=0.9223
+SAES-SVD v3 Compression:  36%|███▌      | 10/28 [38:22<1:06:24, 221.34s/it]  L10 student_precompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.3355e+04, pre_max=4.2904e+03, pre_max_abs=1.3355e+04, post_min=-1.3376e+04, post_max=4.2880e+03, post_max_abs=1.3376e+04
+  L10 teacher_precompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.2522e+04, pre_max=3.8902e+03, pre_max_abs=1.2522e+04, post_min=-1.2544e+04, post_max=3.8880e+03, post_max_abs=1.2544e+04
+  警告: L10 self_attn.q_proj SAES 重建触发回退 (W_err=9.1288e-01, TSVD=0.3268, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L10 self_attn.q_proj: β=0.3562, α*=0.5534, rank=1433, G_err=0.0751, E_kept=0.9944, W_err=0.3268, TSVD=0.3268, fallback=qwen_tsvd_guard, Δ/H=0.7991
+  警告: L10 self_attn.k_proj SAES 重建触发回退 (W_err=9.7597e-01, TSVD=0.2657, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L10 self_attn.k_proj: β=0.3562, α*=0.5534, rank=358, G_err=0.0716, E_kept=0.9949, W_err=0.2657, TSVD=0.2657, fallback=qwen_tsvd_guard, Δ/H=0.7991
+  警告: L10 self_attn.v_proj SAES 重建触发回退 (W_err=8.2553e-01, TSVD=0.3988, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L10 self_attn.v_proj: β=0.2714, α*=0.3725, rank=358, G_err=0.2260, E_kept=0.9489, W_err=0.3988, TSVD=0.3988, fallback=qwen_tsvd_guard, Δ/H=0.7991
+  警告: L10 self_attn.o_proj SAES 重建触发回退 (W_err=7.3534e-01, TSVD=0.3296, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L10 self_attn.o_proj: β=0.2714, α*=0.3725, rank=1433, G_err=0.0609, E_kept=0.9963, W_err=0.3296, TSVD=0.3296, fallback=qwen_tsvd_guard, Δ/H=1.1193
+  警告: L10 mlp.gate_proj SAES 重建触发回退 (W_err=6.2153e-01, TSVD=0.3688, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L10 mlp.gate_proj: β=0.3562, α*=0.5534, rank=2411, G_err=0.1071, E_kept=0.9885, W_err=0.3688, TSVD=0.3688, fallback=qwen_tsvd_guard, Δ/H=1.0158
+  警告: L10 mlp.up_proj SAES 重建触发回退 (W_err=5.6645e-01, TSVD=0.3964, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L10 mlp.up_proj: β=0.2714, α*=0.3725, rank=2411, G_err=0.1631, E_kept=0.9734, W_err=0.3964, TSVD=0.3964, fallback=qwen_tsvd_guard, Δ/H=1.0158
+  警告: L10 mlp.down_proj SAES 重建触发回退 (W_err=5.0359e-01, TSVD=0.3823, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L10 mlp.down_proj: β=0.2714, α*=0.3725, rank=2411, G_err=0.2226, E_kept=0.9504, W_err=0.3823, TSVD=0.3823, fallback=qwen_tsvd_guard, Δ/H=1.0113
+Layer 10 Summary: avg_β=0.3078, avg_α*=0.4501, avg_ρₑ=0.022807, avg_Δ/H=0.9371
+  L10 student_postcompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.3316e+04, pre_max=4.2882e+03, pre_max_abs=1.3316e+04, post_min=-1.3312e+04, post_max=4.2880e+03, post_max_abs=1.3312e+04
+  L10 student_postcompress teacher对齐诊断: rel_l2=0.3014, student_rms=4.9574e+00, teacher_rms=5.3919e+00, rms_ratio=0.9194
+SAES-SVD v3 Compression:  39%|███▉      | 11/28 [41:46<1:01:14, 216.16s/it]  L11 student_precompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.3505e+04, pre_max=4.3292e+03, pre_max_abs=1.3505e+04, post_min=-1.3504e+04, post_max=4.3200e+03, post_max_abs=1.3504e+04
+  L11 teacher_precompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.2741e+04, pre_max=3.9312e+03, pre_max_abs=1.2741e+04, post_min=-1.2736e+04, post_max=3.9360e+03, post_max_abs=1.2736e+04
+  警告: L11 self_attn.q_proj SAES 重建触发回退 (W_err=5.7917e-01, TSVD=0.3002, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L11 self_attn.q_proj: β=0.3562, α*=0.5534, rank=1433, G_err=0.0765, E_kept=0.9941, W_err=0.3002, TSVD=0.3002, fallback=qwen_tsvd_guard, Δ/H=0.8539
+  警告: L11 self_attn.k_proj SAES 重建触发回退 (W_err=5.7900e-01, TSVD=0.2184, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L11 self_attn.k_proj: β=0.3562, α*=0.5534, rank=358, G_err=0.0578, E_kept=0.9967, W_err=0.2184, TSVD=0.2184, fallback=qwen_tsvd_guard, Δ/H=0.8539
+  警告: L11 self_attn.v_proj SAES 重建触发回退 (W_err=5.0853e-01, TSVD=0.3454, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L11 self_attn.v_proj: β=0.2714, α*=0.3725, rank=358, G_err=0.1537, E_kept=0.9764, W_err=0.3454, TSVD=0.3454, fallback=qwen_tsvd_guard, Δ/H=0.8539
+  警告: L11 self_attn.o_proj SAES 重建触发回退 (W_err=1.4336e+04, TSVD=0.3310, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L11 self_attn.o_proj: β=0.3562, α*=0.5534, rank=1433, G_err=0.0409, E_kept=0.9983, W_err=0.3310, TSVD=0.3310, fallback=qwen_weight_err_gt_1, Δ/H=1.0158
+  警告: L11 mlp.gate_proj SAES 重建触发回退 (W_err=6.6785e-01, TSVD=0.3693, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L11 mlp.gate_proj: β=0.3562, α*=0.5534, rank=2411, G_err=0.0858, E_kept=0.9926, W_err=0.3693, TSVD=0.3693, fallback=qwen_tsvd_guard, Δ/H=0.9861
+  警告: L11 mlp.up_proj SAES 重建触发回退 (W_err=6.0015e-01, TSVD=0.3885, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L11 mlp.up_proj: β=0.2714, α*=0.3725, rank=2411, G_err=0.1493, E_kept=0.9777, W_err=0.3885, TSVD=0.3885, fallback=qwen_tsvd_guard, Δ/H=0.9861
+  警告: L11 mlp.down_proj SAES 重建触发回退 (W_err=5.5167e-01, TSVD=0.3691, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L11 mlp.down_proj: β=0.3562, α*=0.5534, rank=2411, G_err=0.1670, E_kept=0.9721, W_err=0.3691, TSVD=0.3691, fallback=qwen_tsvd_guard, Δ/H=1.0013
+Layer 11 Summary: avg_β=0.3320, avg_α*=0.5017, avg_ρₑ=0.013772, avg_Δ/H=0.9359
+  L11 student_postcompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.3389e+04, pre_max=4.3002e+03, pre_max_abs=1.3389e+04, post_min=-1.3376e+04, post_max=4.2880e+03, post_max_abs=1.3376e+04
+  L11 student_postcompress teacher对齐诊断: rel_l2=0.3074, student_rms=5.0029e+00, teacher_rms=5.4961e+00, rms_ratio=0.9103
+SAES-SVD v3 Compression:  43%|████▎     | 12/28 [45:06<56:20, 211.26s/it]    L12 student_precompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.3497e+04, pre_max=4.3050e+03, pre_max_abs=1.3497e+04, post_min=-1.3504e+04, post_max=4.3200e+03, post_max_abs=1.3504e+04
+  L12 teacher_precompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.2853e+04, pre_max=3.9525e+03, pre_max_abs=1.2853e+04, post_min=-1.2864e+04, post_max=3.9520e+03, post_max_abs=1.2864e+04
+  警告: L12 self_attn.q_proj SAES 重建触发回退 (W_err=2.3348e+04, TSVD=0.3078, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L12 self_attn.q_proj: β=0.3562, α*=0.5534, rank=1433, G_err=0.0634, E_kept=0.9960, W_err=0.3078, TSVD=0.3078, fallback=qwen_weight_err_gt_1, Δ/H=0.8979
+  警告: L12 self_attn.k_proj SAES 重建触发回退 (W_err=2.6558e+04, TSVD=0.2118, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L12 self_attn.k_proj: β=0.3562, α*=0.5534, rank=358, G_err=0.0559, E_kept=0.9969, W_err=0.2118, TSVD=0.2118, fallback=qwen_weight_err_gt_1, Δ/H=0.8979
+  警告: L12 self_attn.v_proj SAES 重建触发回退 (W_err=2.4015e+04, TSVD=0.3712, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L12 self_attn.v_proj: β=0.2714, α*=0.3725, rank=358, G_err=0.1259, E_kept=0.9842, W_err=0.3712, TSVD=0.3712, fallback=qwen_weight_err_gt_1, Δ/H=0.8979
+  警告: L12 self_attn.o_proj SAES 重建触发回退 (W_err=7.6953e-01, TSVD=0.3213, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L12 self_attn.o_proj: β=0.2714, α*=0.3725, rank=1433, G_err=0.0375, E_kept=0.9986, W_err=0.3213, TSVD=0.3213, fallback=qwen_tsvd_guard, Δ/H=1.0218
+  警告: L12 mlp.gate_proj SAES 重建触发回退 (W_err=7.0099e-01, TSVD=0.3701, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L12 mlp.gate_proj: β=0.3562, α*=0.5534, rank=2411, G_err=0.0849, E_kept=0.9928, W_err=0.3701, TSVD=0.3701, fallback=qwen_tsvd_guard, Δ/H=0.9914
+  警告: L12 mlp.up_proj SAES 重建触发回退 (W_err=6.2151e-01, TSVD=0.3929, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L12 mlp.up_proj: β=0.2714, α*=0.3725, rank=2411, G_err=0.1370, E_kept=0.9812, W_err=0.3929, TSVD=0.3929, fallback=qwen_tsvd_guard, Δ/H=0.9914
+  警告: L12 mlp.down_proj SAES 重建触发回退 (W_err=5.0866e-01, TSVD=0.3775, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L12 mlp.down_proj: β=0.2714, α*=0.3725, rank=2411, G_err=0.1454, E_kept=0.9788, W_err=0.3775, TSVD=0.3775, fallback=qwen_tsvd_guard, Δ/H=1.0013
+Layer 12 Summary: avg_β=0.3078, avg_α*=0.4501, avg_ρₑ=0.010680, avg_Δ/H=0.9571
+  L12 student_postcompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.3390e+04, pre_max=4.2892e+03, pre_max_abs=1.3390e+04, post_min=-1.3376e+04, post_max=4.2880e+03, post_max_abs=1.3376e+04
+  L12 student_postcompress teacher对齐诊断: rel_l2=0.3193, student_rms=5.0284e+00, teacher_rms=5.5631e+00, rms_ratio=0.9039
+SAES-SVD v3 Compression:  46%|████▋     | 13/28 [48:24<51:46, 207.08s/it]  L13 student_precompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.3416e+04, pre_max=4.2943e+03, pre_max_abs=1.3416e+04, post_min=-1.3440e+04, post_max=4.2880e+03, post_max_abs=1.3440e+04
+  L13 teacher_precompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.2905e+04, pre_max=3.9587e+03, pre_max_abs=1.2905e+04, post_min=-1.2928e+04, post_max=3.9520e+03, post_max_abs=1.2928e+04
+  警告: L13 self_attn.q_proj SAES 重建触发回退 (W_err=6.1927e-01, TSVD=0.3081, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L13 self_attn.q_proj: β=0.3562, α*=0.5534, rank=1433, G_err=0.0588, E_kept=0.9965, W_err=0.3081, TSVD=0.3081, fallback=qwen_tsvd_guard, Δ/H=0.9641
+  警告: L13 self_attn.k_proj SAES 重建触发回退 (W_err=6.6371e-01, TSVD=0.2129, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L13 self_attn.k_proj: β=0.3562, α*=0.5534, rank=358, G_err=0.0529, E_kept=0.9972, W_err=0.2129, TSVD=0.2129, fallback=qwen_tsvd_guard, Δ/H=0.9641
+  警告: L13 self_attn.v_proj SAES 重建触发回退 (W_err=5.8756e-01, TSVD=0.4039, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L13 self_attn.v_proj: β=0.2714, α*=0.3725, rank=358, G_err=0.1886, E_kept=0.9644, W_err=0.4039, TSVD=0.4039, fallback=qwen_tsvd_guard, Δ/H=0.9641
+  警告: L13 self_attn.o_proj SAES 重建触发回退 (W_err=6.9354e-01, TSVD=0.3285, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L13 self_attn.o_proj: β=0.2714, α*=0.3725, rank=1433, G_err=0.0387, E_kept=0.9985, W_err=0.3285, TSVD=0.3285, fallback=qwen_tsvd_guard, Δ/H=1.0521
+  警告: L13 mlp.gate_proj SAES 重建触发回退 (W_err=6.8183e-01, TSVD=0.3590, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L13 mlp.gate_proj: β=0.3562, α*=0.5534, rank=2411, G_err=0.0834, E_kept=0.9930, W_err=0.3590, TSVD=0.3590, fallback=qwen_tsvd_guard, Δ/H=1.0218
+  警告: L13 mlp.up_proj SAES 重建触发回退 (W_err=6.0397e-01, TSVD=0.3786, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L13 mlp.up_proj: β=0.2714, α*=0.3725, rank=2411, G_err=0.1312, E_kept=0.9828, W_err=0.3786, TSVD=0.3786, fallback=qwen_tsvd_guard, Δ/H=1.0218
+  警告: L13 mlp.down_proj SAES 重建触发回退 (W_err=4.9925e-01, TSVD=0.3651, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L13 mlp.down_proj: β=0.2714, α*=0.3725, rank=2411, G_err=0.1803, E_kept=0.9675, W_err=0.3651, TSVD=0.3651, fallback=qwen_tsvd_guard, Δ/H=1.0083
+Layer 13 Summary: avg_β=0.3078, avg_α*=0.4501, avg_ρₑ=0.014903, avg_Δ/H=0.9995
+  L13 student_postcompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.3387e+04, pre_max=4.2890e+03, pre_max_abs=1.3387e+04, post_min=-1.3376e+04, post_max=4.2880e+03, post_max_abs=1.3376e+04
+  L13 student_postcompress teacher对齐诊断: rel_l2=0.3267, student_rms=5.0228e+00, teacher_rms=5.5965e+00, rms_ratio=0.8975
+SAES-SVD v3 Compression:  50%|█████     | 14/28 [52:05<49:20, 211.46s/it]  L14 student_precompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.3392e+04, pre_max=4.2894e+03, pre_max_abs=1.3392e+04, post_min=-1.3376e+04, post_max=4.2880e+03, post_max_abs=1.3376e+04
+  L14 teacher_precompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.2943e+04, pre_max=3.9532e+03, pre_max_abs=1.2943e+04, post_min=-1.2928e+04, post_max=3.9520e+03, post_max_abs=1.2928e+04
+  警告: L14 self_attn.q_proj SAES 重建触发回退 (W_err=5.7671e+00, TSVD=0.2722, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L14 self_attn.q_proj: β=0.3562, α*=0.5534, rank=1433, G_err=0.0586, E_kept=0.9966, W_err=0.2722, TSVD=0.2722, fallback=qwen_weight_err_gt_1, Δ/H=0.9638
+  警告: L14 self_attn.k_proj SAES 重建触发回退 (W_err=6.3941e+00, TSVD=0.1694, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L14 self_attn.k_proj: β=0.3562, α*=0.5534, rank=358, G_err=0.0515, E_kept=0.9973, W_err=0.1694, TSVD=0.1694, fallback=qwen_weight_err_gt_1, Δ/H=0.9638
+  警告: L14 self_attn.v_proj SAES 重建触发回退 (W_err=3.8757e+00, TSVD=0.3531, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L14 self_attn.v_proj: β=0.2714, α*=0.3725, rank=358, G_err=0.1713, E_kept=0.9707, W_err=0.3531, TSVD=0.3531, fallback=qwen_weight_err_gt_1, Δ/H=0.9638
+  警告: L14 self_attn.o_proj SAES 重建触发回退 (W_err=8.6633e-01, TSVD=0.3000, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L14 self_attn.o_proj: β=0.2714, α*=0.3725, rank=1433, G_err=0.0425, E_kept=0.9982, W_err=0.3000, TSVD=0.3000, fallback=qwen_tsvd_guard, Δ/H=1.0439
+  警告: L14 mlp.gate_proj SAES 重建触发回退 (W_err=5.8065e-01, TSVD=0.3618, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L14 mlp.gate_proj: β=0.3562, α*=0.5534, rank=2411, G_err=0.0900, E_kept=0.9919, W_err=0.3618, TSVD=0.3618, fallback=qwen_tsvd_guard, Δ/H=1.0213
+  警告: L14 mlp.up_proj SAES 重建触发回退 (W_err=5.4209e-01, TSVD=0.3870, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L14 mlp.up_proj: β=0.2714, α*=0.3725, rank=2411, G_err=0.1394, E_kept=0.9805, W_err=0.3870, TSVD=0.3870, fallback=qwen_tsvd_guard, Δ/H=1.0213
+  警告: L14 mlp.down_proj SAES 重建触发回退 (W_err=5.0873e-01, TSVD=0.3743, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L14 mlp.down_proj: β=0.2714, α*=0.3725, rank=2411, G_err=0.1706, E_kept=0.9709, W_err=0.3743, TSVD=0.3743, fallback=qwen_tsvd_guard, Δ/H=1.0065
+Layer 14 Summary: avg_β=0.3078, avg_α*=0.4501, avg_ρₑ=0.014088, avg_Δ/H=0.9978
+  L14 student_postcompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.3378e+04, pre_max=4.2874e+03, pre_max_abs=1.3378e+04, post_min=-1.3376e+04, post_max=4.2880e+03, post_max_abs=1.3376e+04
+  L14 student_postcompress teacher对齐诊断: rel_l2=0.3372, student_rms=5.0230e+00, teacher_rms=5.6086e+00, rms_ratio=0.8956
+SAES-SVD v3 Compression:  54%|█████▎    | 15/28 [55:39<45:56, 212.04s/it]  L15 student_precompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.3401e+04, pre_max=4.2903e+03, pre_max_abs=1.3401e+04, post_min=-1.3376e+04, post_max=4.2880e+03, post_max_abs=1.3376e+04
+  L15 teacher_precompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.2953e+04, pre_max=3.9541e+03, pre_max_abs=1.2953e+04, post_min=-1.2928e+04, post_max=3.9520e+03, post_max_abs=1.2928e+04
+  警告: L15 self_attn.q_proj SAES 重建触发回退 (W_err=6.9049e-01, TSVD=0.2865, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L15 self_attn.q_proj: β=0.3562, α*=0.5534, rank=1433, G_err=0.0640, E_kept=0.9959, W_err=0.2865, TSVD=0.2865, fallback=qwen_tsvd_guard, Δ/H=0.9801
+  警告: L15 self_attn.k_proj SAES 重建触发回退 (W_err=7.4361e-01, TSVD=0.2085, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L15 self_attn.k_proj: β=0.3562, α*=0.5534, rank=358, G_err=0.0639, E_kept=0.9959, W_err=0.2085, TSVD=0.2085, fallback=qwen_tsvd_guard, Δ/H=0.9801
+  警告: L15 self_attn.v_proj SAES 重建触发回退 (W_err=5.7566e-01, TSVD=0.3327, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L15 self_attn.v_proj: β=0.2714, α*=0.3725, rank=358, G_err=0.1237, E_kept=0.9847, W_err=0.3327, TSVD=0.3327, fallback=qwen_tsvd_guard, Δ/H=0.9801
+  警告: L15 self_attn.o_proj SAES 重建触发回退 (W_err=6.8556e-01, TSVD=0.3058, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L15 self_attn.o_proj: β=0.2714, α*=0.3725, rank=1433, G_err=0.0457, E_kept=0.9979, W_err=0.3058, TSVD=0.3058, fallback=qwen_tsvd_guard, Δ/H=1.0202
+  警告: L15 mlp.gate_proj SAES 重建触发回退 (W_err=3.5080e+00, TSVD=0.3661, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L15 mlp.gate_proj: β=0.3562, α*=0.5534, rank=2411, G_err=0.0930, E_kept=0.9913, W_err=0.3661, TSVD=0.3661, fallback=qwen_weight_err_gt_1, Δ/H=1.0252
+  警告: L15 mlp.up_proj SAES 重建触发回退 (W_err=2.6062e+00, TSVD=0.3844, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L15 mlp.up_proj: β=0.2714, α*=0.3725, rank=2411, G_err=0.1392, E_kept=0.9806, W_err=0.3844, TSVD=0.3844, fallback=qwen_weight_err_gt_1, Δ/H=1.0252
+  警告: L15 mlp.down_proj SAES 重建触发回退 (W_err=5.0491e-01, TSVD=0.3734, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L15 mlp.down_proj: β=0.2714, α*=0.3725, rank=2411, G_err=0.1789, E_kept=0.9680, W_err=0.3734, TSVD=0.3734, fallback=qwen_tsvd_guard, Δ/H=1.0001
+Layer 15 Summary: avg_β=0.3078, avg_α*=0.4501, avg_ρₑ=0.012726, avg_Δ/H=1.0016
+  L15 student_postcompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.3384e+04, pre_max=4.2881e+03, pre_max_abs=1.3384e+04, post_min=-1.3376e+04, post_max=4.2880e+03, post_max_abs=1.3376e+04
+  L15 student_postcompress teacher对齐诊断: rel_l2=0.3479, student_rms=5.0380e+00, teacher_rms=5.6282e+00, rms_ratio=0.8951
+SAES-SVD v3 Compression:  57%|█████▋    | 16/28 [58:59<41:41, 208.48s/it]  L16 student_precompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.3383e+04, pre_max=4.2904e+03, pre_max_abs=1.3383e+04, post_min=-1.3376e+04, post_max=4.2880e+03, post_max_abs=1.3376e+04
+  L16 teacher_precompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.2935e+04, pre_max=3.9540e+03, pre_max_abs=1.2935e+04, post_min=-1.2928e+04, post_max=3.9520e+03, post_max_abs=1.2928e+04
+  警告: L16 self_attn.q_proj SAES 重建触发回退 (W_err=1.2918e+00, TSVD=0.2909, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L16 self_attn.q_proj: β=0.3562, α*=0.5534, rank=1433, G_err=0.0616, E_kept=0.9962, W_err=0.2909, TSVD=0.2909, fallback=qwen_weight_err_gt_1, Δ/H=0.9767
+  警告: L16 self_attn.k_proj SAES 重建触发回退 (W_err=1.8072e+00, TSVD=0.1964, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L16 self_attn.k_proj: β=0.3562, α*=0.5534, rank=358, G_err=0.0533, E_kept=0.9972, W_err=0.1964, TSVD=0.1964, fallback=qwen_weight_err_gt_1, Δ/H=0.9767
+  警告: L16 self_attn.v_proj SAES 重建触发回退 (W_err=8.3012e-01, TSVD=0.3705, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L16 self_attn.v_proj: β=0.2714, α*=0.3725, rank=358, G_err=0.1829, E_kept=0.9665, W_err=0.3705, TSVD=0.3705, fallback=qwen_tsvd_guard, Δ/H=0.9767
+  警告: L16 self_attn.o_proj SAES 重建触发回退 (W_err=5.9297e-01, TSVD=0.3282, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L16 self_attn.o_proj: β=0.3562, α*=0.5534, rank=1433, G_err=0.0502, E_kept=0.9975, W_err=0.3282, TSVD=0.3282, fallback=qwen_tsvd_guard, Δ/H=1.0059
+  警告: L16 mlp.gate_proj SAES 重建触发回退 (W_err=5.8079e-01, TSVD=0.3623, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L16 mlp.gate_proj: β=0.3562, α*=0.5534, rank=2411, G_err=0.0804, E_kept=0.9935, W_err=0.3623, TSVD=0.3623, fallback=qwen_tsvd_guard, Δ/H=1.0011
+  警告: L16 mlp.up_proj SAES 重建触发回退 (W_err=5.3457e-01, TSVD=0.3797, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L16 mlp.up_proj: β=0.2714, α*=0.3725, rank=2411, G_err=0.1287, E_kept=0.9834, W_err=0.3797, TSVD=0.3797, fallback=qwen_tsvd_guard, Δ/H=1.0011
+  警告: L16 mlp.down_proj SAES 重建触发回退 (W_err=5.1382e-01, TSVD=0.3648, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L16 mlp.down_proj: β=0.2714, α*=0.3725, rank=2411, G_err=0.1217, E_kept=0.9852, W_err=0.3648, TSVD=0.3648, fallback=qwen_tsvd_guard, Δ/H=1.0070
+Layer 16 Summary: avg_β=0.3199, avg_α*=0.4759, avg_ρₑ=0.012002, avg_Δ/H=0.9922
+  L16 student_postcompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.3380e+04, pre_max=4.2883e+03, pre_max_abs=1.3380e+04, post_min=-1.3376e+04, post_max=4.2880e+03, post_max_abs=1.3376e+04
+  L16 student_postcompress teacher对齐诊断: rel_l2=0.3529, student_rms=5.0467e+00, teacher_rms=5.6394e+00, rms_ratio=0.8949
+SAES-SVD v3 Compression:  61%|██████    | 17/28 [1:02:31<38:25, 209.60s/it]  L17 student_precompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.3372e+04, pre_max=4.2908e+03, pre_max_abs=1.3372e+04, post_min=-1.3376e+04, post_max=4.2880e+03, post_max_abs=1.3376e+04
+  L17 teacher_precompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.2925e+04, pre_max=3.9542e+03, pre_max_abs=1.2925e+04, post_min=-1.2928e+04, post_max=3.9520e+03, post_max_abs=1.2928e+04
+  警告: L17 self_attn.q_proj SAES 重建触发回退 (W_err=6.2257e-01, TSVD=0.2945, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L17 self_attn.q_proj: β=0.3562, α*=0.5534, rank=1433, G_err=0.0648, E_kept=0.9958, W_err=0.2945, TSVD=0.2945, fallback=qwen_tsvd_guard, Δ/H=0.9799
+  警告: L17 self_attn.k_proj SAES 重建触发回退 (W_err=6.3114e-01, TSVD=0.2361, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L17 self_attn.k_proj: β=0.3562, α*=0.5534, rank=358, G_err=0.0725, E_kept=0.9947, W_err=0.2361, TSVD=0.2361, fallback=qwen_tsvd_guard, Δ/H=0.9799
+  警告: L17 self_attn.v_proj SAES 重建触发回退 (W_err=5.2767e-01, TSVD=0.3520, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L17 self_attn.v_proj: β=0.2714, α*=0.3725, rank=358, G_err=0.1577, E_kept=0.9751, W_err=0.3520, TSVD=0.3520, fallback=qwen_tsvd_guard, Δ/H=0.9799
+  警告: L17 self_attn.o_proj SAES 重建触发回退 (W_err=5.3164e-01, TSVD=0.3244, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L17 self_attn.o_proj: β=0.2714, α*=0.3725, rank=1433, G_err=0.0552, E_kept=0.9970, W_err=0.3244, TSVD=0.3244, fallback=qwen_tsvd_guard, Δ/H=1.0115
+  警告: L17 mlp.gate_proj SAES 重建触发回退 (W_err=1.5953e+01, TSVD=0.3643, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L17 mlp.gate_proj: β=0.3562, α*=0.5534, rank=2411, G_err=0.0766, E_kept=0.9941, W_err=0.3643, TSVD=0.3643, fallback=qwen_weight_err_gt_1, Δ/H=1.0079
+  警告: L17 mlp.up_proj SAES 重建触发回退 (W_err=1.2013e+01, TSVD=0.3817, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L17 mlp.up_proj: β=0.2714, α*=0.3725, rank=2411, G_err=0.1219, E_kept=0.9851, W_err=0.3817, TSVD=0.3817, fallback=qwen_weight_err_gt_1, Δ/H=1.0079
+  警告: L17 mlp.down_proj SAES 重建触发回退 (W_err=5.2047e-01, TSVD=0.3636, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L17 mlp.down_proj: β=0.2714, α*=0.3725, rank=2411, G_err=0.1232, E_kept=0.9848, W_err=0.3636, TSVD=0.3636, fallback=qwen_tsvd_guard, Δ/H=0.9982
+Layer 17 Summary: avg_β=0.3078, avg_α*=0.4501, avg_ρₑ=0.010984, avg_Δ/H=0.9950
+  L17 student_postcompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.3368e+04, pre_max=4.2895e+03, pre_max_abs=1.3368e+04, post_min=-1.3376e+04, post_max=4.2880e+03, post_max_abs=1.3376e+04
+  L17 student_postcompress teacher对齐诊断: rel_l2=0.3676, student_rms=5.0612e+00, teacher_rms=5.6534e+00, rms_ratio=0.8952
+SAES-SVD v3 Compression:  64%|██████▍   | 18/28 [1:06:27<36:14, 217.43s/it]  L18 student_precompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.3365e+04, pre_max=4.2923e+03, pre_max_abs=1.3365e+04, post_min=-1.3376e+04, post_max=4.2880e+03, post_max_abs=1.3376e+04
+  L18 teacher_precompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.2919e+04, pre_max=3.9555e+03, pre_max_abs=1.2919e+04, post_min=-1.2928e+04, post_max=3.9520e+03, post_max_abs=1.2928e+04
+  警告: L18 self_attn.q_proj SAES 重建触发回退 (W_err=7.0498e-01, TSVD=0.2925, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L18 self_attn.q_proj: β=0.3562, α*=0.5534, rank=1433, G_err=0.0562, E_kept=0.9968, W_err=0.2925, TSVD=0.2925, fallback=qwen_tsvd_guard, Δ/H=0.9819
+  警告: L18 self_attn.k_proj SAES 重建触发回退 (W_err=7.6118e-01, TSVD=0.2270, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L18 self_attn.k_proj: β=0.3562, α*=0.5534, rank=358, G_err=0.0617, E_kept=0.9962, W_err=0.2270, TSVD=0.2270, fallback=qwen_tsvd_guard, Δ/H=0.9819
+  警告: L18 self_attn.v_proj SAES 重建触发回退 (W_err=6.2024e-01, TSVD=0.4200, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L18 self_attn.v_proj: β=0.2714, α*=0.3725, rank=358, G_err=0.2074, E_kept=0.9570, W_err=0.4200, TSVD=0.4200, fallback=qwen_tsvd_guard, Δ/H=0.9819
+  警告: L18 self_attn.o_proj SAES 重建触发回退 (W_err=5.7297e-01, TSVD=0.2871, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L18 self_attn.o_proj: β=0.2714, α*=0.3725, rank=1433, G_err=0.0444, E_kept=0.9980, W_err=0.2871, TSVD=0.2871, fallback=qwen_tsvd_guard, Δ/H=1.0133
+  警告: L18 mlp.gate_proj SAES 重建触发回退 (W_err=1.0220e+00, TSVD=0.3689, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L18 mlp.gate_proj: β=0.3562, α*=0.5534, rank=2411, G_err=0.0648, E_kept=0.9958, W_err=0.3689, TSVD=0.3689, fallback=qwen_weight_err_gt_1, Δ/H=1.0173
+  警告: L18 mlp.up_proj SAES 重建触发回退 (W_err=8.8670e-01, TSVD=0.3861, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L18 mlp.up_proj: β=0.2714, α*=0.3725, rank=2411, G_err=0.1183, E_kept=0.9860, W_err=0.3861, TSVD=0.3861, fallback=qwen_tsvd_guard, Δ/H=1.0173
+  警告: L18 mlp.down_proj SAES 重建触发回退 (W_err=5.6313e-01, TSVD=0.3819, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L18 mlp.down_proj: β=0.2714, α*=0.3725, rank=2411, G_err=0.1153, E_kept=0.9867, W_err=0.3819, TSVD=0.3819, fallback=qwen_tsvd_guard, Δ/H=0.9238
+Layer 18 Summary: avg_β=0.3078, avg_α*=0.4501, avg_ρₑ=0.012427, avg_Δ/H=0.9882
+  L18 student_postcompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.3373e+04, pre_max=4.2911e+03, pre_max_abs=1.3373e+04, post_min=-1.3376e+04, post_max=4.2880e+03, post_max_abs=1.3376e+04
+  L18 student_postcompress teacher对齐诊断: rel_l2=0.3790, student_rms=5.0600e+00, teacher_rms=5.6735e+00, rms_ratio=0.8919
+SAES-SVD v3 Compression:  68%|██████▊   | 19/28 [1:10:15<33:05, 220.59s/it]  L19 student_precompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.3369e+04, pre_max=4.2908e+03, pre_max_abs=1.3369e+04, post_min=-1.3376e+04, post_max=4.2880e+03, post_max_abs=1.3376e+04
+  L19 teacher_precompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.2921e+04, pre_max=3.9542e+03, pre_max_abs=1.2921e+04, post_min=-1.2928e+04, post_max=3.9520e+03, post_max_abs=1.2928e+04
+  警告: L19 self_attn.q_proj SAES 重建触发回退 (W_err=6.3497e-01, TSVD=0.2957, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L19 self_attn.q_proj: β=0.3562, α*=0.5534, rank=1433, G_err=0.0590, E_kept=0.9965, W_err=0.2957, TSVD=0.2957, fallback=qwen_tsvd_guard, Δ/H=1.0056
+  警告: L19 self_attn.k_proj SAES 重建触发回退 (W_err=6.8953e-01, TSVD=0.1997, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L19 self_attn.k_proj: β=0.3562, α*=0.5534, rank=358, G_err=0.0526, E_kept=0.9972, W_err=0.1997, TSVD=0.1997, fallback=qwen_tsvd_guard, Δ/H=1.0056
+  警告: L19 self_attn.v_proj SAES 重建触发回退 (W_err=5.7330e-01, TSVD=0.4087, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L19 self_attn.v_proj: β=0.2714, α*=0.3725, rank=358, G_err=0.2051, E_kept=0.9579, W_err=0.4087, TSVD=0.4087, fallback=qwen_tsvd_guard, Δ/H=1.0056
+  警告: L19 self_attn.o_proj SAES 重建触发回退 (W_err=8.7756e-01, TSVD=0.3220, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L19 self_attn.o_proj: β=0.2714, α*=0.3725, rank=1433, G_err=0.0474, E_kept=0.9978, W_err=0.3220, TSVD=0.3220, fallback=qwen_tsvd_guard, Δ/H=1.0521
+  警告: L19 mlp.gate_proj SAES 重建触发回退 (W_err=9.9826e-01, TSVD=0.3654, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L19 mlp.gate_proj: β=0.3562, α*=0.5534, rank=2411, G_err=0.0687, E_kept=0.9953, W_err=0.3654, TSVD=0.3654, fallback=qwen_tsvd_guard, Δ/H=1.0484
+  警告: L19 mlp.up_proj SAES 重建触发回退 (W_err=8.9004e-01, TSVD=0.3812, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L19 mlp.up_proj: β=0.2714, α*=0.3725, rank=2411, G_err=0.1192, E_kept=0.9858, W_err=0.3812, TSVD=0.3812, fallback=qwen_tsvd_guard, Δ/H=1.0484
+  警告: L19 mlp.down_proj SAES 重建触发回退 (W_err=5.5268e-01, TSVD=0.3811, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L19 mlp.down_proj: β=0.2714, α*=0.3725, rank=2411, G_err=0.1433, E_kept=0.9794, W_err=0.3811, TSVD=0.3811, fallback=qwen_tsvd_guard, Δ/H=0.9629
+Layer 19 Summary: avg_β=0.3078, avg_α*=0.4501, avg_ρₑ=0.013618, avg_Δ/H=1.0184
+  L19 student_postcompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.3378e+04, pre_max=4.2904e+03, pre_max_abs=1.3378e+04, post_min=-1.3376e+04, post_max=4.2880e+03, post_max_abs=1.3376e+04
+  L19 student_postcompress teacher对齐诊断: rel_l2=0.4050, student_rms=5.0687e+00, teacher_rms=5.7453e+00, rms_ratio=0.8822
+SAES-SVD v3 Compression:  71%|███████▏  | 20/28 [1:13:57<29:29, 221.14s/it]  L20 student_precompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.3325e+04, pre_max=4.2742e+03, pre_max_abs=1.3325e+04, post_min=-1.3312e+04, post_max=4.2880e+03, post_max_abs=1.3312e+04
+  L20 teacher_precompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.2871e+04, pre_max=3.9366e+03, pre_max_abs=1.2871e+04, post_min=-1.2864e+04, post_max=3.9360e+03, post_max_abs=1.2864e+04
+  警告: L20 self_attn.q_proj SAES 重建触发回退 (W_err=9.2236e+04, TSVD=0.3051, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L20 self_attn.q_proj: β=0.3562, α*=0.5534, rank=1433, G_err=0.0387, E_kept=0.9985, W_err=0.3051, TSVD=0.3051, fallback=qwen_weight_err_gt_1, Δ/H=0.9943
+  警告: L20 self_attn.k_proj SAES 重建触发回退 (W_err=1.1202e+05, TSVD=0.2296, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L20 self_attn.k_proj: β=0.3562, α*=0.5534, rank=358, G_err=0.0349, E_kept=0.9988, W_err=0.2296, TSVD=0.2296, fallback=qwen_weight_err_gt_1, Δ/H=0.9943
+  警告: L20 self_attn.v_proj SAES 重建触发回退 (W_err=6.6451e+04, TSVD=0.3801, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L20 self_attn.v_proj: β=0.3562, α*=0.5534, rank=358, G_err=0.0949, E_kept=0.9910, W_err=0.3801, TSVD=0.3801, fallback=qwen_weight_err_gt_1, Δ/H=0.9943
+  警告: L20 self_attn.o_proj SAES 重建触发回退 (W_err=6.5426e-01, TSVD=0.3158, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L20 self_attn.o_proj: β=0.2714, α*=0.3725, rank=1433, G_err=0.0542, E_kept=0.9971, W_err=0.3158, TSVD=0.3158, fallback=qwen_tsvd_guard, Δ/H=1.0241
+  警告: L20 mlp.gate_proj SAES 重建触发回退 (W_err=2.1865e+00, TSVD=0.3749, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L20 mlp.gate_proj: β=0.3562, α*=0.5534, rank=2411, G_err=0.0687, E_kept=0.9953, W_err=0.3749, TSVD=0.3749, fallback=qwen_weight_err_gt_1, Δ/H=1.0257
+  警告: L20 mlp.up_proj SAES 重建触发回退 (W_err=1.9382e+00, TSVD=0.3870, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L20 mlp.up_proj: β=0.3562, α*=0.5534, rank=2411, G_err=0.1056, E_kept=0.9888, W_err=0.3870, TSVD=0.3870, fallback=qwen_weight_err_gt_1, Δ/H=1.0257
+  警告: L20 mlp.down_proj SAES 重建触发回退 (W_err=5.6734e-01, TSVD=0.3858, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L20 mlp.down_proj: β=0.2714, α*=0.3725, rank=2411, G_err=0.1180, E_kept=0.9861, W_err=0.3858, TSVD=0.3858, fallback=qwen_tsvd_guard, Δ/H=0.9781
+Layer 20 Summary: avg_β=0.3320, avg_α*=0.5017, avg_ρₑ=0.006664, avg_Δ/H=1.0052
+  L20 student_postcompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.3353e+04, pre_max=4.2826e+03, pre_max_abs=1.3353e+04, post_min=-1.3376e+04, post_max=4.2880e+03, post_max_abs=1.3376e+04
+  L20 student_postcompress teacher对齐诊断: rel_l2=0.4499, student_rms=5.0916e+00, teacher_rms=5.8071e+00, rms_ratio=0.8768
+SAES-SVD v3 Compression:  75%|███████▌  | 21/28 [1:17:36<25:42, 220.39s/it]  L21 student_precompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.3366e+04, pre_max=4.2875e+03, pre_max_abs=1.3366e+04, post_min=-1.3376e+04, post_max=4.2880e+03, post_max_abs=1.3376e+04
+  L21 teacher_precompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.2854e+04, pre_max=3.9354e+03, pre_max_abs=1.2854e+04, post_min=-1.2864e+04, post_max=3.9360e+03, post_max_abs=1.2864e+04
+  警告: L21 self_attn.q_proj SAES 重建触发回退 (W_err=6.0972e-01, TSVD=0.3050, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L21 self_attn.q_proj: β=0.3562, α*=0.5534, rank=1433, G_err=0.0685, E_kept=0.9953, W_err=0.3050, TSVD=0.3050, fallback=qwen_tsvd_guard, Δ/H=1.0073
+  警告: L21 self_attn.k_proj SAES 重建触发回退 (W_err=6.5980e-01, TSVD=0.2296, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L21 self_attn.k_proj: β=0.3562, α*=0.5534, rank=358, G_err=0.0560, E_kept=0.9969, W_err=0.2296, TSVD=0.2296, fallback=qwen_tsvd_guard, Δ/H=1.0073
+  警告: L21 self_attn.v_proj SAES 重建触发回退 (W_err=5.8471e-01, TSVD=0.4161, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L21 self_attn.v_proj: β=0.2714, α*=0.3725, rank=358, G_err=0.2091, E_kept=0.9563, W_err=0.4161, TSVD=0.4161, fallback=qwen_tsvd_guard, Δ/H=1.0073
+  警告: L21 self_attn.o_proj SAES 重建触发回退 (W_err=7.5071e-01, TSVD=0.3216, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L21 self_attn.o_proj: β=0.3398, α*=0.5147, rank=1433, G_err=0.0428, E_kept=0.9982, W_err=0.3216, TSVD=0.3216, fallback=qwen_tsvd_guard, Δ/H=1.0073
+  警告: L21 mlp.gate_proj SAES 重建触发回退 (W_err=3.6208e+00, TSVD=0.3745, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L21 mlp.gate_proj: β=0.3562, α*=0.5534, rank=2411, G_err=0.0578, E_kept=0.9967, W_err=0.3745, TSVD=0.3745, fallback=qwen_weight_err_gt_1, Δ/H=1.0241
+  警告: L21 mlp.up_proj SAES 重建触发回退 (W_err=3.3039e+00, TSVD=0.3877, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L21 mlp.up_proj: β=0.3562, α*=0.5534, rank=2411, G_err=0.0982, E_kept=0.9904, W_err=0.3877, TSVD=0.3877, fallback=qwen_weight_err_gt_1, Δ/H=1.0241
+  警告: L21 mlp.down_proj SAES 重建触发回退 (W_err=5.8528e-01, TSVD=0.3844, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L21 mlp.down_proj: β=0.2714, α*=0.3725, rank=2411, G_err=0.1449, E_kept=0.9790, W_err=0.3844, TSVD=0.3844, fallback=qwen_tsvd_guard, Δ/H=0.9711
+Layer 21 Summary: avg_β=0.3297, avg_α*=0.4962, avg_ρₑ=0.013273, avg_Δ/H=1.0069
+  L21 student_postcompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.3383e+04, pre_max=4.2884e+03, pre_max_abs=1.3383e+04, post_min=-1.3376e+04, post_max=4.2880e+03, post_max_abs=1.3376e+04
+  L21 student_postcompress teacher对齐诊断: rel_l2=0.5032, student_rms=5.1382e+00, teacher_rms=5.9709e+00, rms_ratio=0.8605
+  警告: L21 触发层级激活保护，强制本层 Linear 回退 TSVD [qwen_layer_activation_guard]
+    L21 teacher对齐保护触发: student_max_abs=1.3383e+04, teacher_max_abs=1.2854e+04, threshold=1.2854e+05; rel_l2=0.5032, rms_ratio=0.8605; 已强制回退 7 个 Linear，重新前向
+  L21 student_postcompress_after_layer_tsvd cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.3383e+04, pre_max=4.2884e+03, pre_max_abs=1.3383e+04, post_min=-1.3376e+04, post_max=4.2880e+03, post_max_abs=1.3376e+04
+  L21 student_postcompress_after_layer_tsvd teacher对齐诊断: rel_l2=0.5032, student_rms=5.1382e+00, teacher_rms=5.9709e+00, rms_ratio=0.8605
+  警告: L21 强制 TSVD 后仍未通过 teacher 对齐保护 (student_max_abs=1.3383e+04, threshold=1.2854e+05, rel_l2=0.5032, rms_ratio=0.8605)
+SAES-SVD v3 Compression:  79%|███████▊  | 22/28 [1:21:47<22:58, 229.79s/it]  L22 student_precompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.3362e+04, pre_max=4.2847e+03, pre_max_abs=1.3362e+04, post_min=-1.3376e+04, post_max=4.2880e+03, post_max_abs=1.3376e+04
+  L22 teacher_precompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.2851e+04, pre_max=3.9328e+03, pre_max_abs=1.2851e+04, post_min=-1.2864e+04, post_max=3.9360e+03, post_max_abs=1.2864e+04
+  警告: L22 self_attn.q_proj SAES 重建触发回退 (W_err=8.1327e-01, TSVD=0.2811, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L22 self_attn.q_proj: β=0.3562, α*=0.5534, rank=1433, G_err=0.0663, E_kept=0.9956, W_err=0.2811, TSVD=0.2811, fallback=qwen_tsvd_guard, Δ/H=1.0227
+  警告: L22 self_attn.k_proj SAES 重建触发回退 (W_err=9.3675e-01, TSVD=0.1984, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L22 self_attn.k_proj: β=0.3562, α*=0.5534, rank=358, G_err=0.0512, E_kept=0.9974, W_err=0.1984, TSVD=0.1984, fallback=qwen_tsvd_guard, Δ/H=1.0227
+  警告: L22 self_attn.v_proj SAES 重建触发回退 (W_err=8.0306e-01, TSVD=0.3610, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L22 self_attn.v_proj: β=0.3365, α*=0.5072, rank=358, G_err=0.1873, E_kept=0.9649, W_err=0.3610, TSVD=0.3610, fallback=qwen_tsvd_guard, Δ/H=1.0227
+  警告: L22 self_attn.o_proj SAES 重建触发回退 (W_err=6.0973e-01, TSVD=0.3311, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L22 self_attn.o_proj: β=0.2714, α*=0.3725, rank=1433, G_err=0.0460, E_kept=0.9979, W_err=0.3311, TSVD=0.3311, fallback=qwen_tsvd_guard, Δ/H=0.9939
+  警告: L22 mlp.gate_proj SAES 重建触发回退 (W_err=8.8071e-01, TSVD=0.3773, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L22 mlp.gate_proj: β=0.3562, α*=0.5534, rank=2411, G_err=0.0560, E_kept=0.9969, W_err=0.3773, TSVD=0.3773, fallback=qwen_tsvd_guard, Δ/H=1.0109
+  警告: L22 mlp.up_proj SAES 重建触发回退 (W_err=8.5988e-01, TSVD=0.3897, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L22 mlp.up_proj: β=0.3562, α*=0.5534, rank=2411, G_err=0.0994, E_kept=0.9901, W_err=0.3897, TSVD=0.3897, fallback=qwen_tsvd_guard, Δ/H=1.0109
+  警告: L22 mlp.down_proj SAES 重建触发回退 (W_err=6.1918e-01, TSVD=0.3914, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L22 mlp.down_proj: β=0.2714, α*=0.3725, rank=2411, G_err=0.1688, E_kept=0.9715, W_err=0.3914, TSVD=0.3914, fallback=qwen_tsvd_guard, Δ/H=0.9694
+Layer 22 Summary: avg_β=0.3292, avg_α*=0.4951, avg_ρₑ=0.013439, avg_Δ/H=1.0076
+  L22 student_postcompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.3380e+04, pre_max=4.2889e+03, pre_max_abs=1.3380e+04, post_min=-1.3376e+04, post_max=4.2880e+03, post_max_abs=1.3376e+04
+  L22 student_postcompress teacher对齐诊断: rel_l2=0.5667, student_rms=5.2025e+00, teacher_rms=6.2428e+00, rms_ratio=0.8334
+  警告: L22 触发层级激活保护，强制本层 Linear 回退 TSVD [qwen_layer_activation_guard]
+    L22 teacher对齐保护触发: student_max_abs=1.3380e+04, teacher_max_abs=1.2851e+04, threshold=1.2851e+05; rel_l2=0.5667, rms_ratio=0.8334; 已强制回退 7 个 Linear，重新前向
+  L22 student_postcompress_after_layer_tsvd cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.3380e+04, pre_max=4.2889e+03, pre_max_abs=1.3380e+04, post_min=-1.3376e+04, post_max=4.2880e+03, post_max_abs=1.3376e+04
+  L22 student_postcompress_after_layer_tsvd teacher对齐诊断: rel_l2=0.5667, student_rms=5.2025e+00, teacher_rms=6.2428e+00, rms_ratio=0.8334
+  警告: L22 强制 TSVD 后仍未通过 teacher 对齐保护 (student_max_abs=1.3380e+04, threshold=1.2851e+05, rel_l2=0.5667, rms_ratio=0.8334)
+SAES-SVD v3 Compression:  82%|████████▏ | 23/28 [1:25:58<19:40, 236.07s/it]  L23 student_precompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.3353e+04, pre_max=4.2784e+03, pre_max_abs=1.3353e+04, post_min=-1.3376e+04, post_max=4.2880e+03, post_max_abs=1.3376e+04
+  L23 teacher_precompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.2842e+04, pre_max=3.9269e+03, pre_max_abs=1.2842e+04, post_min=-1.2864e+04, post_max=3.9200e+03, post_max_abs=1.2864e+04
+  警告: L23 self_attn.q_proj SAES 重建触发回退 (W_err=6.3383e-01, TSVD=0.3213, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L23 self_attn.q_proj: β=0.3562, α*=0.5534, rank=1433, G_err=0.0763, E_kept=0.9942, W_err=0.3213, TSVD=0.3213, fallback=qwen_tsvd_guard, Δ/H=1.0111
+  警告: L23 self_attn.k_proj SAES 重建触发回退 (W_err=7.0044e-01, TSVD=0.2352, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L23 self_attn.k_proj: β=0.3562, α*=0.5534, rank=358, G_err=0.0651, E_kept=0.9958, W_err=0.2352, TSVD=0.2352, fallback=qwen_tsvd_guard, Δ/H=1.0111
+  警告: L23 self_attn.v_proj SAES 重建触发回退 (W_err=6.8298e-01, TSVD=0.3448, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L23 self_attn.v_proj: β=0.3562, α*=0.5534, rank=358, G_err=0.1212, E_kept=0.9853, W_err=0.3448, TSVD=0.3448, fallback=qwen_tsvd_guard, Δ/H=1.0111
+  警告: L23 self_attn.o_proj SAES 重建触发回退 (W_err=7.2102e-01, TSVD=0.3760, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L23 self_attn.o_proj: β=0.3562, α*=0.5534, rank=1433, G_err=0.0524, E_kept=0.9973, W_err=0.3760, TSVD=0.3760, fallback=qwen_tsvd_guard, Δ/H=0.9340
+  警告: L23 mlp.gate_proj SAES 重建触发回退 (W_err=6.8007e+02, TSVD=0.3774, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L23 mlp.gate_proj: β=0.3562, α*=0.5534, rank=2411, G_err=0.0426, E_kept=0.9982, W_err=0.3774, TSVD=0.3774, fallback=qwen_weight_err_gt_1, Δ/H=0.9520
+  警告: L23 mlp.up_proj SAES 重建触发回退 (W_err=6.5938e+02, TSVD=0.3884, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L23 mlp.up_proj: β=0.3562, α*=0.5534, rank=2411, G_err=0.0934, E_kept=0.9913, W_err=0.3884, TSVD=0.3884, fallback=qwen_weight_err_gt_1, Δ/H=0.9520
+  警告: L23 mlp.down_proj SAES 重建触发回退 (W_err=7.3077e-01, TSVD=0.3863, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L23 mlp.down_proj: β=0.2714, α*=0.3725, rank=2411, G_err=0.1497, E_kept=0.9776, W_err=0.3863, TSVD=0.3863, fallback=qwen_tsvd_guard, Δ/H=0.9414
+Layer 23 Summary: avg_β=0.3441, avg_α*=0.5276, avg_ρₑ=0.009604, avg_Δ/H=0.9732
+  L23 student_postcompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.3377e+04, pre_max=4.2875e+03, pre_max_abs=1.3377e+04, post_min=-1.3376e+04, post_max=4.2880e+03, post_max_abs=1.3376e+04
+  L23 student_postcompress teacher对齐诊断: rel_l2=0.6134, student_rms=5.3041e+00, teacher_rms=6.6545e+00, rms_ratio=0.7971
+  警告: L23 触发层级激活保护，强制本层 Linear 回退 TSVD [qwen_layer_activation_guard]
+    L23 teacher对齐保护触发: student_max_abs=1.3377e+04, teacher_max_abs=1.2842e+04, threshold=1.2842e+05; rel_l2=0.6134, rms_ratio=0.7971; 已强制回退 7 个 Linear，重新前向
+  L23 student_postcompress_after_layer_tsvd cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.3377e+04, pre_max=4.2875e+03, pre_max_abs=1.3377e+04, post_min=-1.3376e+04, post_max=4.2880e+03, post_max_abs=1.3376e+04
+  L23 student_postcompress_after_layer_tsvd teacher对齐诊断: rel_l2=0.6134, student_rms=5.3041e+00, teacher_rms=6.6545e+00, rms_ratio=0.7971
+  警告: L23 强制 TSVD 后仍未通过 teacher 对齐保护 (student_max_abs=1.3377e+04, threshold=1.2842e+05, rel_l2=0.6134, rms_ratio=0.7971)
+SAES-SVD v3 Compression:  86%|████████▌ | 24/28 [1:30:23<16:19, 244.77s/it]  L24 student_precompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.3331e+04, pre_max=4.2688e+03, pre_max_abs=1.3331e+04, post_min=-1.3312e+04, post_max=4.2560e+03, post_max_abs=1.3312e+04
+  L24 teacher_precompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.2822e+04, pre_max=3.9019e+03, pre_max_abs=1.2822e+04, post_min=-1.2800e+04, post_max=3.9040e+03, post_max_abs=1.2800e+04
+  警告: L24 self_attn.q_proj SAES 重建触发回退 (W_err=8.0888e-01, TSVD=0.3343, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L24 self_attn.q_proj: β=0.3562, α*=0.5534, rank=1433, G_err=0.0715, E_kept=0.9949, W_err=0.3343, TSVD=0.3343, fallback=qwen_tsvd_guard, Δ/H=1.0080
+  警告: L24 self_attn.k_proj SAES 重建触发回退 (W_err=8.1183e-01, TSVD=0.2142, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L24 self_attn.k_proj: β=0.3562, α*=0.5534, rank=358, G_err=0.0572, E_kept=0.9967, W_err=0.2142, TSVD=0.2142, fallback=qwen_tsvd_guard, Δ/H=1.0080
+  警告: L24 self_attn.v_proj SAES 重建触发回退 (W_err=1.0067e+00, TSVD=0.3855, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L24 self_attn.v_proj: β=0.3562, α*=0.5534, rank=358, G_err=0.1504, E_kept=0.9774, W_err=0.3855, TSVD=0.3855, fallback=qwen_weight_err_gt_1, Δ/H=1.0080
+  警告: L24 self_attn.o_proj SAES 重建触发回退 (W_err=7.5258e-01, TSVD=0.3367, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L24 self_attn.o_proj: β=0.3076, α*=0.4443, rank=1433, G_err=0.0394, E_kept=0.9984, W_err=0.3367, TSVD=0.3367, fallback=qwen_tsvd_guard, Δ/H=0.9947
+  警告: L24 mlp.gate_proj SAES 重建触发回退 (W_err=6.0985e-01, TSVD=0.3757, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L24 mlp.gate_proj: β=0.3562, α*=0.5534, rank=2411, G_err=0.0502, E_kept=0.9975, W_err=0.3757, TSVD=0.3757, fallback=qwen_tsvd_guard, Δ/H=0.9707
+  警告: L24 mlp.up_proj SAES 重建触发回退 (W_err=6.0344e-01, TSVD=0.3845, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L24 mlp.up_proj: β=0.3562, α*=0.5534, rank=2411, G_err=0.0924, E_kept=0.9914, W_err=0.3845, TSVD=0.3845, fallback=qwen_tsvd_guard, Δ/H=0.9707
+  警告: L24 mlp.down_proj SAES 重建触发回退 (W_err=7.2388e-01, TSVD=0.3823, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L24 mlp.down_proj: β=0.2714, α*=0.3725, rank=2411, G_err=0.1355, E_kept=0.9816, W_err=0.3823, TSVD=0.3823, fallback=qwen_tsvd_guard, Δ/H=0.9950
+Layer 24 Summary: avg_β=0.3372, avg_α*=0.5120, avg_ρₑ=0.009934, avg_Δ/H=0.9936
+  L24 student_postcompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.3375e+04, pre_max=4.2847e+03, pre_max_abs=1.3375e+04, post_min=-1.3376e+04, post_max=4.2880e+03, post_max_abs=1.3376e+04
+  L24 student_postcompress teacher对齐诊断: rel_l2=0.6649, student_rms=5.4985e+00, teacher_rms=7.2698e+00, rms_ratio=0.7564
+  警告: L24 触发层级激活保护，强制本层 Linear 回退 TSVD [qwen_layer_activation_guard]
+    L24 teacher对齐保护触发: student_max_abs=1.3375e+04, teacher_max_abs=1.2822e+04, threshold=1.2822e+05; rel_l2=0.6649, rms_ratio=0.7564; 已强制回退 7 个 Linear，重新前向
+  L24 student_postcompress_after_layer_tsvd cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.3375e+04, pre_max=4.2847e+03, pre_max_abs=1.3375e+04, post_min=-1.3376e+04, post_max=4.2880e+03, post_max_abs=1.3376e+04
+  L24 student_postcompress_after_layer_tsvd teacher对齐诊断: rel_l2=0.6649, student_rms=5.4985e+00, teacher_rms=7.2698e+00, rms_ratio=0.7564
+  警告: L24 强制 TSVD 后仍未通过 teacher 对齐保护 (student_max_abs=1.3375e+04, threshold=1.2822e+05, rel_l2=0.6649, rms_ratio=0.7564)
+SAES-SVD v3 Compression:  89%|████████▉ | 25/28 [1:34:48<12:32, 250.85s/it]  L25 student_precompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.2479e+04, pre_max=4.5044e+03, pre_max_abs=1.2479e+04, post_min=-1.2480e+04, post_max=4.5120e+03, post_max_abs=1.2480e+04
+  L25 teacher_precompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.2551e+04, pre_max=3.9425e+03, pre_max_abs=1.2551e+04, post_min=-1.2544e+04, post_max=3.9360e+03, post_max_abs=1.2544e+04
+  警告: L25 self_attn.q_proj SAES 重建触发回退 (W_err=8.9892e-01, TSVD=0.3311, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L25 self_attn.q_proj: β=0.3562, α*=0.5534, rank=1433, G_err=0.0671, E_kept=0.9955, W_err=0.3311, TSVD=0.3311, fallback=qwen_tsvd_guard, Δ/H=1.0000
+  警告: L25 self_attn.k_proj SAES 重建触发回退 (W_err=1.1411e+00, TSVD=0.2093, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L25 self_attn.k_proj: β=0.3562, α*=0.5534, rank=358, G_err=0.0504, E_kept=0.9975, W_err=0.2093, TSVD=0.2093, fallback=qwen_weight_err_gt_1, Δ/H=1.0000
+  警告: L25 self_attn.v_proj SAES 重建触发回退 (W_err=9.3956e-01, TSVD=0.3543, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L25 self_attn.v_proj: β=0.3562, α*=0.5534, rank=358, G_err=0.0932, E_kept=0.9913, W_err=0.3543, TSVD=0.3543, fallback=qwen_tsvd_guard, Δ/H=1.0000
+  警告: L25 self_attn.o_proj SAES 重建触发回退 (W_err=6.1883e-01, TSVD=0.3646, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L25 self_attn.o_proj: β=0.2962, α*=0.4209, rank=1433, G_err=0.0559, E_kept=0.9969, W_err=0.3646, TSVD=0.3646, fallback=qwen_tsvd_guard, Δ/H=0.9523
+  警告: L25 mlp.gate_proj SAES 重建触发回退 (W_err=6.2262e-01, TSVD=0.3819, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L25 mlp.gate_proj: β=0.3562, α*=0.5534, rank=2411, G_err=0.0491, E_kept=0.9976, W_err=0.3819, TSVD=0.3819, fallback=qwen_tsvd_guard, Δ/H=0.9479
+  警告: L25 mlp.up_proj SAES 重建触发回退 (W_err=6.1507e-01, TSVD=0.3886, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L25 mlp.up_proj: β=0.3562, α*=0.5534, rank=2411, G_err=0.0838, E_kept=0.9930, W_err=0.3886, TSVD=0.3886, fallback=qwen_tsvd_guard, Δ/H=0.9479
+  警告: L25 mlp.down_proj SAES 重建触发回退 (W_err=8.4041e-01, TSVD=0.3714, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L25 mlp.down_proj: β=0.2714, α*=0.3725, rank=2411, G_err=0.1005, E_kept=0.9899, W_err=0.3714, TSVD=0.3714, fallback=qwen_tsvd_guard, Δ/H=0.9112
+Layer 25 Summary: avg_β=0.3356, avg_α*=0.5086, avg_ρₑ=0.006224, avg_Δ/H=0.9656
+  L25 student_postcompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.2874e+04, pre_max=4.4014e+03, pre_max_abs=1.2874e+04, post_min=-1.2864e+04, post_max=4.4160e+03, post_max_abs=1.2864e+04
+  L25 student_postcompress teacher对齐诊断: rel_l2=0.7081, student_rms=5.5376e+00, teacher_rms=7.8758e+00, rms_ratio=0.7031
+  警告: L25 触发层级激活保护，强制本层 Linear 回退 TSVD [qwen_layer_activation_guard]
+    L25 teacher对齐保护触发: student_max_abs=1.2874e+04, teacher_max_abs=1.2551e+04, threshold=1.2551e+05; rel_l2=0.7081, rms_ratio=0.7031; 已强制回退 7 个 Linear，重新前向
+  L25 student_postcompress_after_layer_tsvd cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-1.2874e+04, pre_max=4.4014e+03, pre_max_abs=1.2874e+04, post_min=-1.2864e+04, post_max=4.4160e+03, post_max_abs=1.2864e+04
+  L25 student_postcompress_after_layer_tsvd teacher对齐诊断: rel_l2=0.7081, student_rms=5.5376e+00, teacher_rms=7.8758e+00, rms_ratio=0.7031
+  警告: L25 强制 TSVD 后仍未通过 teacher 对齐保护 (student_max_abs=1.2874e+04, threshold=1.2551e+05, rel_l2=0.7081, rms_ratio=0.7031)
+SAES-SVD v3 Compression:  93%|█████████▎| 26/28 [1:38:52<08:17, 248.89s/it]  L26 student_precompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-2.6543e+03, pre_max=9.4344e+03, pre_max_abs=9.4344e+03, post_min=-2.6560e+03, post_max=9.4080e+03, post_max_abs=9.4080e+03
+  L26 teacher_precompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-2.8202e+03, pre_max=9.7257e+02, pre_max_abs=2.8202e+03, post_min=-2.8160e+03, post_max=9.7200e+02, post_max_abs=2.8160e+03
+  警告: L26 self_attn.q_proj SAES 重建触发回退 (W_err=7.3653e-01, TSVD=0.2934, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L26 self_attn.q_proj: β=0.3562, α*=0.5534, rank=1433, G_err=0.0370, E_kept=0.9986, W_err=0.2934, TSVD=0.2934, fallback=qwen_tsvd_guard, Δ/H=0.9870
+  警告: L26 self_attn.k_proj SAES 重建触发回退 (W_err=7.7663e-01, TSVD=0.1824, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L26 self_attn.k_proj: β=0.3562, α*=0.5534, rank=358, G_err=0.0331, E_kept=0.9989, W_err=0.1824, TSVD=0.1824, fallback=qwen_tsvd_guard, Δ/H=0.9870
+  警告: L26 self_attn.v_proj SAES 重建触发回退 (W_err=8.7168e-01, TSVD=0.3146, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L26 self_attn.v_proj: β=0.3562, α*=0.5534, rank=358, G_err=0.0481, E_kept=0.9977, W_err=0.3146, TSVD=0.3146, fallback=qwen_tsvd_guard, Δ/H=0.9870
+  警告: L26 self_attn.o_proj SAES 重建触发回退 (W_err=9.7052e-01, TSVD=0.3765, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L26 self_attn.o_proj: β=0.3562, α*=0.5534, rank=1433, G_err=0.0501, E_kept=0.9975, W_err=0.3765, TSVD=0.3765, fallback=qwen_tsvd_guard, Δ/H=1.0050
+  警告: L26 mlp.gate_proj SAES 重建触发回退 (W_err=6.6909e-01, TSVD=0.3817, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L26 mlp.gate_proj: β=0.3562, α*=0.5534, rank=2411, G_err=0.0515, E_kept=0.9973, W_err=0.3817, TSVD=0.3817, fallback=qwen_tsvd_guard, Δ/H=0.9279
+  警告: L26 mlp.up_proj SAES 重建触发回退 (W_err=6.5902e-01, TSVD=0.3882, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L26 mlp.up_proj: β=0.3562, α*=0.5534, rank=2411, G_err=0.0616, E_kept=0.9962, W_err=0.3882, TSVD=0.3882, fallback=qwen_tsvd_guard, Δ/H=0.9279
+  警告: L26 mlp.down_proj SAES 重建触发回退 (W_err=1.0918e+06, TSVD=0.3784, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L26 mlp.down_proj: β=0.2714, α*=0.3725, rank=2411, G_err=0.0044, E_kept=1.0000, W_err=0.3784, TSVD=0.3784, fallback=qwen_weight_err_gt_1, Δ/H=0.4899
+Layer 26 Summary: avg_β=0.3441, avg_α*=0.5276, avg_ρₑ=0.002263, avg_Δ/H=0.9016
+  L26 student_postcompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-6.3174e+03, pre_max=4.8120e+03, pre_max_abs=6.3174e+03, post_min=-6.3040e+03, post_max=4.8000e+03, post_max_abs=6.3040e+03
+  L26 student_postcompress teacher对齐诊断: rel_l2=1.0109, student_rms=4.7314e+00, teacher_rms=7.4229e+00, rms_ratio=0.6374
+  警告: L26 触发层级激活保护，强制本层 Linear 回退 TSVD [qwen_layer_activation_guard]
+    L26 teacher对齐保护触发: student_max_abs=6.3174e+03, teacher_max_abs=2.8202e+03, threshold=2.8202e+04; rel_l2=1.0109, rms_ratio=0.6374; 已强制回退 7 个 Linear，重新前向
+  L26 student_postcompress_after_layer_tsvd cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-6.3174e+03, pre_max=4.8120e+03, pre_max_abs=6.3174e+03, post_min=-6.3040e+03, post_max=4.8000e+03, post_max_abs=6.3040e+03
+  L26 student_postcompress_after_layer_tsvd teacher对齐诊断: rel_l2=1.0109, student_rms=4.7314e+00, teacher_rms=7.4229e+00, rms_ratio=0.6374
+  警告: L26 强制 TSVD 后仍未通过 teacher 对齐保护 (student_max_abs=6.3174e+03, threshold=2.8202e+04, rel_l2=1.0109, rms_ratio=0.6374)
+SAES-SVD v3 Compression:  96%|█████████▋| 27/28 [1:43:16<04:13, 253.39s/it]  L27 student_precompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-2.3468e+03, pre_max=5.8064e+03, pre_max_abs=5.8064e+03, post_min=-2.3520e+03, post_max=5.7920e+03, post_max_abs=5.7920e+03
+  L27 teacher_precompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-6.6168e+03, pre_max=1.7907e+03, pre_max_abs=6.6168e+03, post_min=-6.6240e+03, post_max=1.7920e+03, post_max_abs=6.6240e+03
+  警告: L27 self_attn.q_proj SAES 重建触发回退 (W_err=9.9925e-01, TSVD=0.2849, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L27 self_attn.q_proj: β=0.3562, α*=0.5534, rank=1433, G_err=0.0166, E_kept=0.9997, W_err=0.2849, TSVD=0.2849, fallback=qwen_tsvd_guard, Δ/H=0.9380
+  警告: L27 self_attn.k_proj SAES 重建触发回退 (W_err=7.7215e-01, TSVD=0.1657, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L27 self_attn.k_proj: β=0.3562, α*=0.5534, rank=358, G_err=0.0216, E_kept=0.9995, W_err=0.1657, TSVD=0.1657, fallback=qwen_tsvd_guard, Δ/H=0.9380
+  警告: L27 self_attn.v_proj SAES 重建触发回退 (W_err=1.1454e+00, TSVD=0.3021, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L27 self_attn.v_proj: β=0.3562, α*=0.5534, rank=358, G_err=0.0280, E_kept=0.9992, W_err=0.3021, TSVD=0.3021, fallback=qwen_weight_err_gt_1, Δ/H=0.9380
+  警告: L27 self_attn.o_proj SAES 重建触发回退 (W_err=1.3496e+06, TSVD=0.3372, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L27 self_attn.o_proj: β=0.3562, α*=0.5534, rank=1433, G_err=0.0011, E_kept=1.0000, W_err=0.3372, TSVD=0.3372, fallback=qwen_weight_err_gt_1, Δ/H=0.8928
+  警告: L27 mlp.gate_proj SAES 重建触发回退 (W_err=8.4300e-01, TSVD=0.3909, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L27 mlp.gate_proj: β=0.3562, α*=0.5534, rank=2411, G_err=0.0263, E_kept=0.9993, W_err=0.3909, TSVD=0.3909, fallback=qwen_tsvd_guard, Δ/H=0.8244
+  警告: L27 mlp.up_proj SAES 重建触发回退 (W_err=8.0357e-01, TSVD=0.3914, non_finite=False)，回退到截断 SVD [qwen_tsvd_guard]
+  L27 mlp.up_proj: β=0.3562, α*=0.5534, rank=2411, G_err=0.0304, E_kept=0.9991, W_err=0.3914, TSVD=0.3914, fallback=qwen_tsvd_guard, Δ/H=0.8244
+  警告: L27 mlp.down_proj SAES 重建触发回退 (W_err=4.8599e+00, TSVD=0.4005, non_finite=False)，回退到截断 SVD [qwen_weight_err_gt_1]
+  L27 mlp.down_proj: β=0.2714, α*=0.3725, rank=2411, G_err=0.0233, E_kept=0.9995, W_err=0.4005, TSVD=0.4005, fallback=qwen_weight_err_gt_1, Δ/H=1.6589
+Layer 27 Summary: avg_β=0.3441, avg_α*=0.5276, avg_ρₑ=0.000648, avg_Δ/H=1.0020
+  L27 student_postcompress cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-2.5158e+03, pre_max=5.9195e+03, pre_max_abs=5.9195e+03, post_min=-2.5120e+03, post_max=5.9200e+03, post_max_abs=5.9200e+03
+  L27 student_postcompress teacher对齐诊断: rel_l2=1.0008, student_rms=7.9279e+00, teacher_rms=1.0566e+01, rms_ratio=0.7503
+  警告: L27 触发层级激活保护，强制本层 Linear 回退 TSVD [qwen_layer_activation_guard]
+    L27 teacher对齐保护触发: student_max_abs=5.9195e+03, teacher_max_abs=6.6168e+03, threshold=6.6168e+04; rel_l2=1.0008, rms_ratio=0.7503; 已强制回退 7 个 Linear，重新前向
+  L27 student_postcompress_after_layer_tsvd cast诊断: target=bf16, samples=256, pre_nonfinite=0, post_nonfinite=0, pre_min=-2.5158e+03, pre_max=5.9195e+03, pre_max_abs=5.9195e+03, post_min=-2.5120e+03, post_max=5.9200e+03, post_max_abs=5.9200e+03
+  L27 student_postcompress_after_layer_tsvd teacher对齐诊断: rel_l2=1.0008, student_rms=7.9279e+00, teacher_rms=1.0566e+01, rms_ratio=0.7503
+  警告: L27 强制 TSVD 后仍未通过 teacher 对齐保护 (student_max_abs=5.9195e+03, threshold=6.6168e+04, rel_l2=1.0008, rms_ratio=0.7503)
+SAES-SVD v3 Compression: 100%|██████████| 28/28 [1:47:40<00:00, 256.45s/it]SAES-SVD v3 Compression: 100%|██████████| 28/28 [1:47:40<00:00, 230.73s/it]
+
+============================================================
+SAES-SVD v3 压缩完成！
+============================================================
+  平均 beta: 0.3166
+  平均 Δ/H:  0.8770
+  Beta 范围: [0.2714, 0.3441]
+
+保存压缩模型到: /data/zhangs/LLMs/SAES-SVD/result/SAES_SVD_v3/qwen2_5_7b/ns256_rho0.95_20260428_104750/_data_zhangs_LLMs_Models_Qwen_Qwen2.5_7B_saes_svd_v3_0.8.pt
+  保存模型 dtype: bf16
+
+运行困惑度评估...
+  压缩后评估 dtype: bf16 (requested=auto)
+Token indices sequence length is longer than the specified maximum sequence length for this model (299078 > 131072). Running this sequence through the model will result in indexing errors
+  0%|          | 0/37 [00:00<?, ?it/s]  3%|▎         | 1/37 [00:01<01:06,  1.86s/it]  5%|▌         | 2/37 [00:03<01:03,  1.82s/it]  8%|▊         | 3/37 [00:05<01:01,  1.82s/it] 11%|█         | 4/37 [00:07<01:00,  1.82s/it] 14%|█▎        | 5/37 [00:09<00:58,  1.82s/it] 16%|█▌        | 6/37 [00:10<00:56,  1.82s/it] 19%|█▉        | 7/37 [00:12<00:54,  1.82s/it] 22%|██▏       | 8/37 [00:14<00:52,  1.82s/it] 24%|██▍       | 9/37 [00:16<00:50,  1.82s/it] 27%|██▋       | 10/37 [00:18<00:49,  1.82s/it] 30%|██▉       | 11/37 [00:20<00:47,  1.82s/it] 32%|███▏      | 12/37 [00:21<00:45,  1.82s/it] 35%|███▌      | 13/37 [00:23<00:43,  1.82s/it] 38%|███▊      | 14/37 [00:25<00:41,  1.83s/it] 41%|████      | 15/37 [00:27<00:40,  1.83s/it] 43%|████▎     | 16/37 [00:29<00:38,  1.83s/it] 46%|████▌     | 17/37 [00:31<00:36,  1.83s/it] 49%|████▊     | 18/37 [00:32<00:34,  1.83s/it] 51%|█████▏    | 19/37 [00:34<00:33,  1.84s/it] 54%|█████▍    | 20/37 [00:36<00:31,  1.84s/it] 57%|█████▋    | 21/37 [00:38<00:29,  1.84s/it] 59%|█████▉    | 22/37 [00:40<00:27,  1.84s/it] 62%|██████▏   | 23/37 [00:42<00:25,  1.84s/it] 65%|██████▍   | 24/37 [00:43<00:23,  1.84s/it] 68%|██████▊   | 25/37 [00:45<00:22,  1.84s/it] 70%|███████   | 26/37 [00:47<00:20,  1.84s/it] 73%|███████▎  | 27/37 [00:49<00:18,  1.84s/it] 76%|███████▌  | 28/37 [00:51<00:16,  1.84s/it] 78%|███████▊  | 29/37 [00:53<00:14,  1.84s/it] 81%|████████  | 30/37 [00:54<00:12,  1.84s/it] 84%|████████▍ | 31/37 [00:56<00:11,  1.84s/it] 86%|████████▋ | 32/37 [00:58<00:09,  1.84s/it] 89%|████████▉ | 33/37 [01:00<00:07,  1.85s/it] 92%|█████████▏| 34/37 [01:02<00:05,  1.85s/it] 95%|█████████▍| 35/37 [01:04<00:03,  1.85s/it] 97%|█████████▋| 36/37 [01:06<00:01,  1.85s/it]100%|██████████| 37/37 [01:07<00:00,  1.58s/it]100%|██████████| 37/37 [01:07<00:00,  1.81s/it]
+PPL after pruning: {'wikitext2': np.float64(10404.565716560723)}
+Weight Memory: 14521.9990234375 MiB
+
