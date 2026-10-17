@@ -1,0 +1,32 @@
+\section{Introduction}
+\label{sec:introduction}
+Large language model (LLM)–based agent applications have emerged as a powerful paradigm for solving complex tasks that require multi-step reasoning, tool invocation, and environment interaction~\citep{DBLP:conf/coling/Li25,DBLP:journals/corr/abs-2503-21460}. However, in practical deployments, serving LLM agents often incurs high inference cost due to its long and multi-round generation~\citep{DBLP:journals/tmlr/Wan0LA0LQYZZC024,wang2024iot,DBLP:journals/corr/abs-2502-13965, DBLP:journals/corr/abs-2508-02694}, motivating the need for efficient methods for LLM agents.
+
+Speculative decoding is a promising technique to reduce response time for LLM agents without impacting the generation quality~\citep{DBLP:conf/acl/XiaYDW00L0S24}. Previous works have shown notable speedups under small batch sizes~\citep{DBLP:journals/corr/abs-2503-01840, saxena2023prompt, oliaro2025suffixdecoding, DBLP:journals/corr/abs-2305-09781, 10.1145/3772052.3772239}. However, modern LLM serving systems~\citep{DBLP:conf/sosp/KwonLZ0ZY0ZS23, DBLP:conf/nips/ZhengYXS0YCKSGB24} typically operate with large batch sizes to maximize hardware utilization, where state-of-the-art speculative decoding algorithms suffer substantial speed degradation, limiting their effectiveness for real-world agent applications.
+
+To further understand such limitation, we conduct a systematic analysis of speculative decoding for LLM agents and conclude two dominant efficiency bottlenecks: 
+%
+\ding{182} \textbf{High rejection rate of speculative tokens:} Existing speculative decoding algorithms~\citep{DBLP:journals/corr/abs-2503-01840, saxena2023prompt, oliaro2025suffixdecoding} incur a high rejection rate when applied to LLM agent workloads, resulting in substantial verification overhead for rejected tokens. As batch size increases, such overhead grows rapidly and can quickly outweigh the time saved by accepted tokens, leading to severe speedup degradation.
+%
+\ding{183} \textbf{Under-utilization of dynamic token budgets:} The amount of token budget that can be used for speculation varies dynamically across requests and batches. However, existing approaches allocate speculative budgets either uniformly~\citep{DBLP:journals/corr/abs-2305-09781, DBLP:conf/acl/WuZVPRL25, DBLP:conf/iclr/SadhukhanCCTLSY25} or in a coarse-grained manner~\citep{10.1145/3772052.3772239}, leading to inefficient use of available token budgets and limited speedup for agentic workloads.
+
+In this paper, we propose \sysname, a new speculative decoding algorithm that addresses the limitations of existing methods for LLM agents from prior approaches in two key aspects.
+\ding{182} \textbf{Structure-isolated drafting:} \sysname constrains speculation to semantically coherent segments of the agent workflow. By avoiding speculation across heterogeneous execution stages, \sysname reduces the generation of irrelevant speculative paths and achieves a substantially lower rejection rate.
+\ding{183} \textbf{Redundancy-aware budget allocation:} \sysname introduces a redundancy metric to guide the allocation of dynamically available token budgets across requests, improving overall inference efficiency for LLM agents under various batch sizes.
+
+%% P5: Highlight of our results.
+We implement \sysname in vLLM and compare it with four speculative decoding methods, including NGram, EAGLE-3, SuffixDecoding as well as state-of-the-art method MTP. To demonstrate the generability of \sysname, we conduct our evaluation on $4$ models from four different LLM families (Qwen, DeepSeek, GPT-OSS, and MiMo) and on $4$ different agentic workloads, including $2$ workflow-based (Code Generation and Deep Research) and $2$ model-based (SWE-Bench and GAIA).
+%and varying parameter ratios. 
+%Our evaluation results show that: 
+We highlight five of our findings:
+%
+(1) \sysname consistently outperforms EAGLE-3, NGram and SuffixDecoding across all 4 agentic benchmarks and 4 different LLM families. 
+%In particular, at high compression ratios such as 70\%, \sysname achieves at most $81\%$ lower perplexity compared to ASVD.
+%
+(2) All existing speculative decoding algorithms suffer from severe speedup degradation for batch inference on agent workload and even become slower than normal autoregressive decoding. However, \sysname consistently achieves faster generation than autoregressive decoding, with at most 2.02 $\times$ speedup.
+%
+(3) \sysname is also able to accelerate the batch inference on non-agentic workloads. Specifically, \sysname achieves 1.14 $\times$ speedup on Spec-Bench dataset with at most 1.40 $\times$ speed acceleration on its subset.
+%
+(4) Moreover, \sysname even achieves a higher speedup compared with Multi-Token Prediction (MTP) on MiMo-7B.
+%
+(5) Lastly, \sysname ensures a robust efficiency under various maximum batch size and even achieves a better speedup with none thinking mode.

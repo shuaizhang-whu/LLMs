@@ -1,0 +1,82 @@
+\newpage
+\section{Extended Related Work}
+
+\label{sec:appendix_related_work}
+
+Here, we provide an extended discussion of related work on efficient language and voice agents.
+
+\subsection{Efficient LLM Agents}
+
+Several prior works have explored how to execute agentic workflows more efficiently, including parallelizing tool calls where possible and performing work while waiting on asynchronous tool execution responses.
+LLMCompiler \citep{kim2024llm} proposes a separation of concerns between tool call planning and execution, and allows tool calls to be executed in parallel when they do not depend on one another.
+\citep{gim2024asynchronous} proposed Asynchronous LLM Function Calling, where the model can keep working on subsequent tool calls while waiting for earlier tool calls to execute.
+
+There has also been work on designing more proactive and interactive LLM agents.
+Pepper \citep{rllm2025pepper} proposed an event-driven architecture for proactive LLM assistants.
+\citep{acikgoz2025speakrl} proposed an RL-based method for training agents to ask for clarifications for interactive human-agent collaboration. 
+\citep{yakushev2025asynchronous} proposed a training-free method to simultaneously run separate thinker and talker threads, so that the model could respond to the user while running a background reasoning process.
+\citep{wang2025staircase} proposed a staircase streaming method for multi-agent systems, where agents could begin acting before receiving the full communication from other agents.
+Our approach builds on this prior work to propose a general framework for reasoning and acting asynchronously with respect to both user inputs and the environment.
+
+Compared with prior work, our work builds on the asynchronous tool calling method from \citep{gim2024asynchronous} and generalizes this to handle both asynchronous user updates as well as asynchronous responses from the environment.
+Our work also builds on the decoupled planning/execution from LLMCompiler \citep{kim2024llm}, which allows for tool calls to be executed in parallel as soon as their operands are ready.
+We extend this to allow for issuing tool calls iteratively as we obtain sufficient information, and also propose \textit{Speculative Tool Calling} (Sec. \ref{sec:spec-tool-calling}) to hold up sensitive tool calls until they are confirmed and to allow for modifying/removing tool calls that have been issued but not yet finished execution.
+
+\subsection{Efficient Voice Agents}
+
+There has also been prior work which has explored methods to accelerate voice agents by exploiting the streaming nature of speech.
+StreamRAG \citep{arora2025stream} proposes launching RAG calls partway through receiving the streaming user input, thereby reducing response latency.
+SHANKS \citep{chiang2025shanks} processes the streaming input speech in fixed chunks and interleaves unspoken reasoning (as well as tool calls) between chunks while waiting for further information from the user, whereas STITCH \citep{chiang2025stitch} interleaved text-to-speech with unspoken reasoning.
+\citep{shih2025can} also demonstrated how thinking can be overlapped with listening to streaming user inputs. 
+
+Additionally, previous works have explored methods for speculating on the remaining user response when processing streaming speech inputs to reduce latency.
+PredGen \citep{li2025predgen} started generating the user response by speculating on the end of the user input, thereby reducing latency. 
+\citep{ok2025speculative} also proposed speculative end-of-turn detection to reduce latency by beginning processing the user input early.
+
+Compared with the most similar existing work (SHANKS \citep{chiang2025shanks}), we pursue a similar approach where we interleave reasoning and acting with streaming input speech. 
+The key differences with our method are 1) we support asynchronous tool calling as well as asynchronous user inputs, 2) we propose \textit{Speculative Tool Calling} (Sec. \ref{sec:spec-tool-calling}) to handle sensitive tool calls and cases where the tool call is issued incorrectly with partial information. 
+
+\section{Data Generation}
+\label{sec:appendix_data_generation}
+
+\subsection{Additional Data Generation Details}
+
+During the alignment process (where we take the ground-truth tool calls from the sample and align them with the earliest update where the sample could have been called), we apply post-processing to improve alignment and to remove erroneous samples from the training set. 
+With our consistency-based method, for each stream update, we use a strong model (Qwen-2.5-32B-Instruct \citep{qwen2.5}) to generate the tool calls that can be called based on the query so far.
+We then work backwards from the final update and identify the earliest query update where each of the ground-truth tool calls could have been called.
+For both datasets, we use embedding-based string matching to align the ground-truth tool calls with the corresponding tool calls executed by the strong model at each step, and we filter out samples where there is a mismatch between the ground-truth plan and the tool calls generated by the strong model.
+Additionally, for HotpotQA, which consists of search calls where the entity name can often be matched in the provided query, we apply an additional post-processing step to adjust the timings in cases where a matching entity name was available earlier or later than the step where the tool call was first correctly issued. 
+
+\subsection{Trajectories with Error Correction Behavior}
+
+To teach the model to call tools speculatively and then fix any mistakes, we need to provide examples in the training data that show how tool calls can be removed or modified based on updated information in the query. 
+To adapt the model for this behavior, we synthesize a subset of trajectories with erroneous early tool calls that are later corrected to demonstrate how the model should correct mistakes.
+To do this, while aligning ground-tool calls, we identify tool calls which are initially issued incorrectly and which are no longer present in the final plan, and we record when these erroneous tool calls are issued (i.e. after which query update).
+We separate these erroneous tool calls into ones which are later modified to a correct tool call versus ones which have to be removed by identifying whether there is a similar tool call in the final ground-truth plan (using embedding-based string matching).
+When synthesizing trajectories, we ask the model to generate the reasoning to issue these erroneous actions, and then at a later timestep we ask the model to fix the incorrect action once sufficient information is available to issue the correction.
+
+
+\section{Extended Experimental Details}
+\label{sec:appendix_experimental_details}
+For accuracy evaluation, we use the final response or state to evaluate correctness (as if we matched the produced tool calls exactly with the ground truth, this would potentially mark a sample as wrong due to a speculatively launched tool call, even if this was later corrected). 
+For HotpotQA, we use the final response after the model has searched for information and compare it with the ground truth answer.
+For TinyAgent, since the required response is often to actuate a series of actions instead of just returning information to the user, we use state-based evaluation to verify whether the user's query was satisfied by the response.
+We construct a simulated environment for TinyAgent which is initialized with data that read tool calls can access and which stores data whenever we execute a tool call that writes data.
+To check correctness, we execute the ground-truth tool calls in a copy of the simulated environment, and compare this with a separate copy of the simulated environment after running evaluation for that sample.
+
+
+For TinyAgent, we use a simulated setup which assumes a random uniform delay of between 0.5 and 1 seconds for each tool call, whereas for HotpotQA, we use the real tool latencies.
+To measure accuracy with streaming for open-source models, we assume a tokens-per-second generation rate randomly sampled between 100 and 200 tokens/second for each sample, and we convert both the streaming update times and the tool call delays to numbers of tokens in order to simulate streaming.
+We assume updates are passed to the model in 6-word increments; note that for HotpotQA we lessen this to 3-word increments due to the short average query length.
+For the closed-source API, to minimize API costs, we run the accuracy and time-to-first-token evaluation together using the real-world tool latencies and streaming inference delays from the API.
+
+For latency evaluation, we use a fake streaming speech-to-text frontend to simulate the arrival of partial user query updates as the user is speaking.
+We leverage the timings obtained through TTS alignment (see Sec. \ref{sec:data-generation}) to simulate when speech would arrive from the user.
+For HotpotQA, we use the real tool latencies when measuring latency.
+For TinyAgent, since we are using a simulated environment for verifying state correctness, we simulate the delay for each tool call as a random uniform delay between 0.5 and 1 seconds.
+
+For data generation for SFT, we assume the same tokens-per-second rate and tool call delays as are used in the evaluation process (we randomly sampled between 100 and 200 tokens/second for each sample, and we use either real tool call delays or a random uniform delay of between 0.5 and 1 seconds for each tool call, dependending on the dataset).
+For 10\% of samples, we include incorrectly generated tool calls which the model has to either remove or modify once additional information is available.
+We use LLaMA-Factory for finetuning experiments \citep{zheng2024llamafactory}.
+For streaming experiments, we apply masking to ensure that when the model is interrupted, no loss is applied to the final generated token from the model (as it should not learn to stop at that position).
+We train for 1 epoch using a batch size of 16, learning rate of 3e-5, warmup of 0.05 using a cosine LR scheduler, and a weight decay of 0.05.

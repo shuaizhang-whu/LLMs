@@ -75,6 +75,49 @@ python run.py --modelname "openai/gpt-4" --guessmodelname "openai/gpt-3.5-turbo"
 
 Pass `--norun` to skip execution and only post-process existing results. Pass `--noprint` for silent mode.
 
+### Reproducible local runner
+
+The legacy command above is retained for compatibility with the attached repository
+trajectories. New experiments should explicitly select an execution mode:
+
+```bash
+python run.py \
+  --execution-mode sequential \
+  --modelname local/local-qwen2.5-7b-instruct \
+  --guessmodelname local/local-qwen2.5-7b-instruct \
+  --sample-ids 7107,5619 \
+  --num-steps 8 --top-k 1 --seed 248 --temperature 0 \
+  --run-id local_smoke
+
+python run.py \
+  --execution-mode paired \
+  --modelname local/local-qwen2.5-7b-instruct \
+  --guessmodelname local/local-qwen2.5-7b-instruct \
+  --sample-ids 7107,5619 \
+  --num-steps 8 --top-k 3 --seed 248 --temperature 0 \
+  --run-id local_smoke
+```
+
+`sequential` records only the authoritative ReAct trajectory. `paired` records the
+authoritative trajectory and the predicted-observation trajectory serially in isolated
+environments; its wall clock is collection cost, not online speedup. `online` only
+pre-launches side-effect-free `Search[...]` calls and can replay authority traces for a
+strict lossless audit:
+
+```bash
+python run.py \
+  --execution-mode online \
+  --modelname local/local-qwen2.5-7b-instruct \
+  --guessmodelname local/local-qwen2.5-7b-instruct \
+  --sample-ids 7107,5619 --num-steps 8 --top-k 3 \
+  --seed 248 --temperature 0 --run-id local_smoke \
+  --authority-trace-root /absolute/path/to/sequential/run/root
+```
+
+These runs are written below `reproduction/experiments/<run-id>/` and include raw
+trajectories, exact dataset indices, task metrics, strict Top-K action accuracy, token
+usage, per-action latency, authority hashes, and aggregate JSON/CSV files.
+
 ### Compute metrics
 
 ```bash

@@ -1,0 +1,49 @@
+\section{On-Device LLM Deployment and Overhead Analysis}
+
+To further assess the feasibility and efficiency of local LLM inference on mobile devices, a quantized Qwen2.5-7B-Instruct model was deployed on a Xiaomi 15 Pro smartphone using Alibaba’s MNN \citep{lv2022walle} mobile inference engine. All five tasks in the Applauncher app from the DroidTask dataset were selected for overhead evaluation. The hardware configurations of the smartphone, as well as the inference latency, CPU utilization, and memory usage per task, are summarized below.  
+
+\begin{table}[h!]
+\caption{Hardware specifications of the mobile device.}
+\centering
+\resizebox{\columnwidth}{!}{
+\begin{tabular}{cccc}
+\toprule
+\textbf{Device} & \textbf{DRAM} & \textbf{SoC} & \textbf{CPU} \\
+\midrule
+Xiaomi 15 Pro & 16\,GB & Qualcomm Snapdragon 8 Elite & 2$\times$Oryon (4.32\,GHz) + 6$\times$Oryon (3.53\,GHz) \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+\begin{table}[h!]
+\caption{Performance of Qwen2.5-7B-Instruct deployed on Xiaomi 15 Pro (MNN).}
+\centering
+\resizebox{\columnwidth}{!}{
+\begin{tabular}{ccccccccc}
+\toprule
+\textbf{Model} & \textbf{Prefill Time/task (s)} & \textbf{Decode Time/task (s)} & \textbf{Memory (GB)} & \textbf{CPU Util. (\%)} \\
+\midrule
+Qwen2.5-7B-Instruct & 75.05 & 65.99 & 6.9 & 770 \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+The results indicate that the average inference latency of the on-device LLM is approximately 140s per task (multiple steps), utilizing around 8 cores and maintaining memory consumption below 7 GB.
+
+To provide a broader comparison, the more general llama.cpp inference framework was also adopted to deploy all three local LLMs used in the evaluation, including Qwen2.5-7B-Instruct, Llama-3.1-8B-Instruct, and Gemma-2-9B-Instruct. The latency of Qwen2.5-7B-Instruct under llama.cpp was found to be roughly \(5\times\) higher than that using MNN, while the CPU and memory consumption remained comparable across the two engines. In addition, the overhead increases slightly with the model size increasing from 7B to 9B.
+
+Efficient on-device inference remains a significant challenge in mobile agent systems, primarily due to hardware constraints. As a result, existing work typically invoked cloud LLM APIs or ran LLMs on more powerful computers and servers. Following the common practice, the main experiments were conducted on a consumer-grade RTX 4090D GPU, with the overhead results of Qwen2.5-7B-Instruct shown below. The inference speed on 4090D is 4.39\(\times\) faster than using MNN on Xiaomi 15 Pro.
+\begin{table}[h!]
+\caption{Comparison of latency between baseline and local LLM deployments.}
+\centering
+\resizebox{\columnwidth}{!}{
+\begin{tabular}{ccccc}
+\toprule
+\textbf{Methods} & \textbf{Cloud Latency (s)} & \textbf{Local Latency (s)} & \textbf{Total Latency (s)} & \textbf{Ratio vs GPT-4o Baseline} \\
+\midrule
+GPT-4o (Baseline) & 40.32 & 0.00 & 40.32 & 1.00$\times$ \\
+Ours (GPT-4o + Local LLM on RTX 4090D) & 29.15 & 32.12 & 61.27 & 1.52$\times$ \\
+Ours (GPT-4o + Local LLM on Smartphone) & 29.15 & 141.04 & 170.19 & 4.22$\times$ \\
+\bottomrule
+\end{tabular}}
+\end{table}

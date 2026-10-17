@@ -1,0 +1,105 @@
+
+
+\begin{table*}[!htbp]%%{r}%{0.55\textwidth}
+\caption{
+Evaluation accuracy for the OpenAI Realtime API (openai-realtime-1.5 model) with our Speculative Interaction Agent methodology as well as with the reason-and-act baseline.
+We report accuracy on each task as well as latency in seconds (with speedups in parentheses), using 500 samples from each dataset for evaluation due to API cost constraints.
+}\label{tab:realtime}
+% \vspace{2mm}
+\centering
+\scriptsize{
+\setlength{\tabcolsep}{5.5pt}{
+\begin{tabular}{c|cc|cc}
+        \toprule
+\multirow{2}{*}{\textbf{Config}} &
+\multicolumn{2}{c|}{\textbf{HotpotQA}} & \multicolumn{2}{c}{\textbf{TinyAgent}} 
+% & \multicolumn{2}{c|}{\textbf{BFCL}} 
+\\ 
+& \textbf{Accuracy} & \textbf{Latency (Speedup)} 
+% & \textbf{Accuracy} & \textbf{TTFT (s)} 
+& \textbf{Accuracy} & \textbf{Latency (Speedup)}  \\ 
+% \hline
+\midrule
+Baseline & 71.6 & 4.5  &  54.9 & 7.6 \\
+\hc Speculative Interaction & 71.0 &  3.6 (\textbf{1.3$\times$}) & 53.2 & 4.4 (\textbf{1.7$\times$})  \\
+\bottomrule
+\end{tabular}
+}
+}
+\end{table*}
+
+%%%%% Table 2 %%%%%% 
+
+\begin{table*}[!htbp]
+\caption{
+Evaluation accuracy for the Qwen2.5-3B-Instruct and Llama-3.2-3B-Instruct models.
+We report results with our Speculative Interaction Agent methodology as well as the reason-and-act baseline, trained using SFT (as well as baseline results without training).
+We also report latency in seconds (as well as speedups in parentheses), benchmarked on a single A100 GPU (averaged across 100 samples from the evaluation set). Note that we only report latency results for the baseline with normal SFT and for our methodology with Speculative Interaction SFT (SI-SFT), as the other configurations struggle to follow the desired behavior (e.g. not executing any tool calls before responding) which makes their latency not directly comparable.
+}
+\label{tab:trained}
+\vspace{1mm}
+% \small
+\scriptsize
+\centering
+\renewcommand{\arraystretch}{1.2}
+\setlength{\tabcolsep}{6pt}
+\begin{tabular}{c|cc|cc|cc|cc}
+\toprule
+\multirow{3}{*}{\textbf{Config}} &
+\multicolumn{4}{c|}{\textbf{Qwen2.5-3B}} &
+\multicolumn{4}{c}{\textbf{Llama-3.2-3B}} \\
+\cmidrule{2-9}
+& \multicolumn{2}{c|}{\textbf{HotpotQA}} & \multicolumn{2}{c|}{\textbf{TinyAgent}} & \multicolumn{2}{c|}{\textbf{HotpotQA}} & \multicolumn{2}{c}{\textbf{TinyAgent}} \\ 
+& \textbf{Acc.} & \textbf{Lat. } & \textbf{Acc.} & \textbf{Lat. } & \textbf{Acc.} & \textbf{Lat. } & \textbf{Acc.} & \textbf{Lat. }  \\ 
+\midrule\midrule
+Baseline (no SFT) & 17.2 & - & 3.2 & - & 15.1 & - & 1.5 & - \\
+Baseline (normal SFT)     & 68.6 & 2.7 & 65.6 & 4.1 & 70.4 & 2.3 & 66.8 & 5.0 \\
+\midrule
+Speculative Interaction (no SFT)     & 20.1 & - & 2.3 & - & 13.9 & - & 2.1 & - \\
+\hc Speculative Interaction (normal SFT)     & 33.4 & - & 14.3 & - & 23.6 & - & 10.8 & - \\
+\hd Speculative Interaction (SI-SFT)     & 67.5 & 1.2 (\textbf{2.2$\times$})
+ & 62.1 & 2.5 (\textbf{1.6$\times$}) & 68.7 & 1.1 (\textbf{2.1$\times$}) & 65.2 & 2.5 (\textbf{2.0$\times$})\\
+% \midrule
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\section{Results}
+
+\subsection{Evaluation}
+
+We evaluate our method across one closed-source cloud API (the OpenAI Realtime API with openai-realtime-1.5 ~\citep{openai_realtime_api}) and two open-source language models (Qwen2.5-3B-Instruct~\citep{qwen2.5} and Llama-3.2-3B-Instruct~\citep{grattafiori2024llama}). 
+For the closed-source model, we provide multiple in-context examples to guide model behavior.
+We evaluate on HotpotQA as a comparison task requiring multiple search tool calls~\citep{yang2018hotpotqa}.
+For more complex agentic tasks, we include multi-step evaluation with TinyAgent~\citep{erdogan2024tinyagentfunctioncallingedge}, which evaluates multi-step personal assistant-style workflows for a local agent on a laptop. 
+Across both tasks, we report both accuracy (determined based on state-based correctness evaluation) and latency in seconds.
+For latency evaluation, we simulate time delays using arrival timestamps obtained from forced alignment applied to the TTS outputs (as outlined in Section \ref{sec:data-generation}).
+
+\subsection{Experimental Details}
+\label{sec:experimental-details}
+
+We evaluate our method by simulating streaming updates from speech-to-text.
+We assume 6-word increments for TinyAgent and 3-word increments for HotpotQA due to the shorter average query length.
+For latency evaluation, we use a fake streaming speech-to-text frontend to simulate the arrival of partial user query updates as the user is speaking.
+We leverage the timings obtained through TTS alignment (see Sec. \ref{sec:data-generation}) to simulate when speech would arrive from the user.
+For HotpotQA, we use the real tool latencies when measuring latency.
+For TinyAgent, we are using a simulated environment for verifying state correctness (described in detail in Appendix \ref{sec:appendix_experimental_details}); we simulate the delay for each tool call as a random uniform delay between 0.5 and 1 seconds.
+We provide additional experimental details (including training details) in Appendix \ref{sec:appendix_experimental_details}.
+
+\subsection{Main Results}
+
+The main evaluation results for the OpenAI realtime API are provided in Table \ref{tab:realtime}.
+We present results for both the synchronous reason-and-act baseline, as well as the Speculative Interaction Agent methodology.
+We observe speedups of 1.3-1.7$\times$ with minor accuracy loss.
+Table \ref{tab:trained} also provides evaluation for open-source models on HotpotQA and TinyAgent.
+We present results for the synchronous reason-and-act baseline, as well as for the Speculative Interaction Agent method.
+For both methods, we report results with SFT, and for the baseline we also report results without training.
+Additionally, we observe \textbf{1.6-2.2}$\times$ average speedups across both models and tasks relative to the strong SFT baseline, and we attain close to the accuracy of the non-streaming SFT runs.
+
+\subsection{Evaluation Dataset of Naturalistic Utterances}
+
+In our evaluation, we aim to capture realistic challenges with real-time human-AI interactions that are not captured by existing benchmarks. 
+For example, realistic, \emph{spontaneous} user utterances feature: (1) filler words and hesitation markers (e.g. 'um', 'yeah'), (2) online clarification of ambiguities (e.g. ``which I mean by that is I want..``), and (3) modification or corrections of requests (e.g. ``wait, actually could you instead ...``). 
+To address this, we present a challenging human-produced naturalistic evaluation dataset that complements existing benchmarks.
+This dataset includes 177 samples based on TinyAgent and its tool set.
+Appendix \ref{sec:appendix_human_dataset} outlines details for our dataset construction, as well as results when evaluating our method on challenging naturalistic samples.

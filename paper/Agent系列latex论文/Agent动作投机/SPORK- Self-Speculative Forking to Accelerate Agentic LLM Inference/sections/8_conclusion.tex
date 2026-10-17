@@ -1,0 +1,29 @@
+\section{Conclusion}
+\label{sec:conclusion}
+
+We presented \spork{}.
+Our central finding is that agentic LLM workloads exhibit exploitable early intent: the
+running model already knows its next tool call before finishing its reasoning, with
+fork-at-start name accuracy of 74.6--99.6\% on Qwen3-32B against a tool wait of
+16--37\% of agent wall time.
+\spork{} turns this into latency with the lightest possible machinery, requiring no
+draft model, no historical traces, and no retraining: D1--D3 map the early-intent
+signals onto EQ1's terms, and our experiments validate the cost model on real web tools
+(GAIA), short-latency APIs (HotpotQA), and the controlled tau2 latency sweep.
+The mechanism generalizes across scale and architecture, from Qwen3-4B to Qwen3-32B and
+a 3B-active mixture-of-experts, while preserving task accuracy.
+
+\parabf{Limitations.}
+\spork{} speculates only read-only tools today; supporting write operations is future
+work, requiring sandboxing or agent-state checkpointing so a mispredicted speculative
+call can be rolled back.
+It relies on open-weight models served by an engine that exposes per-token logprobs and
+a completion endpoint; closed-source APIs cannot host the fork thread.
+Finally, we target latency-oriented serving with spare capacity; under heavy batching,
+probe traffic competes with foreground decode and the overlap benefit shrinks.
+
+\parabf{Future work.}
+Sandboxed or checkpointed execution would extend speculation to write tools: a
+mispredicted call rolls back to the pre-speculation agent state.
+Deeper engine integration could schedule probes into idle batch slots, shrinking
+$\Toh$ further and widening the favorable regime.

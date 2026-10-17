@@ -1,0 +1,46 @@
+\section{Introduction}
+Modern large language model (LLM)-based agents interact with external environments through iterative cycles of reasoning, action, and observation~\citep{yao2023react}. They increasingly rely on stateful tools that inspect or modify evolving runtime environments, extending beyond simple
+information retrieval. 
+Frameworks such as Claude Code and OpenClaw decouple
+model serving from the tool-execution environment
+~\citep{anthropic2026claudecode,openclaw2026runtime}, forming what we term a disaggregated agent loop. Because the standard loop serializes model generation
+and tool execution, tools account for a growing share of end-to-end latency as decoding accelerates~\citep{tilert2026, artificialanalysis_anthropic, artificialanalysis_openai, groq2024specdec, cerebras2025k2think}.
+
+Speculation can break this serialization by starting likely future work early.
+Existing systems target one side of the loop: \textit{(i)} action speculation
+predicts and launches future tool calls
+\citep{ye2025speculative,sui2026parallelizing,spectoolcalls2025,bpaste2026,spork2026},
+whereas \textit{(ii)} observation speculation continues generation from
+provisional observations verified asynchronously~\citep{saberi2026spechop}.
+
+However, existing speculation methods fall short on heterogeneous stateful tool workloads, exposing three barriers to effective speculation.
+\textbf{(1) Latency concentration:} a few slow calls dominate tool time, decoupling hit rate from latency savings (Section~\ref{sec:challenge1}).
+\textbf{(2) Environment dependence:} some environment-dependent observations emerge only through execution, making observation prediction alone insufficient and requiring sandboxed action speculation (Section~\ref{sec:challenge2}).
+\textbf{(3) Lookahead tradeoff:} launching speculative actions earlier increases their overlap with model generation, but lossless generation requires the intervening action chain to match;
+compounding errors collapse accuracy and erase the potential speedup
+(Section~\ref{sec:challenge3}). 
+Together, these findings demand a new approach
+to speculation across the full agent--environment loop.
+
+We present \sysname{}, a lossless framework that jointly speculates actions and observations across the disaggregated agent loop
+(Section~\ref{sec:method}). 
+To address latency concentration, \emph{Expected
+Value Decoding} (\evd) generates observation candidates by combining their probability and estimated tool time, directly optimizing expected time hidden rather than hit rate. 
+For observations only execution can reveal, \sysname{} launches latency-critical target actions in isolated forks that contain their effects~\citep{cubesandbox_2026,deltabox2026}. 
+To break the lookahead--accuracy tradeoff, \emph{Joint Action--State Verification} (JASV) recasts long-horizon action dependency from full-chain prediction into target action--state verification: a fork is verified and selected only when its predicted action
+and origin state match the emitted action and committed state. This unlocks
+long-range overlap without predicting intervening actions, while exact
+verification preserves serial semantics and lossless. Together, these mechanisms yield
+11.8--32.5\% end-to-end latency savings, with gains increasing as decoding
+accelerates as shown in Figure~\ref{fig:tpot}.
+
+% \newpage
+We make three contributions:
+\begin{itemize}
+\item We characterize and quantify the latency concentration, information
+boundary, and lookahead tension that limit speculation over stateful tools.
+\item We introduce \sysname{}, combining \evd{} for latency-aware observation
+drafting, isolated action execution for environment-dependent observations, and
+JASV for lossless long-range lookahead without full-chain prediction.
+\item Across 4 different harnesses and 5 models on Terminal-Bench, \sysname{} achieves 11.8--32.5\% end-to-end latency savings, reduces p99 latency by up to 42.8\% and outperforms practical baselines.
+\end{itemize}

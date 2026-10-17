@@ -1,0 +1,41 @@
+\section{Effect of Limiting the Number of UI Blocks on Performance}
+To study the trade-off between task success rate, UI exposure reduction, and computational cost, we limit the number of UI blocks to at most three. Based on our original block partitioning strategy, we merge the resulting blocks to ensure that no more than three blocks remain. We evaluate this modified method on both the DroidTask \citep{wen2024autodroid} and AndroidLab \citep{xu2024androidlab} datasets and compare it against our original framework. As shown in Table~\ref{main-results-d} and Table~\ref{main-results-a}, limiting the number of blocks has minimal impact on the task success rate. As expected, the reduction in the number of blocks leads to a decrease in the UI exposure reduction rate. On the positive side, both latency and token usage decrease. This is because the maximum number of generated sub-task candidates decreases (<=3) during co-planning, and during co-decision-making, the maximum number of interactions between the local and cloud LLMs is limited to three. This demonstrates a trade-off between efficiency and UI reduction.
+
+\begin{table}[htbp]
+  \caption{Results under restriction of three blocks and comparisons to the original version.}
+  \label{main-results-d}
+  \centering
+  \resizebox{\columnwidth}{!}{
+  \begin{tabular}{ccc|cc|cc|cc}
+    \toprule
+    \multirow{2.5}{*}{\bf Methods} & \multicolumn{8}{c}{\bf DroidTask Dataset}\\
+    \cmidrule(r){2-9}
+    & \bf{Success Rate} & \bf{$\Delta$} & {\bf Reduction Rate} & {\bf $\Delta$}
+    & \bf{Latency(s)} & \bf{$\Delta$} & \bf{Cloud Tokens} & {\bf $\Delta$}\\
+    \cmidrule(r){1-9} 
+    Ours$^{*}$ (GPT-4o + Gemma 2-9B)   & {\bf 68.53\%} & -0.7\% & {\bf 41.44\%} & -14.16\% & 8341.47 & -9.88\% & 656959 & -21.96\%\\
+    Ours$^{*}$ (GPT-4o + Qwen 2.5-7B)  & 62.94\% & +1.4\% & 37.16\%  & -4.73\% & 7575.88& -13.54\% & 701274 &-15.42\%\\
+    Ours$^{*}$ (GPT-4o + LLaMA 3.1-8B) & 49.65\% & 0\% &37.33\% & -3.23\%  & 8773.23 & -1.05\% & 716769 &-16.89\%\\
+    \bottomrule
+  \end{tabular}
+  }
+\end{table}
+\begin{table}[htbp]
+  \caption{Results under restriction of three blocks and comparisons to the original version.}
+  \label{main-results-a}
+  \centering
+  \resizebox{\columnwidth}{!}{
+  \begin{tabular}{ccc|cc|cc|cc}
+    \toprule
+    \multirow{2.5}{*}{\bf Methods} & \multicolumn{8}{c}{\bf AndroidLab Dataset}\\
+    \cmidrule(r){2-9}
+    & \bf{Success Rate} & \bf{$\Delta$} & {\bf Reduction Rate} & {\bf $\Delta$}
+    & \bf{Latency(s)} & \bf{$\Delta$} & \bf{Cloud Tokens} & {\bf $\Delta$}\\
+    \cmidrule(r){1-9} 
+    Ours$^{*}$ (GPT-4o + Gemma 2-9B)  & {\bf 39.80\%} & +2.04\%  & 26.79\% & -8.17\% & 6279.42& -12.76\%& 761184 & -10.59\%\\
+    Ours$^{*}$ (GPT-4o + Qwen 2.5-7B)  & {\bf 39.80\%}  & -2.04\%  & 25.59\%  & -4.38\% & 5494.08& -15.10\%& 717340 & -13.28\%\\
+    Ours$^{*}$ (GPT-4o + LLaMA 3.1-8B) & 30.61\%  &  -4.08\% & {\bf 27.27\%} & -4.38\% & 6572.95 & -8.61\%& 785490& -0.73\%\\
+    \bottomrule
+  \end{tabular}
+  }
+\end{table}

@@ -1,0 +1,42 @@
+\section{Related Work}
+\label{sec:related}
+
+\paragraph{Token-level speculative decoding.}
+Speculative decoding~\citep{leviathan_fast_2023} accelerates generation with draft
+models or extra heads that propose tokens the target model verifies in
+parallel~\citep{li_eagle_2024, li_eagle2_2024, li_eagle3_2025, cai_medusa_2024,
+an_pard_2025}; model-free variants draft from prompt or prior-output
+n-grams~\citep{saxena_pld_2023, oliaro_suffixdecoding_2024}.
+Both families shorten the \emph{decode} portion of a turn but leave the tool wait
+untouched: the external call is still issued only after the model finishes emitting it.
+\spork{} is orthogonal: our partial-token accept reuses vLLM's
+speculative-decoding verification path to recycle a rejected probe's verified prefix as
+draft tokens, so the two mechanisms stack.
+
+\paragraph{Action- and execution-level speculation.}
+Speculative Actions~\citep{ye_speculative_2026}, SPAgent~\citep{huang_reducing_2025},
+DualSpec~\citep{zhong_dualspec_2026}, and PASTE~\citep{sui_act_2026} move speculation up to
+the action level, pre-executing likely tool calls; \citet{nichols_optimizing_2025}
+speculate tool calls inside the serving engine, targeting agent-serving throughput.
+They differ from \spork{} in the \emph{source} of the prediction: Speculative Actions and
+DualSpec rely on auxiliary predictor models or verifier policies,
+\citet{nichols_optimizing_2025} draft with a smaller speculative model, and PASTE
+mines recurring tool-call patterns from historical traces and replays them through a
+middleware interceptor.
+IdleSpec~\citep{choi_idlespec_2026} fills the same tool-wait windows with speculative
+\emph{plans}, improving task accuracy rather than hiding tool latency.
+\spork{} instead forks the running model's own state and reads its probe logprobs:
+day-one speculation with no auxiliary model, no trace collection, and the prefix-cache
+sharing an interceptor lacks.
+Atomix~\citep{mohammadi_atomix_2026} adds complementary transactional semantics for
+speculative side effects, which our read-only-tool restriction sidesteps.
+
+\paragraph{Early intent in LLMs.}
+Certaindex~\citep{fu_certaindex_2024} finds that reasoning programs' intermediate
+answers stabilize well before generation ends and allocates test-time compute from
+that certainty; When2Tool~\citep{sun_when2tool_2026} shows tool-call necessity is
+linearly decodable from pre-generation hidden states.
+DEER~\citep{yang_deer_2025} induces an early final answer to \emph{stop} reasoning, and
+SpecExit~\citep{yang_specexit_2025} reads exit signals from draft-model hidden states;
+inspired by this line of work, \spork{} inserts a forced tool-call prefix to surface
+the next tool call early and overlap the tool wait with the remaining decode.

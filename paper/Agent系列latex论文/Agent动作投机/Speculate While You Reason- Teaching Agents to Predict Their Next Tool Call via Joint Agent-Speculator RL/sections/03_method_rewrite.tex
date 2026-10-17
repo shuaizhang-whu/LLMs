@@ -1,0 +1,112 @@
+\section{Method}
+\label{sec:method}
+
+Motivated by the findings in
+Section~\ref{sec:empirical-self-speculate:findings}, we train a single
+tool-calling LLM agent $\pi_\theta$ to act both as the task-solving agent and as
+its own next-call speculator. We first define the
+agent task reward and the speculation reward used to score predicted tool calls.
+Second, we describe the joint agent--speculator RL method, which turns
+current agent trajectories into on-policy speculation targets. Finally, we describe 
+the training recipe used to stabilize the shared policy for both modes.
+
+\subsection{Task and Reward Formulation}
+\label{sec:method:task-formulation}
+
+Given a user query $x$, the agent interacts with an environment through a
+sequence of reasoning steps, tool calls, and tool observations. We denote an
+agent trajectory by
+$\tau=(x,r_1,a_1,o_1,\ldots,r_T,a_T,o_T,y)$, where $r_t$ is the reasoning
+before the $t$-th tool call, $a_t$ is the tool call, $o_t$ is the returned
+observation, and $y$ is the final answer. Each tool call is a structured action
+$a_t=(n_t,\sigma_t)$, with tool name $n_t$ and argument dictionary $\sigma_t$.
+The agent reward $R_{\mathrm{ag}}(\tau)$ is evaluated on the final answer
+$y$ against the ground-truth answer $y^*$ defined in the environment.
+
+The speculation task is derived from the same trajectory and is implemented by
+the same policy $\pi_\theta$. Agent and speculator modes therefore share model
+parameters, with the speculator mode triggered simply by appending a fixed speculation suffix 
+to the input context. For each tool-call turn $t$, we take the prefix immediately before
+the call,
+$h_t=(x,r_1,a_1,o_1,\ldots,a_{t-1})$, append a fixed speculation suffix
+$s_{\mathrm{sp}}$, and ask the policy to emit the next structured tool
+call, $\hat a_t\sim\pi_\theta(\cdot\mid h_t\oplus s_{\mathrm{sp}})$. The target
+is the agent's own next call $a_t$ from the sampled trajectory. Since $a_t$
+comes from the current policy, the targets change as the agent changes, keeping
+speculation training on-policy with the deployed agent.
+
+We score a predicted call $\hat a_t=(\hat n_t,\hat\sigma_t)$ against the target
+call $a_t=(n_t,\sigma_t)$ using a name-conditioned argument reward. The tool-name
+score is $R_{\mathrm{name}}=\mathbf{1}[\hat n_t=n_t]$. If the tool name matches,
+we compare argument dictionaries with macro token-F1 over target argument keys:
+\[
+R_{\mathrm{args}}
+= \frac{1}{|\mathrm{keys}(\sigma_t)|}
+\sum_{k\in\mathrm{keys}(\sigma_t)}
+\mathrm{F1}\!\left(\hat\sigma_t[k],\sigma_t[k]\right).
+\]
+Missing predicted arguments receive score zero, and extra predicted arguments
+do not receive credit. Argument values are normalized to strings before
+token-F1. For tools with no arguments, we set $R_{\mathrm{args}}=1$ after a
+correct tool-name match. The final speculation reward is
+\begin{equation}
+R_{\mathrm{sp}} = R_{\mathrm{name}}\cdot R_{\mathrm{args}}.
+\label{eq:reward}
+\end{equation}
+This construction matches the exact-match reuse requirement for speculation: a wrong tool name cannot
+reuse the pre-executed result, while a correct tool name can still receive
+partial credit for close argument values. Macro averaging gives each target
+argument key equal weight, avoiding pooled token-F1 behavior where long argument
+values dominate shorter but equally important keys.
+
+\subsection{Joint Agent--Speculator RL}
+\label{sec:method:dual-mode-rollout}
+
+Agent and speculator samples differ substantially. The agent mode generates long,
+reasoning-heavy trajectories, whereas the speculator mode generates a single structured tool call 
+from a partial trajectory. Their different output distributions and rewards make direct joint training difficult.
+We therefore keep the data collection coupled but the policy updates separated. 
+Each iteration constructs fresh on-policy data for both modes, while each optimizer step uses only the objective selected for
+the current training iteration.
+
+At RL iteration $k$, we sample a query batch $Q\subset\mathcal{D}$ and generate
+$G_{\mathrm{ag}}$ agent trajectories for each $x\in Q$. These trajectories serve as standard agent rollouts: their final rewards
+$R_{\mathrm{ag}}$ are normalized within each query group to produce
+DAPO-style relative advantages for the agent objective~\citep{yu2025dapo}. At
+the same time, they provide the speculation supervision induced by the current
+policy. For each realized tool-call turn, we take the prefix $h_t$ and the
+actual next call $a_t$ from the sampled trajectory, form the speculator input
+$h_t\oplus s_{\mathrm{sp}}$, and treat $a_t$ as the target call.
+
+A fixed schedule $m(k)\in\{\mathrm{ag},\mathrm{sp}\}$ selects which objective is
+optimized at iteration $k$. If $m(k)=\mathrm{ag}$, we update
+$\pi_\theta$ with the agent rollouts and advantages from $R_{\mathrm{ag}}$.
+If $m(k)=\mathrm{sp}$, we update the same $\pi_\theta$ with the speculator
+rollouts and advantages from $R_{\mathrm{sp}}$. Both modes use the same
+DAPO policy optimization~\citep{yu2025dapo}; they differ in the input context, rollout structure,
+and reward function. In our final runs, $m(k)$ follows a repeated 4:8
+pattern: four consecutive agent updates followed by eight consecutive
+speculator updates. Algorithm~\ref{alg:training-recipe} summarizes the full procedure.
+
+\subsection{Stabilizing Dual-Mode RL}
+\label{sec:method:training-recipe}
+
+Training a shared policy for both task solving and self-speculation is
+non-trivial. The two modes produce different output distributions and optimize
+different rewards, so direct joint training can suffer from mode interference or
+collapse into unproductive tool-calling behavior. We therefore use a training
+recipe with three components. \ding{182} Before RL, we run a short SFT warmup
+on a mixture of successful agent trajectories and their corresponding
+intermediate-trajectory speculation examples. The agent examples supervise the
+full successful trajectory, while each speculation example takes a partial
+trajectory, appends $s_{\mathrm{sp}}$, and supervises the model to produce the
+ground-truth next tool call. This gives the model well-formed behavior in both
+modes before RL begins. \ding{183} We reset optimizer state whenever the
+schedule switches between agent and speculator updates. Since the two modes optimize different rewards, 
+momentum and adaptive statistics differ between the two modes, which can strongly affect subsequent optimization
+steps~\citep{sutskever2013momentum,kingma2015adam}; the reset reduces carryover
+from one mode's objective to the next. \ding{184} The agent reward includes a
+penalty for repeated meaningless tool calls, discouraging a common failure mode
+in which the agent continues calling tools without making task progress.
+
+\input{tables/training_recipe_algorithm}

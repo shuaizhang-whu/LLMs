@@ -34,7 +34,7 @@ class MetricsSemanticsTest(unittest.TestCase):
             Metrics.get_action_metrics(normal, simulated, k=3)["general"], 1
         )
 
-    def test_top3_label_uses_every_stored_candidate(self):
+    def test_top3_strictly_truncates_extra_candidates(self):
         normal = {"actions": ["Search[ignored]", "Search[target]"]}
         simulated = {
             "actions": [
@@ -43,10 +43,22 @@ class MetricsSemanticsTest(unittest.TestCase):
             ]
         }
 
-        # 当前实现仅对 k == 1 特判；k=3 并不会在代码层切片到前三项。
         self.assertEqual(
-            Metrics.get_action_metrics(normal, simulated, k=3)["general"], 1
+            Metrics.get_action_metrics(normal, simulated, k=3)["general"], 0
         )
+        self.assertEqual(
+            Metrics.get_action_metrics(normal, simulated, k=None)["general"], 1
+        )
+
+    def test_all_steps_audit_includes_first_action(self):
+        normal = {"actions": ["Search[first]", "Finish[answer]"]}
+        simulated = {"actions": [["Lookup[wrong]"], ["Finish[answer]"]]}
+
+        paper = Metrics.get_action_metrics(normal, simulated, k=1, skip_first=True)
+        audit = Metrics.get_action_metrics(normal, simulated, k=1, skip_first=False)
+
+        self.assertEqual(paper["general"], 1)
+        self.assertEqual(audit["general"], 0.5)
 
     def test_full_action_comparison_is_case_insensitive(self):
         self.assertEqual(Metrics.compare_action("Search[Alpha]", "search[alpha]"), 1)

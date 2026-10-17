@@ -26,8 +26,26 @@ class OfflineCliTest(unittest.TestCase):
     """证明指标入口不加载 Runner，并保持官方 CLI 的输出矩阵。"""
 
     def test_importing_cli_does_not_import_runner_or_llm_client(self):
-        self.assertNotIn("src.runner", sys.modules)
-        self.assertNotIn("src.llm_client", sys.modules)
+        # 在独立解释器中检查 import run，避免其他测试预先导入 llm_client 后
+        # 污染当前进程的 sys.modules，使结果依赖 unittest 的模块加载顺序。
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                (
+                    "import sys; import run; "
+                    "assert 'src.runner' not in sys.modules; "
+                    "assert 'src.llm_client' not in sys.modules"
+                ),
+            ],
+            cwd=HOTPOTQA_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
 
     def test_base_traj_path_matches_existing_naming_rule(self):
         self.assertEqual(
@@ -103,7 +121,8 @@ class AttachedResultsTest(unittest.TestCase):
                     with (sample_dir / "metrics.json").open(encoding="utf-8") as handle:
                         saved = json.load(handle)
 
-                    recalculated = Metrics.get_action_metrics(normal, simulated, k=3)
+                    # 仓库附带 metrics.json 来自旧版“检查全部候选”的兼容口径。
+                    recalculated = Metrics.get_action_metrics(normal, simulated, k=None)
                     self.assertEqual(recalculated.keys(), saved.keys(), sample_dir)
                     for metric_name, expected in saved.items():
                         self.assertAlmostEqual(
@@ -111,9 +130,15 @@ class AttachedResultsTest(unittest.TestCase):
                         )
 
                     top1 = Metrics.get_action_metrics(normal, simulated, k=1)
+                    strict_top3 = Metrics.get_action_metrics(normal, simulated, k=3)
                     for metric_name in ("general", "Search", "Lookup", "Finish"):
                         self.assertLessEqual(
                             top1.get(metric_name, 0),
+                            strict_top3.get(metric_name, 0),
+                            sample_dir,
+                        )
+                        self.assertLessEqual(
+                            strict_top3.get(metric_name, 0),
                             recalculated.get(metric_name, 0),
                             sample_dir,
                         )

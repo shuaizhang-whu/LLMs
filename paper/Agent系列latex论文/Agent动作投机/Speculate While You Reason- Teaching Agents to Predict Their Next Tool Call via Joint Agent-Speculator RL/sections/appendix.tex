@@ -1,0 +1,164 @@
+\appendix
+
+\section{Implementation Details}
+\label{sec:appendix:implementation-details}
+
+During evaluation, speculation is run at each realized tool-call boundary of the
+agent trajectory. The speculator receives the prefix before the tool call and
+predicts a candidate call, but the environment executes only the agent's actual
+call. This keeps the evaluated trajectory identical to the ordinary agent
+trajectory and makes each speculation label the current agent's own next action.
+During RL, we use the same prefix--next-call construction to derive speculation
+examples from freshly sampled agent rollouts, as described in
+Section~\ref{sec:method:dual-mode-rollout}.
+
+\subsection{Training Hyperparameters}
+\label{sec:appendix:training-hyperparameters}
+
+Table~\ref{tab:training-hyperparameters} lists the default training settings
+used for joint agent-speculator RL. Unless stated otherwise, ablations use the
+same rollout budget, learning rate, schedule, and evaluation protocol as the
+corresponding full run.
+
+\begin{table}[h]
+\centering
+\setlength{\tabcolsep}{4pt}
+\resizebox{\columnwidth}{!}{%
+\begin{tabular}{@{}ll@{}}
+\toprule
+Setting & Value \\
+\midrule
+Backbone & Qwen3-4B, Qwen3.5-4B \\
+RL method & DAPO-style GPO \\
+$G_{\mathrm{ag}}$ & 8 \\
+$G_{\mathrm{sp}}$ & 8 \\
+Schedule & 4 agent / 8 speculator \\
+Reset & Each mode switch \\
+Learning rate & $3\times10^{-6}$ \\
+Training length limit & 16K tokens (SearchQA); 32K tokens ($\tau$-bench) \\
+RL budget & 200 steps per setting \\
+Training hardware & 8 H100 GPUs (SearchQA); 8 H200 GPUs (ToolScale) \\
+SFT data & Successful trajectories and speculation examples \\
+SFT target & Agent trajectories; next calls under the speculation suffix \\
+\bottomrule
+\end{tabular}
+}
+\caption{Default training hyperparameters.}
+\label{tab:training-hyperparameters}
+\end{table}
+
+\subsection{Prompt and Tool Schema Details}
+\label{sec:appendix:prompt-and-tool-schema-details}
+
+The fixed speculation suffix used in all experiments is:
+\begin{quote}
+\small\ttfamily
+\textless think\textgreater{} Okay, let's see. The user provided what I need.
+I'll look it up. The next step is to make the tool call.
+\textless/think\textgreater{}
+\end{quote}
+
+For each speculation query, the suffix is appended after the intermediate
+trajectory prefix and before the model decodes the candidate tool call. We use
+the same suffix for off-the-shelf speculator evaluation, SFT warmup example
+construction, joint agent-speculator RL, and final speculation evaluation. The
+suffix does not name a benchmark, tool, argument key, or target answer.
+
+We represent every tool call as a structured action $a=(n,\sigma)$, where $n$
+is the tool name and $\sigma$ is a dictionary of named arguments. SearchQA
+actions contain a search tool name and query string. $\tau$-bench-style actions
+use the API name and schema-constrained argument dictionary supplied by the
+environment. Calls that cannot be parsed into the expected structured format are
+treated as invalid predictions and receive zero speculation reward.
+
+For Hit@1 evaluation, a prediction is correct only if the parsed tool name and
+the complete parsed argument dictionary exactly match the agent's eventual call.
+For the shaped speculation reward used during RL, we first require the tool name
+to match and then compute macro token-F1 over target argument keys, as defined
+in Equation~\ref{eq:reward}. Missing predicted argument keys receive zero score,
+and extra predicted keys do not compensate for missing target keys. This keeps
+the training reward dense enough to provide partial credit for close arguments,
+while the deployment reuse metric remains exact structured-call equality.
+
+\section{Artifact Licenses}
+\label{sec:appendix:artifact-licenses}
+
+Table~\ref{tab:artifact-licenses} summarizes the licenses reported by the
+upstream publishers for the external artifacts used in our experiments. We use
+these artifacts for research evaluation and model training under their published
+terms, and we retain the corresponding citations and license notices when
+redistributing metadata or scripts.
+
+\begin{table}[h]
+\centering
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}p{0.62\columnwidth}p{0.30\columnwidth}@{}}
+\toprule
+Artifact & Reported license \\
+\midrule
+Qwen3-0.6B, Qwen3-1.7B, Qwen3-4B &
+Apache-2.0 \\
+Qwen3.5-0.8B, Qwen3.5-2B, Qwen3.5-4B &
+Apache-2.0 \\
+Qwen3-Embedding-0.6B &
+Apache-2.0 \\
+HotpotQA &
+CC BY-SA 4.0 \\
+MuSiQue &
+CC BY 4.0 \\
+BrowseComp-Plus &
+MIT \\
+$\tau$-bench / $\tau^2$-bench &
+MIT \\
+ToolScale &
+Upstream dataset terms \\
+\bottomrule
+\end{tabular}
+\caption{Licenses or access terms reported by the upstream model, dataset, or
+benchmark publishers for artifacts used in the experiments.}
+\label{tab:artifact-licenses}
+\end{table}
+
+\section{Data Statistics}
+\label{sec:appendix:data-statistics}
+
+Table~\ref{tab:data-statistics} reports the train, evaluation, and SFT warmup
+counts used in our experiments. SFT counts are separated into agent-trajectory
+rows and speculation rows; slash-separated counts denote Qwen3-4B / Qwen3.5-4B
+when both warmup files are used. Following the subset-based evaluation practice
+in R1-Searcher~\citep{song2025r1searcher}, SearchQA evaluation uses
+500 examples per dataset sampled from the FlashRAG development splits, rather
+than the full public development or test sets. We do not assume that these are
+the identical examples released by R1-Searcher unless their instance IDs match
+explicitly in metadata.
+
+\begin{table}[h]
+\centering
+\small
+\setlength{\tabcolsep}{4pt}
+\resizebox{\columnwidth}{!}{%
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+Resource & Train & Eval & SFT agent & SFT spec \\
+\midrule
+FlashQA / SearchQA total & 283,338 & 2,500 subset & 1,658 / 1,351 & 1,658 / 1,351 \\
+HotpotQA & -- & 500 subset & -- & -- \\
+MuSiQue & -- & 500 subset & -- & -- \\
+BrowseComp-Plus & 680 & 150 & -- & -- \\
+ToolScale & 4,063 & -- & 0 & 5,000 \\
+$\tau$-bench Airline & -- & 50 & -- & -- \\
+$\tau$-bench Retail & -- & 114 & -- & -- \\
+\bottomrule
+\end{tabular}
+}
+\caption{Dataset, benchmark, and SFT warmup counts. The ToolScale warmup source
+contains speculation prompt--label rows only.}
+\label{tab:data-statistics}
+\end{table}
+
+\section{LLM Usage Statement}
+\label{sec:appendix:llm-usage}
+
+We used large language models to assist with paper grammar editing and with code
+implementation and debugging. 

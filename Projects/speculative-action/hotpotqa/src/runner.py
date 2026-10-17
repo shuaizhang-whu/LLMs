@@ -110,7 +110,8 @@ class HotPotQARun:
             start = time.perf_counter()
             obs, r, done, info = env.step(action, step_type="simulate")
             end = time.perf_counter()
-            return env.sim_obs, r, done, info, end - start
+            # Gymnasium 1.x 要求通过公开接口访问内层 WikiEnv 的状态。
+            return env.get_wrapper_attr("sim_obs"), r, done, info, end - start
 
         attempts = 0
         while attempts < 10:
@@ -428,4 +429,5 @@ class HotPotQARun:
             Utils.save_json(metric_dict, join(current_dir_path, "metrics.json"))
 
         # 将 LoggingWrapper 累积的 Gym 轨迹写入其独立的 trajs 文件。
-        self.env.write()
+        # write 定义在中间的 LoggingWrapper；Gymnasium 1.x 不再隐式转发属性。
+        self.env.get_wrapper_attr("write")()

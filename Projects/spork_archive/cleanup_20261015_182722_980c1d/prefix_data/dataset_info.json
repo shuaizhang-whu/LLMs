@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "name": "SPORK first-launch timing prefix pairs",
+  "purpose": "保存用于后续控制器微调的前缀、三种启动策略结果与收益标签。",
+  "root": "/mnt/data/zhangshuai/LLMs/Projects/spork/prefix_data",
+  "raw_runs": "runs/",
+  "index": "index.json",
+  "policies": {
+    "off": "本轮不启动提前预测",
+    "now": "从当前前缀立即启动提前预测",
+    "wait": "继续生成指定数量的 token 后启动；正式动作提前出现则取消"
+  },
+  "labels": {
+    "gain_now_s": "off.wall_s - now.wall_s",
+    "gain_wait_s": "off.wall_s - wait.wall_s",
+    "unit": "seconds"
+  },
+  "training_input_policy": "只读取输入区的完整历史、工具定义和当前前缀；未来动作、耗时、环境快照与验证结果均不作为控制器输入。",
+  "split_policy": "按 domain + task_id 分组划分训练与验证集，同一任务的多个前缀不得跨集合；本次小批数据暂标为 pilot，不自动划分。",
+  "measurement": "统一预热后的前缀回放耗时；包含请求提交至正式结果可用的时间，不包含前缀生成、环境恢复与结束后的清理。",
+  "quality_policy": "完整保留负收益和动作差异；采集完整性通过不代表任务质量等价。",
+  "snapshot_policy": "environment.pkl 为本地生成的完整环境副本，仅用于可信的本地恢复。",
+  "per_run_files": {
+    "manifest.json": "采集参数、软件版本和代码快照哈希",
+    "prefix_*/input.json": "采样时刻之前的输入与快照引用",
+    "prefix_*/environment.pkl": "完整工具环境副本",
+    "prefix_*/off.json / now.json / wait.json": "三种策略的完整续写与工具执行结果",
+    "prefix_*/labels.json": "收益标签和动作、结果、状态一致性标记",
+    "training_rows.jsonl": "审查通过后导出的微调样本，input 与 targets 严格分开",
+    "validation_report.json": "独立完整性与标签重算检查结果",
+    "run.log": "采集日志"
+  },
+  "current_stage": "pilot：10 个前缀，每种策略一次，暂不自动划分训练集/验证集，也不启动微调。"
+}

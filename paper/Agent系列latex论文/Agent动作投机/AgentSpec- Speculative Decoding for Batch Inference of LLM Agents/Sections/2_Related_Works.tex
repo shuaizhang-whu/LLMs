@@ -1,0 +1,25 @@
+\section{Related Works}
+\label{sec:related_works}
+
+%%
+\subsection{Efficiency Optimization for LLM Agents}
+\label{subsec:efficiency_optimization_for_llm_agents}
+Large language model (LLM) agents have emerged as a powerful paradigm for complex tasks involving multi-step reasoning, tool invocation, and environment interaction. Recent LLMs with great agentic ability such as Qwen-3~\citep{DBLP:journals/corr/abs-2505-09388} and GPT-OSS~\citep{DBLP:journals/corr/abs-2508-10925}, and representative agentic workflow such as ReAct~\citep{DBLP:conf/iclr/YaoZYDSN023} and Reflexion~\citep{DBLP:conf/nips/ShinnCGNY23} built on top of modern LLM serving engines enable agents to iteratively generate actions and process observations. While these systems demonstrate strong capabilities, their inference efficiency remains a major bottleneck due to iterative generation and repeated model invocation~\citep{DBLP:journals/corr/abs-2508-02694, DBLP:journals/corr/abs-2502-13965}.
+
+Several lines of work aim to improve the efficiency of LLM agent execution.
+Some approaches reduce the number of model calls by improving agent-level planning or action selection. For example, LEAP~\citep{verma-bharadwaj-2025-leap} employs look-ahead planning to avoid ineffective actions, while Efficient Agents~\citep{DBLP:journals/corr/abs-2508-02694} optimizes task decomposition and action selection to solve tasks with fewer execution steps.
+Others focus on caching or reusing intermediate results across agent steps. For instance, APC~\citep{zhang2025agentic} reuses high-level plans across semantically similar tasks to amortize planning overhead. While these methods significantly improve efficiency, they may also negatively impact generation quality.
+
+
+\subsection{Speculative Decoding}
+\label{subsec:specualtive_decoding}
+Speculative decoding is a lossless inference acceleration technique that reduces LLM decoding latency by speculatively generating multiple tokens and verifying them with the target model~\citep{DBLP:conf/acl/XiaYDW00L0S24}.
+
+A common approach, adopted by EAGLE-3~\citep{DBLP:journals/corr/abs-2503-01840} and Multi-Token Prediction (MTP)~\citep{DBLP:journals/corr/abs-2505-07608,DBLP:journals/corr/abs-2412-19437}, trains a lightweight draft model to propose speculative tokens.
+More recently, draft-model-free methods retrieve candidate tokens directly from generation history. For example, NGram~\citep{saxena2023prompt} and SuffixDecoding~\citep{oliaro2025suffixdecoding} construct draft continuations by matching n-gram or suffix patterns, eliminating draft inference overhead. However, these algorithm-level designs often suffer from high rejection rates, leading to a high verification cost and poor scalability in large batches. 
+%
+Another line of work studies system-level optimizations, such as dynamic batching and budget control~\citep{DBLP:journals/corr/abs-2305-09781,10.1145/3772052.3772239,liu2024optimizing}. For example, 
+SPIRe~\citep{DBLP:journals/corr/abs-2504-06419} adapts speculative decoding based on online performance feedback, while AdaSpec~\citep{10.1145/3772052.3772239} models speculative inefficiency to satisfy SLO constraints.
+MagicDec~\citep{DBLP:conf/iclr/SadhukhanCCTLSY25} shows that speculative decoding can improve throughput in the long-context scenario. Nevertheless, most of these methods either overlook batch-level acceptance variance or rely on global acceptance statistics, making them brittle to dynamic online workloads.
+%
+Consequently, although existing methods achieve notable gains in small-batch settings, their effectiveness under large-batch inference, prevalent in modern LLM serving and agentic applications, remains insufficiently explored.

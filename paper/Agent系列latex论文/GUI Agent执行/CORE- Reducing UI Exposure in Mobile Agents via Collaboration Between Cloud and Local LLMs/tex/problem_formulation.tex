@@ -1,0 +1,32 @@
+\section{Problem Formulation} \label{Problem Formulation}
+We first introduce the workflow of an XML-based mobile agent, which is a sequential process to complete a user's given task. At each time step \(t\), the agent receives the following inputs:
+
+\textbf{Task description} $T \in \mathcal{T}$: a natural language instruction given by the user at the beginning \(t=0\), e.g., ``Set an alarm for 8 AM''.\\
+\textbf{Decision history} $H_t \in \mathcal{H}$: a sequence of past decisions executed on-device up to step $t$, e.g., [LaunchApp Clock, Click \texttt{<button text="Add" description="Add alarm" index=2/>}].\\
+\textbf{Current UI state} $X_t \in \mathcal{X}$: a set of HTML-style UI elements, parsed from the current XML file, including attributes like \texttt{text}, \texttt{content-description}, \texttt{resource-id}, etc. e.g., [\texttt{<p text="Clock" index=0/>}, \texttt{<button id="settings" description="Settings" index=1/>}, ...]
+
+The LLM processes these, internally determines an intermediate sub-task \(Z_t\) to be executed on the current page, and then makes the decision based on it: 
+
+\textbf{Decision} \(D_t \in \mathcal{D}\): a tuple of the target UI element \(E_t\) and the interaction type \(A_t\) (with the action space typically including click, long press, input text and scroll). 
+
+We use \(\mathcal{T}\), \(\mathcal{H}\), \(\mathcal{X}\) and \(\mathcal{D}\) to denote the spaces of task descriptions, decision histories, UI states and decisions respectively. The LLM's decision function is defined as
+\begin{equation}
+f: \mathcal{T} \times \mathcal{H} \times \mathcal{X} \rightarrow \mathcal{D}.
+\end{equation}
+The agent executes the decision \(D_t\) on mobile device. Then, the UI state is updated to \(X_{t+1}\) and \(D_t\) is appended to \(H_t\) to form the updated decision history \(H_{t+1}\). This iterative process continues until the LLM determines that the task is complete, at which point the agent terminates further execution.
+
+Building upon the workflow described above, we aim to develop a strategy that selects a subset \(X'_t\) from the current page input \(X_t\), thereby reducing the volume of uploaded data while preserving decision quality. In other words, the objective is to discard redundant information that is unnecessary for the task at hand, ensuring that the decision outcome remains largely consistent with that obtained using the full page data. Formally, we seek a selection strategy \(\mathcal{S}\) such that
+\begin{equation}
+X'_t = \mathcal{S}(T, H_t, X_t) \subseteq X_t.
+\end{equation}
+The proposed strategy must satisfy two key objectives. First, it should minimize the superfluous information on the current page, i.e., make \(|X'_t|\) (the cardinality of \(X'_t\)) as small as possible. Second, it must ensure consistency in the decision-making process before and after data reduction, that is,
+\begin{equation}
+D_t = f(T, H_t, X_t) = D'_t = f(T, H_t, X'_t),
+\end{equation}
+which implies that, the reduction of information should not affect the decision outcome. In practice, a small proportion of deviation is acceptable, but the decisions should remain nearly identical.
+
+Thus, the overall optimization problem is formulated as:
+\begin{equation}\label{equation4}
+\min_{\mathcal{S}} \ \mathbb{E}_{(T,H_t,X_t)}\left[ |X'_t| \right] \quad \text{s.t.} \quad \mathbb{E}_{(T,H_t,X_t)}\left[ \mathbb{I}\Bigl( f(T, H_t, X_t) \neq f(T, H_t, X'_t) \Bigr) \right] \le \varepsilon.
+\end{equation}
+Here, \(\mathbb{I}(\cdot)\) denotes the indicator function, and the expectation is taken over the distributions of task descriptions, decision histories and page inputs, thereby allowing for a controlled degree of deviation in the decision outcomes, with \(\varepsilon\) representing a small threshold that bounds such deviation. This formulation encapsulates the dual challenges of minimizing unnecessary data while ensuring minimal deviation in decision outcomes.

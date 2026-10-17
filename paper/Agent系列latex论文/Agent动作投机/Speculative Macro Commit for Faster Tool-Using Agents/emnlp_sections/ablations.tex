@@ -1,0 +1,88 @@
+\subsection{Ablations}
+The main results suggest that a macro commit helps only when it satisfies the three conditions built into the commit rule of Section~\ref{sec:commit}. 
+The reused steps must stay hidden from the model, since asking the model to select mined patterns adds a decision problem rather than skipping any actor call; the runtime must filter mined candidates aggressively, since a library match alone weakly predicts that the trajectory will follow the mined pattern; and a commit must skip enough actor calls on the critical path to overcome speculation, verification, and synchronization overhead. 
+The three ablations below test these conditions in turn.
+
+\subsection{Interface: hidden runtime state}
+ 
+Table~\ref{tab:single-gpu-alternatives} evaluates two simpler ways of using mined routines on a single GPU. 
+The first exposes mined patterns as registered meta-tools~\citep{awo-metatools-2026}, making reuse a model-visible action. 
+The second leaves the model interface unchanged but commits matched patterns passively, without the online checks of the full commit rule.
+
+Neither alternative has desirable results. 
+Registered meta-tools slightly increase latency and lower accuracy, because the actor almost never selects them: exposing mined routines as ordinary tools does not reliably skip actor calls, it poses an extra tool-selection problem. 
+Passive committing has the opposite failure mode. It cuts latency by 11.34\%, confirming that hidden runtime reuse can skip actor calls, but accuracy falls from 99.52\% to 96.48\%. 
+Hidden reuse alone is therefore insufficient: the runtime must also verify that the committed steps are anchored to the authoritative trajectory. SMC keeps the latency benefit of hidden reuse while adding the online commit conditions.
+
+\begin{table}[t]
+\centering
+\small
+\caption{Results on $\tau^2$-Bench with single GPU setting. }
+\label{tab:single-gpu-alternatives}
+\begin{tabular}{lrrr}
+\toprule
+Run & Acc. & Lat. & $\Delta$(\%) \\
+\midrule
+Baseline & 99.52 & 27.60 & -- \\
+Baseline + AWO-like & 99.34 & 27.89 & +1.05 \\
+Baseline + passive & 96.48 & 24.47 & -11.34 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Commit Precision}
+
+The passive-committing result raises the central safety question: how does SMC avoid committing incorrect mined patterns? Table~\ref{tab:filter-precision} answers with a staged audit on 100 held-out $\tau^2$ Telecom tasks.
+% not used for mining. 
+For the first four rows, SMC suppresses the commit and lets the actor continue, so the realized trajectory provides an event-level counterfactual for whether the candidate steps were exact; the final row reports task-outcome preservation for the steps SMC actually committed.
+
+The mined library by itself is far too noisy to act as a commit rule: a library match reproduces the exact future steps in only 34.6\% of events. 
+Requiring the drafter to have already executed the steps raises precision to 70.6\%, since SMC no longer commits patterns that exist only as offline matches. 
+Verifying the anchor call raises it to 87.9\% by tying the candidate to the authoritative trajectory, and the depth guard ($L_{\min}=1$, at least one committed step after the anchor) raises it to 90.4\% while removing shallow commits unlikely to repay synchronization overhead. 
+Under full rule, all committed events preserve the outcome in this audit. 
+As noted in Section~\ref{sec:commit}, this is not a proof that every committed pattern is uniquely correct; it shows that the online checks turn a low-precision library into a high-precision set of commits on this held-out audit.
+
+\begin{table}[t]
+\centering
+\small
+\caption{Conditional precision of the commit stages on 100 held-out $\tau^2$ Telecom tasks. Rows above the rule are event-level exact-match checks; the committed row is a task-outcome check.}
+\label{tab:filter-precision}
+\begin{tabular}{lrr}
+\toprule
+Filter stage & Events & \makecell{Correct / \\outcome-preserving} \\
+\midrule
+Library match only & 1,968 & 681/1,968 (34.6\%) \\
++ drafter-executed & 885 & 625/885 (70.6\%) \\
++ verified anchor call & 711 & 625/711 (87.9\%) \\
++ depth guard ($L_{\min}=1$) & 343 & 310/343 (90.4\%) \\
+\midrule
+Actually fired & 158 & 158/158 (100.0\%) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Critical-Path Depth}
+
+High precision alone does not guarantee speedup: a correct macro is unhelpful if it skips only one or two actor calls or skips calls that are off the critical path.
+Table~\ref{tab:legacy-final} compares the final SMC runtime with an earlier runtime that committed more aggressively.
+The legacy runtime commits almost twice as often as the final runtime and skips more total steps, yet it is 1.64\% slower than SA. 
+Raw macro count is thus the wrong objective: many additional legacy commits are too shallow or poorly aligned with already executed draft work, adding commit overhead without reducing end-to-end latency. 
+The final runtime suppresses 6,281 depth-one opportunities, enforces the $L_{\min}$ depth floor, and commits only steps already executed on the draft branch. 
+While it commits fewer macros and skips fewer total steps, it is 10.23\% faster than SA.
+The useful unit is therefore not a macro hit but a guarded, sufficiently deep commit that skips actor calls on the critical path.
+
+\begin{table}[t]
+\centering
+\small
+\caption{$\tau^2$ Telecom full-run comparison: raw macro count versus critical-path commits. Hits is the number of macro commits; Skip is the total committed draft steps after anchors.}
+\label{tab:legacy-final}
+\begin{tabular}{lrrrrr}
+\toprule
+Run & Acc. & Lat. & Hits & Skip & $\Delta$(\%) \\
+\midrule
+SA & 99.47 & 25.03 & 0 & 0 & -- \\
+Legacy macro & 99.56 & 25.44 & 6,410 & 10,528 & +1.64 \\
+Final SMC & 99.52 & 22.47 & 3,352 & 7,154 & -10.23 \\
+\bottomrule
+\end{tabular}
+\end{table}

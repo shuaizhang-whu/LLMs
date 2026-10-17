@@ -1,0 +1,122 @@
+% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% % APPENDIX
+% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newpage
+\appendix
+\section{Appendix.}
+\subsection{Experiment Configuration Details}
+\label{appendix:vllm_configration_details}
+We implement \sysname and conduct all experiments using the vLLM v0.12.0 V1 engine. For a fair comparison, we directly run the official implementations of all baseline methods with their default configurations provided by vLLM. We run each experiment on NVIDIA A100 80G GPUs with fix the maximum batch size and serving parameters for all methods. Unless otherwise specified, all goodput and speedup numbers are averaged over five times measurements controlled with various seed numbers and under the default maximum batch size 256 in vLLM.
+
+Specifically, for NGram, we set \lstinline|num-speculative-tokens| to 5 and \lstinline|ngram-prompt-lookup-max| to 4; for SuffixDecoding, we set \lstinline|num-speculative-tokens = 32|.
+% For EAGLE-3, we set the draft models as: Qwen-3-8B (\texttt{AngelSlim/Qwen3-8B\_eagle3}), GPT-OSS-20B (\texttt{RedHatAI/gpt-oss-20b-speculator.eagle3}), and DSK-Distill-8B (\texttt{yuhuili/EAGLE3-DeepSeek-R1-Distill-LLaMA-8B}), and \lstinline|num-speculative-tokens| to 2.
+
+We use FlashAttention-2 as the attention backend and adopt the default maximum batch size in vLLM (256). For MTP, we directly use the official MTP module provided by MiMo-7B-RL during inference.
+
+For \sysname, the speculation length dynamically adapts to the ongoing batch size and therefore does not require any speculation-length hyperparameters at launch time. Instead, \sysname requires the agent application to provide high-level contextual information, including the agent’s semantic structure and the query index of the current request.
+
+Concretely, we extend the vLLM engine with three additional parameters—\lstinline|structure: string|, \lstinline|query-id: int|, and \lstinline|agent-id: int|—which can be passed by the agent application at inference time. The \lstinline|structure| field encodes the paired delimiters of semantic blocks (e.g., code blocks, tool calls, and mathematical expressions) used by \sysname for redundancy-aware speculation. An example API request is shown in Listing~\ref{lst:redundancy}.
+
+\begin{lstlisting}[language=Python, caption={Example of API request command when using \sysname in vLLM}, label={lst:redundancy}]
+resp = await client.chat.completions.create(
+        model="Qwen/Qwen3-8B",
+        messages=[
+            {"role": "system", "content": "Respond in Korean."},
+            {"role": "user", "content": f"Say hi. (req {i})"},
+        ],
+        temperature=0.6,
+        extra_body={
+        "query_id": 1,
+        "agent_id": 1,
+        # Code Structure and Math Structure
+        "structure": "[
+            [("```python", "```"), ("<tool_call>", "<\tool_call>")],
+            [("\[", "\]"), ("\(", "\)"), ("$$", "$$"), ("$", "$")]
+        ]",
+    )
+\end{lstlisting}
+
+
+\begin{table}[ht]
+    \centering
+    % \begin{minipage}{.43\textwidth}
+    %     \adaTable
+    % \end{minipage}
+    % \hspace{0.1cm}
+    \begin{minipage}{.46\textwidth}
+        \GPUTable
+    \end{minipage}%
+\end{table}
+
+\subsection{Algorithm Pseudocode}
+\cref{algo:structure_isolated_drafting} shows the pseudocode of the first component of \sysname, Structure-Isolated Drafting. \cref{algo:redundancy_aware_budget} shows the pseudocode of the second component of \sysname, Redundancy-Aware Budget Allocation.
+\begin{algorithm}[ht]
+\caption{Structure-Isolated Drafting}
+\label{algo:structure_isolated_drafting}
+\begin{algorithmic}[1]
+    \STATE \textbf{Input:} generation request $r_i = \{a_i, q_i, B_i\}$, history cache $\mathcal{H}$, token-to-string map $M$
+    \STATE \textbf{Output:} draft token candidates $CT_i$
+    
+    \STATE Initialize PDA $P(a_i, q_i)$ for request $r_i$
+    \STATE $CT_i \gets \emptyset$
+    
+    \FOR{each newly generated token $t$ in request $r_i$}
+        \STATE Convert $t$ to string using cached map $M$
+        \STATE Feed converted string incrementally into $P(a_i, q_i)$
+        \STATE Determine current semantic block $b_i^k$ using PDA state
+    \ENDFOR
+    
+    \STATE Retrieve structure-isolated cache $\mathcal{H}(a_i, q_i, b_i^k)$
+    \IF{$\mathcal{H}(a_i, q_i, b_i^k)$ is empty}
+        \STATE \textbf{return} $\emptyset$
+    \ENDIF
+    
+    \FOR{each historical continuation $h \in \mathcal{H}(a_i, q_i, b_i^k)$}
+        \STATE Extract candidate draft continuation $c$ from $h$
+        \STATE $CT_i \gets CT_i \cup \{c\}$
+    \ENDFOR
+    
+    \STATE \textbf{return} $CT_i$
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Comparison On Various GPU Architectures} We evaluated \sysname on H100 GPU using GPT-OSS-20B. The results in~\cref{tab:hardware_speedup} show that \sysname achieves even higher speedups compared to A100, indicating that our conclusions generalize across hardware generations. From a system perspective, our analysis depends primarily on two factors—rejection rate and token budget utilization—which are also not specific to a particular GPU architecture or serving engine. 
+
+% \subsection{Comparison With AdaSpec} We provide a direct comparison with AdaSpec, which allocates speculative tokens based on historical acceptance rates. In addition to the full \sysname framework, we also evaluate a variant with redundancy-aware allocation only (denoted as \sysname (R)) to isolate the effect of our batch allocation strategy. As shown in~\cref{tab:adaspec_speedup}, both \sysname and \sysname (R) consistently outperform AdaSpec across all agentic benchmarks, demonstrating the effectiveness of redundancy-aware budget allocation design in \sysname.
+\label{appendix:algorithm_pseudocode}
+\begin{algorithm}[ht]
+\caption{Redundancy-Aware Budget Allocation}
+\label{algo:redundancy_aware_budget}
+\begin{algorithmic}[1]
+    \STATE \textbf{Input:} batch of requests $\{r_i\}_{i=1}^{bz}$, draft candidate sets $\{CT_i\}$, hyperparameter $\alpha$, $g_{\min}$
+    \STATE \textbf{Output:} per-request draft length $\{L_i\}$
+    
+    \STATE Compute total speculative budget $B_t \gets \left\lfloor \alpha / bz \right\rfloor$
+    
+    \FOR{each request $r_i$ in batch}
+        \STATE $n_i \gets |CT_i|$ \COMMENT{number of candidate continuations}
+        \IF{$n_i = 0$}
+            \STATE $g_i \gets 0$
+            \STATE \textbf{continue}
+        \ENDIF
+        
+        \STATE Identify most frequent continuation prefix $CT_i^{*}$
+        \STATE $c_i \gets$ number of continuations agreeing on $CT_i^{*}$
+        \STATE $p(n_i) \gets g_{\min} + (1 - g_{\min})(1 - e^{-n_i})$
+        \STATE $g_i \gets \frac{c_i}{n_i} \cdot p(n_i)$
+    \ENDFOR
+    
+    \STATE $G \gets \sum_i g_i$
+    
+    \FOR{each request $r_i$ in batch}
+        \STATE $L_i \gets \max\left(|CT_i^{*}|,\; B_t \cdot \frac{g_i}{G}\right)$
+    \ENDFOR
+    
+    \STATE \textbf{return} $\{L_i\}$
+\end{algorithmic}
+\end{algorithm}
+
+
+\subsection{Theoretical Complexity analysis} We then provide the time and space complexity analysis of \sysname and other baseline methods as follows. Regarding time complexity, for NGram/SuffixDecoding, drafting consists of constant-time lookup followed by candidate extension, with overall cost $O(K \cdot L)$, where $L$ is the draft length. AgentSpec preserves the same dominant cost. The additional components are lightweight: (a) PDA update: $O(1)$ amortized per token, and (b) semantic filtering + redundancy scoring: $O(K)$ per step. Thus, $T = O(K \cdot L) + O(K)$, which has the same asymptotic complexity as NGram with only a small constant-factor overhead. Regarding space complexity (CPU/DRAM), NGram requires $O(H)$ memory to store history and indices. AgentSpec maintains (a) the same history $O(H)$, (b) a semantic-block index $O(B)$, with $B \ll H$, and (c) one PDA state per request $O(R)$, constant-size each. Thus, $S = O(H + B + R) = O(H)$, matching NGram asymptotically with only lightweight metadata overhead.

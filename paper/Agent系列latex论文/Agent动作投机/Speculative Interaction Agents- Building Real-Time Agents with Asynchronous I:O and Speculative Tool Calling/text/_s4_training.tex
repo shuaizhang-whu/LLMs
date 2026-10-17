@@ -1,0 +1,43 @@
+\section{Training Asynchronous Agents}
+
+\subsection{Training System}
+\label{sec:training-details}
+
+To train \textit{Speculative Interaction Agents},
+we implement a clock-based training setup (outlined in Figure \ref{fig:train-system}).
+This training setup is designed to mimic the inference-time behavior of our system.
+In this system, the query updates are initially set at specific time intervals (and the times are converted to numbers of tokens based on an assumed tokens per second rate for decoding) and put in the event queue.
+At each step, the model is allowed to generate up to the max number of tokens before the next event is ready to trigger (and we roll the clock forward by the number of tokens that the model actually generated).
+If the model doesn't have any work to do until the next update and it decides to wait for an update, we would then roll the clock forward to the time that the next event becomes ready.
+When an event is ready, it is inserted into the model's context (and it interrupts the model if it is actively generating).
+When the model executes a tool call, we profile the time for the tool call to execute and convert this to the corresponding delay in number of tokens, and then add the tool observation to the global event queue.
+This setup simulates the inference-time behavior, where both user inputs and tool calls arrive asynchronously and are inserted into the model's context.
+This clock-based setup is used for generating data for SFT.
+To simulate streaming, we assume a particular tokens-per-second rate to convert tool delays and user query update delays into numbers of tokens.
+Appendix \ref{sec:appendix_experimental_details} describes these details for our evaluation.
+
+\subsection{Data Generation}
+\label{sec:data-generation}
+
+To generate data for SFT, we need to simulate streaming interaction between the agent and the environment. 
+We first segment the user query into streaming inputs.
+To generate arrival timestamps for each segment, we use a text-to-speech (TTS) model to synthesize voice for the segments, and then apply forced alignment using the ground-truth text to get word timestamps.
+We use the Kokoro-82M TTS model for voice synthesis, and we use WhisperX to get word alignments ~\citep{kokoro82m,bain2022whisperx}. 
+For any sample where forced alignment fails, we filter this out.
+
+Next, we take the ground-truth tool calls from the sample and align them with the earliest update where the sample could have been called.
+Since the information required to formulate tool arguments may be semantic or implicit/based on default parameters, we adopt a consistency-based method for identifying the earliest timestep where a function can be called with all the correct arguments.
+For each stream update, we use a strong model (Qwen-2.5-32B-Instruct; \citep{qwen2.5}) to generate the tool calls that can be called based on the query so far.
+We then work backwards from the final update and identify the earliest query update where each of the ground-truth tool calls could have been called.
+Additional details for the data synthesis process are provided in Appendix \ref{sec:appendix_data_generation}.
+
+After obtaining the aligned tool calls, we use the tool calls along with the training gym (outlined in Figure \ref{fig:train-system}) to synthesize trajectories.
+At each step, we present the strong model (Qwen-2.5-32B-Instruct) with the trajectory up to the current step, as well as the target action for that step, and we ask the model to synthesize reasoning for the model to arrive at that action. 
+The target action for the step is the next tool call that is ready to execute (or to wait if no tool call is ready).
+As described in Section \ref{sec:training-details}, our training system simulates streaming behavior and injects interrupts based on the timings for user and environment information, which are converted into numbers of tokens using an assumed tokens-per-second rate.
+To synthesize trajectories for the non-streaming baseline, we similarly provide the strong model with the target action at each step and ask the model to generate the reasoning to arrive at that action.
+
+We also provide examples in the training data that show how tool calls can be removed or modified based on updated information in the query.
+For TinyAgent in particular, we need to support edits to existing tool calls since it contains sensitive tool calls that need to be able to be modified before being executed if we want to be able to issue them speculatively. 
+To adapt the model for this behavior, we synthesize a subset of trajectories with erroneous early tool calls that are later corrected to demonstrate how the model should correct mistakes.
+Details for how we synthesize these examples with error correction behavior are explained in Appendix \ref{sec:appendix_data_generation}.

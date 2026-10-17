@@ -1,0 +1,182 @@
+\section{Framework}
+\label{framework}
+An agentic system is modeled as a Markov Decision Process (MDP) $(s_{t}, a_{t})$, where $s_{t}$ denotes the state and $a_{t}$ the agent’s action at step $t$. 
+This model admits considerable flexibility: an action may represent a chatbot response, a tool call, or a button clicked by a computer-use agent, among others.  
+
+From a systems perspective, we model each action in an agentic system as an \emph{API call}, which may block execution until a response is returned. This abstraction offers two key advantages: (1) it precisely defines what constitutes an action, and (2) it provides a unified framework for optimizing system latency, as we will see shortly.
+Notably, this perspective aligns with the recent development of MCP servers for agentic systems \citep{anthropic2024model}.
+
+Formally, at each step $t$, the policy $\pi$ maps the current state $s_{t}$ to an API call:
+\[
+(h_{t}, q_{t}) \gets \pi(s_{t}),
+\]
+where $h_{t}$ specifies the target API to invoke and $q_{t}$ its associated parameters. We write
+\[\bar a_t \leftsquigarrow h_t(q_t)\qquad a_t \gets \mathrm{await}(\bar a_t)\] 
+to denote an asynchronous API invocation that
+returns a \emph{future} (a pending action), and the await for when the response actually arrives. We use the bar notation (e.g., $\bar a$) for futures and
+a cache $\mathcal C:(h,q)\mapsto \bar a$ that maps an API call specifier to its pending response. The left squiggly arrow indicates an asynchronous call with non-negligible delay.
+
+The system subsequently transitions to the next state via a transition function $f$: $
+s_{t+1} \gets f(s_{t}, a_{t}).$
+As a concrete example, consider chess: the policy $\pi$ determines how to construct the prompt 
+based on the current board state, $a_{t}$ corresponds to the move proposed by the LLM’s response, 
+and $f$ updates the board configuration accordingly. Note that the LLM call is the API, its \textit{response} is the move $a_t$. 
+
+
+This formulation subsumes a broad range of realizations:
+\begin{itemize}[leftmargin=*]
+    \item \textbf{LLM calls:} each invocation of an LLM within the agent can be treated as an action.
+    \item \textbf{Tool / MCP server calls:} each actual call for internal/external tools is treated as an action: e.g., terminal access, web search, deep research APIs, weather APIs, or browser-use MCPs.
+    \item \textbf{Human-as-an-API calls:} furthermore, human responses themselves can be abstracted as API calls, often incurring even longer latencies than automated tools.
+\end{itemize}
+
+Given this abstraction, the fundamental bottleneck in executing agentic systems becomes apparent: each API call must complete before the next can be issued. To break this sequential dependency, we propose to \textbf{speculate a set of API responses} $\{\hat{a}_{t}\}$ using a faster model while waiting for the true response $a_{t}$. This enables speculative API calls for step $t+1$ to be launched in parallel. At time $t$, if the API call $(h_t, q_t)$ can be found in the cache (cache hit), the system can skip the actual invocation and only wait for the pending action corresponding to this call to return (if not already returned). Formally, the algorithm is specified in \cref{alg:speculative-k}. 
+
+
+% \begin{algorithm}
+% \caption{Speculative actions with $k$-way parallel next calls}
+% \label{alg:speculative-k}
+% \begin{algorithmic}[1]
+% \Require Initial state $s_0$, horizon $T$, transition $f$, policy $\pi$, predictor $\hat g$, cache $\mathcal{C}$
+% \For{$t = 0$ to $T-1$}
+%     \State \textbf{Policy:} $(h_t,q_t) \gets \pi(s_t)$
+%     \If{$(h_t,q_t) \in \mathcal{C}$} \Comment{Cache hit}
+%         \State $a_t \gets \mathcal{C}[(h_t,q_t)]$
+%         \State $s_{t+1} \gets f\big(s_t,a_t\big)$
+%         \State \textbf{continue}
+%     \EndIf
+%     \State \textbf{Actor:} Issue real request (non-blocking): $a_t \leftsquigarrow h_t(q_t)$
+%     \State \textbf{Speculator:} $ \{\hat a_t^{(i)}\}_{i=1}^k \gets \hat g(s_t,(h_t,q_t))$
+%     \Comment{Actor and speculator run in parallel}
+%     \For{$i=1$ to $k$} \Comment{One-step speculative rollout per guess}
+%         \State $\hat s_{t+1}^{(i)} \gets f\big(s_t, \hat a_t^{(i)}\big)$
+%         \State $(\hat{h}_{t+1}^{(i)},\hat{q}_{t+1}^{(i)}) \gets \pi(\hat s_{t+1}^{(i)})$
+%         \State Issue real request (non-blocking): $\hat{a}_{t+1}^{(i)} \leftsquigarrow \hat{h}_{t+1}^{(i)}\!\big(\hat{q}_{t+1}^{(i)}\big)$\\
+%         \hspace{155pt}  $\mathcal{C}[(\hat{h}_{t+1}^{(i)},\hat{q}_{t+1}^{(i)})] \gets \hat{a}_{t+1}^{(i)}$
+%         \Comment{On arrival, cache speculation}
+%     \EndFor
+%     \State \textbf{Wait for $a_t$ from either Actor or cache $C$}
+%     \State $s_{t+1} \gets f\big(s_t,a_t\big)$
+% \EndFor
+% \end{algorithmic}
+% \end{algorithm}
+
+
+
+\begin{algorithm}
+\caption{Speculative actions with $k$-way parallel next calls}
+\label{alg:speculative-k}
+\begin{algorithmic}[1]
+\Require Initial state $s_0$, horizon $T$, transition $f$, policy $\pi$, predictor $\hat g$, cache $\mathcal{C}$. We use $\bar{a}$ to denote pending action.
+\For{$t = 0$ to $T-1$}
+    \State \textbf{Policy:} $(h_t,q_t) \gets \pi(s_t)$
+    \If{$(h_t,q_t) \in \mathcal{C}$} \Comment{Cache hit}
+        \State $\bar{a}_t \gets \mathcal{C}[(h_t,q_t)]$
+        \State $a_t \gets \text{await}(\bar{a}_t)$
+        \Comment{Await pending action if not returned already}
+        \State $s_{t+1} \gets f\big(s_t,a_t\big)$
+        \State \textbf{continue}
+    \EndIf
+    \State \textbf{Actor:} Issue real request (returns future): $\bar{a}_t \leftsquigarrow h_t(q_t)$
+    \State \textbf{Speculator:} 
+    $ \{\hat{a}_t^{(i)}\}_{i=1}^k \gets \text{await}(\hat g(s_t,(h_t,q_t)))$
+    \Comment{Actor and speculator run in parallel}
+    \For{$i=1$ to $k$} \Comment{One-step speculative rollout per guess}
+        \State $\hat s_{t+1}^{(i)} \gets f\big(s_t, \hat a_t^{(i)}\big)$
+        \State $(\hat{h}_{t+1}^{(i)},\hat{q}_{t+1}^{(i)}) \gets \pi(\hat s_{t+1}^{(i)})$
+        \State \textbf{Pre-launch}: $\bar{\hat{a}}_{t+1}^{(i)} \leftsquigarrow \hat{h}_{t+1}^{(i)}\!\big(\hat{q}_{t+1}^{(i)}\big)$
+        \Comment{Return pending action, hence non-blocking}
+        \State \hspace{73pt}  $\mathcal{C}[(\hat{h}_{t+1}^{(i)},\hat{q}_{t+1}^{(i)})] \gets \bar{\hat{a}}_{t+1}^{(i)}$
+        \Comment{Cache speculative pending actions}
+    \EndFor
+    \State \textbf{Wait for resolved $a_t$ from Actor:} $a_t\gets \text{await}(\bar{a}_t)$
+    \State $s_{t+1} \gets f\big(s_t,a_t\big)$
+\EndFor
+\end{algorithmic}
+\end{algorithm}
+
+
+% \begin{algorithm}
+% \caption{Speculative actions with $k$-way parallel next calls}
+% \label{alg:speculative-k}
+% \begin{algorithmic}[1]
+% \Require Initial state $s_0$, horizon $T$, transition $f$, policy $\pi$, predictor $\hat g$, cache $\mathcal{C}$. We use $\bar{b}$ to denote pending response of the API call.
+% \For{$t = 0$ to $T-1$}
+%     \State \textbf{Policy:} $q_t \gets \pi_1(s_t)$
+%     \If{$q_t \in \mathcal{C}$} \Comment{Cache hit}
+%         \State $\bar{b}_t \gets \mathcal{C}[q_t]$
+%         \State $b_t \gets \text{await}(\bar{b}_t)$
+%         \Comment{Await pending action if not returned already}
+%         \State $a_t \gets \pi_2(b_t, s_t)$
+%         \State $s_{t+1} \gets f\big(s_t,a_t\big)$
+%         \State \textbf{continue}
+%     \EndIf
+%     \State \textbf{Actor:} Issue real request: $\bar{b}_t \leftsquigarrow \text{call\_API}(q_t)$
+%     \Comment{Return pending response, non-blocking}
+%     \State \textbf{Speculator:} 
+%     $\{\hat{\bar b}_t^{(i)}\}_{i=1}^k \gets \text{call\_API}(\hat g(s_t))$
+%     \Comment{Actor and speculator run in parallel}
+%     \For{$i=1$ to $k$} \Comment{One-step speculative rollout per guess}
+%        \State $\hat{b}_t^{(i)}\gets\text{await}\left(\hat{\bar b}_t^{(i)}\right)$
+%         \State $\hat{a}_t^{(i)}\gets\pi_2(s_t,\hat{b}_t^{(i)})$
+%         \State $\hat s_{t+1}^{(i)} \gets f\big(s_t, \hat a_t^{(i)}\big)$
+%         \State $\hat{q}_{t+1}^{(i)} \gets \pi(\hat s_{t+1}^{(i)})$
+%         \State Issue real request: $\bar{\hat{b}}_{t+1}^{(i)} \leftsquigarrow \text{call\_API}\big(\hat{q}_{t+1}^{(i)}\big)$
+%         \Comment{Return pending action, hence non-blocking}
+%         \State \hspace{73pt}  $\mathcal{C}[(\hat{q}_{t+1}^{(i)})] \gets \bar{\hat{b}}_{t+1}^{(i)}$
+%         \Comment{Cache speculative pending actions}
+%     \EndFor
+%     \State \textbf{Wait for response $b_t$ from Actor:} $b_t\gets \text{await}(\bar{b}_t)$
+%     \State $a_t\gets\pi_2(b_t,s_t)$
+%     \State $s_{t+1} \gets f\big(s_t,a_t\big)$
+% \EndFor
+% \end{algorithmic}
+% \end{algorithm}
+
+
+The resulting speedup relies on two key assumptions:  
+
+% \begin{assumption}
+% \label{assum:guessing-accuracy}
+% The speculative model is able to guess $(h_{t+1}, q_{t+1})$ with non-zero probability.
+% \end{assumption}
+
+\begin{assumption}[Speculation accuracy]\label{assum:guessing-accuracy}
+The speculative model $\hat g$ guesses the current-step response $a_t$ accurately enough that
+the implied next call $(h_{t+1},q_{t+1})=\pi(f(s_t,\hat a_t))$ matches the true next call with probability $p>0$.
+\end{assumption}
+
+
+As shown later, this often holds in practice because API responses are typically predictable.  
+
+\begin{assumption}[Concurrent, reversible pre-launch]\label{assum:concurent-API}
+Multiple API calls can be launched concurrently, and pre-launched calls that do not correspond to
+the realized trajectory have no externally visible side effects (or can be rolled back).
+\end{assumption}
+
+
+In practice, this assumption is satisfied under modest traffic for many external APIs (e.g., web search, OpenAI LLM queries, email lookups). For self-hosted LLMs, concurrent calls also incur only minimal additional cost due to continuous batching.  
+
+We can then establish the following result (with proof deferred to the Appendix~\ref{app:proof}).  
+
+
+\begin{proposition}
+\label{thm:improvement}
+Under Assumptions \ref{assum:guessing-accuracy}--\ref{assum:concurent-API}, suppose at each step
+the speculative branch implies the \emph{correct next call} $(h_{t+1},q_{t+1})$ with probability $p$, independently across $t\in[1,T-1]$. Let the latency of $\hat{g}$ be $\mathrm{Exp}(\alpha)$ and the latency of the actual API call be $\mathrm{Exp}(\beta)$ with $\beta < \alpha$. All latencies and guesses occur independently. Assume the transition $f$ and API parameter construction $\pi$ are negligible. Then the ratio between the expected runtime of \cref{alg:speculative-k}, denoted $\E[T_{\mathrm{s}}]$, and the expected runtime of sequential execution, $\E[T_{\mathrm{seq}}]$, is
+{\small\begin{align*}
+    \frac{E[T_{\mathrm{s}}]}{E[T_{\mathrm{seq}}]}
+    \;=\;
+    1 - \frac{1}{T}\frac{\alpha}{\alpha+\beta}\left[\frac{(T-1)p(k)}{1+p(k)}+\frac{p(k)^2}{(1+p(k))^2} - \frac{p(k)^2}{(1+p(k))^2}(-p(k))^{T-1}\right]\xrightarrow{\;\;T\to\infty\;\;}
+    1-\frac{p(k)}{1+p(k)}\cdot\frac{\alpha}{\alpha+\beta}
+\end{align*}}
+where $p(k) = 1- (1-p)^k$ denotes the probability of at least one of the $k$ speculations hit.
+\end{proposition}
+\cref{thm:improvement} suggests the end-to-end latency reduction has an upper bound of 50\%, occurring when $p=1$ and $\alpha=\infty$.This can be further improved by the multi-step extension below.  
+
+\paragraph{Extension} \cref{alg:speculative-k} is only a simple demonstration of the idea. For example, one can naturally extend \cref{alg:speculative-k} to \emph{multi-step speculation}, where the Speculator predicts not only the next, but $s$ steps ahead. This yields a tree structure with deeper rollouts. This can be further combined with \emph{adaptive speculation}: instead of generating $k$ guesses for $a_t$ uniformly, the Speculator also estimates confidence for each guess (e.g., via prompting LLMs or uncertainty-quantification methods), this is explored in Section\ref{sec:cost-latency}. The most promising branches can then be expanded in a beam-search–like manner. Together, these ideas highlight the richness of speculative actions. Despite \cref{alg:speculative-k}'s simplicity, the results from the four use cases in the following sections are already highly promising.
+
+% We defer a detailed discussion to the Appendix,
+
+\paragraph{Side effects and safety}
+Speculation executes a hypothesized next action $\hat a_{t+1}$ that may be wrong, so safety requires the ability to simulate first and then commit or roll back. In domains like chess, rollback is trivial; in others, overwrite is easy (e.g., OS tuning). But many systems involve irreversible or externally visible effects (e.g., deleting records, placing orders), where naive speculation is harmful. Thus, speculation must be limited to cases where mispredictions are reversible, via forking, snapshot restoration, or roll-forward repair (e.g., refund/replace).

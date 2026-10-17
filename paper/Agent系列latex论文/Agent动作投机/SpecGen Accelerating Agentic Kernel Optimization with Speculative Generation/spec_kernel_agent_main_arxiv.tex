@@ -1,0 +1,165 @@
+% \documentclass[sigplan,10pt, anonymous,review]{acmart} % anonymous: remove author names and affiliations
+\documentclass[sigplan,10pt]{acmart}
+
+\usepackage{subcaption}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{pifont}
+\usepackage{makecell}
+\usepackage{threeparttable}
+
+\setcopyright{none}
+\settopmatter{printacmref=false}
+
+\AtBeginDocument{%
+  \providecommand\BibTeX{{%
+    Bib\TeX}}}
+
+\acmISBN{}
+\acmDOI{}
+\acmYear{}
+\copyrightyear{}
+\acmPrice{}
+
+\newcommand{\sysname}{SpecGen}
+
+\renewcommand\footnotetextcopyrightpermission[1]{}
+\pagestyle{plain}
+\settopmatter{printfolios=true}
+
+\renewcommand\footnotetextcopyrightpermission[1]{}
+% Optional: Remove the ACM reference between the abstract and the main text.
+\settopmatter{printfolios=true,printacmref=false}
+
+% ==== 去掉所有页眉文字（保留页码与 review 行号） ====
+% 必须用 \AtBeginDocument 包裹，才能覆盖 acmart 自身在 \AtBeginDocument 中的定义
+\makeatletter
+\AtBeginDocument{%
+\fancypagestyle{standardpagestyle}{%
+  \fancyhf{}%
+  \renewcommand{\headrulewidth}{\z@}%
+  \renewcommand{\footrulewidth}{\z@}%
+  \fancyfoot[C]{\if@ACM@printfolios\footnotesize\thepage\fi}% 保留页码
+  \fancyhead[LE]{\ACM@linecountL}% 仅 review 行号
+  \fancyhead[LO]{\ACM@linecountL}%
+  \fancyhead[RE]{\ACM@linecountR}%
+  \fancyhead[RO]{\ACM@linecountR}%
+}%
+\pagestyle{standardpagestyle}%
+}
+
+\makeatother
+
+\begin{document}
+
+\title[SpecGen: Accelerating Agentic Kernel Optimization with Speculative Generation]{%
+  {\fontsize{18}{22}\selectfont SpecGen: Accelerating Agentic Kernel Optimization with Speculative Generation}%
+}
+
+\author{Jihu Guo}
+\authornote{These authors contributed equally to this research.}
+\email{24110240025@m.fudan.edu.cn}
+\affiliation{%
+  \institution{Fudan University \& Shanghai AI Lab}
+  \country{China}
+}
+
+\author{Sitian Lu}
+\authornotemark[1]
+\email{sitianlu@sjtu.edu.cn}
+\affiliation{%
+  \institution{Shanghai Jiao Tong University \& Shanghai AI Lab}
+  \country{China}
+}
+
+\author{Tenghui Ma}
+\email{24110240061@m.fudan.edu.cn}
+\affiliation{%
+  \institution{Fudan University \& Shanghai AI Lab}
+  \country{China}
+}
+
+\author{Wei Gao}
+\authornote{Corresponding author.}
+\email{csgaowei@ust.hk}
+\affiliation{%
+  \institution{Hong Kong University of Science and Technology}
+  \country{China}
+}
+
+\author{Zhisheng Ye}
+\email{yezhisheng@pku.edu.cn}
+\affiliation{%
+  \institution{Independent Researcher}
+  \country{China}
+}
+
+\author{Xingcheng Zhang}
+\email{zhangxingcheng@pjlab.org.cn}
+\affiliation{%
+  \institution{Shanghai AI Lab}
+  \country{China}
+}
+
+\author{Dahua Lin}
+\email{dhlin@ie.cuhk.edu.hk}
+\affiliation{%
+  \institution{The Chinese University of Hong Kong \& Sensetime Research}
+  \country{China}
+}
+
+\begin{abstract}
+
+Agentic kernel optimization automates manual GPU kernel tuning via
+iterative generation, validation, and profiling with reasoning LLMs, casting the optimization task as
+feedback-guided search. However,
+our workload characterization reveals three system-level inefficiencies that limit search efficiency: 
+(1) long generation latency due to LLM reasoning,
+(2) insufficient profiling feedback, and
+(3) underutilized validation/profiling resources.
+Our key insight is that the ongoing reasoning generation exposes a window for
+producing additional candidate kernels before it completes, allowing the system
+to terminate reasoning early once a satisfactory kernel appears.
+
+We present \sysname{}, an agentic kernel optimization system with \emph{speculative generation}.
+First, \sysname{} forks 
+non-reasoning generations at well-chosen trigger points in the
+reasoning trace to yield kernels, increasing the candidate kernel count per iteration. 
+These kernels are validated and profiled in parallel with the
+ongoing reasoning, increasing
+profiling feedback, and keeping resources busy during generation.
+When a kernel meets the termination criterion, \sysname{} terminates the reasoning
+generation early to reduce the generation latency.
+Second, \sysname{} dynamically reallocates validation and profiling GPU pools based
+on the arrival rate and prioritizes requests to reduce profiling feedback latency 
+under bursty speculative generation load. 
+Furthermore, \sysname{} utilizes spare memory of the validation/profiling GPUs as remote 
+KV cache storage to eliminate prefix recomputation of speculative generations under 
+limited memory budget.
+Experiments with two reasoning LLMs on H200 show that
+\sysname{} reduces 1.68--1.82$\times$ end-to-end time over three baseline
+systems, while producing 1.58--1.98$\times$ profiling feedback, increasing
+resource utilization from 4.2--17.6\% to 88.2--96.1\%, and improving 1.24--1.91$\times$ kernel 
+speedup under a fixed time and token budget.
+
+\end{abstract}
+
+\maketitle
+
+\input{sections/1_intro}
+\input{sections/2_bg}
+\input{sections/3_mot}
+\input{sections/3b_challenges}
+\input{sections/4_overview}
+\input{sections/5_method}
+\input{sections/6_eval}
+\input{sections/7_related}
+\input{sections/8_conc}
+
+\bibliographystyle{plain}
+\bibliography{refs}
+
+\end{document}
+\endinput
+%%
+%% End of file `sample-sigconf.tex'.

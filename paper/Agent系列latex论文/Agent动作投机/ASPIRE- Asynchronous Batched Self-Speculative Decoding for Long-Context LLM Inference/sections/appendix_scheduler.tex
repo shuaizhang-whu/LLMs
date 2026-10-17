@@ -1,0 +1,31 @@
+\section{Scheduler Algorithm}
+\label{appendix:scheduler}
+Algorithm~\ref{alg:scheduler} summarizes the per-request, per-step scheduling decision described in Section~\ref{section:speculation_scheduler}. The cost-model timings $T_i^{\mathrm{draft}}, T_i^{\mathrm{verify}}$ are
+computed from the batch-aware step-time model of
+Section~\ref{section:speculation_scheduler}, with coefficients
+$\beta_{\mathrm{model}}, \beta_{\mathrm{mlp}}, \beta_{\mathrm{attn}}$ fitted
+to runtime traces from sample generations.
+
+\begin{algorithm}[h]
+\caption{Per-request, per-step scheduling decision in ASPIRE.}
+\label{alg:scheduler}
+\begin{algorithmic}[1]
+\REQUIRE draft length $d_i$, sparse context $\mathcal{S}_i$, full context length $\ell_i$, smoothed acceptance rate $\alpha_i$, max draft length $d_{\max}$, init threshold $\gamma_{\mathrm{init}}$, smoothing factor $\omega$
+\ENSURE action $\in \{\textsc{Draft}, \textsc{Verify}\}$
+\IF{$d_i \ge d_{\max}$}
+\STATE \textbf{return} \textsc{Verify}
+\ENDIF
+\IF{no verification outcome observed yet \textbf{and} $d_i < \gamma_{\mathrm{init}}$}
+\STATE \textbf{return} \textsc{Draft}
+\ENDIF
+\STATE Compute $T_i^{\mathrm{draft}}, T_i^{\mathrm{verify}}$ from the batch-aware cost model
+\STATE $c_i \gets T_i^{\mathrm{draft}} / T_i^{\mathrm{verify}}$
+\STATE $\gamma_i \gets \arg\max_{\gamma \in \{0,\dots,d_{\max}\}} \dfrac{(1-\alpha_i^{\gamma+1})/(1-\alpha_i)}{1 + c_i \gamma}$
+\IF{$d_i \ge \gamma_i$}
+\STATE \textbf{return} \textsc{Verify}
+\ELSE
+\STATE \textbf{return} \textsc{Draft}
+\ENDIF
+\end{algorithmic}
+\textit{After each Verify step, update $\alpha_i \gets \omega\,\alpha_i + (1-\omega)\,\hat{\alpha}_i$ from observed acceptances, where $\hat{\alpha}_i = a_i / \min(a_i+1, d_i)$.}
+\end{algorithm}

@@ -1,0 +1,79 @@
+\section{Background \& Preliminaries}
+\label{sec:background}
+
+\subsection{The Serial Tool-Wait Bottleneck}
+\label{sec:bottleneck}
+
+The dominant execution model for LLM agents follows the ReAct
+loop~\citep{yao_react_2023}: the model reasons (Thought), emits a structured tool
+invocation (Action), waits for the external service to return a result (Observation),
+and then resumes reasoning conditioned on that result.
+This Thought--Action--Observation cycle enforces a strict serial dependency:
+\[
+[\text{(Re)prefill}] \;\to\; [\text{Decode}] \;\to\; [\text{Tool wait}] \;\to\; \cdots
+\]
+Each turn (re)prefills the context (the user prompt on the first turn, the appended tool
+result thereafter), decodes the reasoning and tool call, then stalls on the tool wait.
+The tool call cannot be dispatched until decoding completes; the next decode cannot begin
+until the tool result arrives and is (re)prefilled into the context window.
+This creates a structural pipeline stall regardless of how fast individual components are.
+
+\parabf{Tool latency dominates agent wall time.}
+Figure~\ref{fig:ttool_dist} shows that tool execution consumes a substantial share of
+end-to-end agent latency across three workloads: 16\% on tau2-bench (enterprise database
+APIs with 2\,s simulated floor), 19\% on GAIA (real web search APIs), and 37\% on
+BrowseComp (web search + page browse).
+On BrowseComp, the distribution is heavily right-skewed: median tool latency is 1.19\,s
+but $P_{95}$ reaches 70\,s, meaning tail-latency optimization requires addressing tool
+stalls, not just model serving.
+
+\parabf{Why existing solutions fall short.}
+Token-level speculative decoding~\citep{leviathan_fast_2023,li_eagle_2024,cai_medusa_2024}
+reduces generation latency but does not dispatch external tools earlier.
+Parallel tool calling (e.g., OpenAI function calls) helps only when the model can identify
+independent tools upfront; empirically, only 15--25\% of tool calls in GAIA and SWE-bench~\citep{jimenez_swebench_2024}
+are parallelizable with their predecessor.
+Workflow optimizers~\citep{orion,stojkovic2023specfaas,fu2024serverlessllm} prewarm known
+execution graphs, but agent tool calls are generated \emph{online}: there is no static
+graph to prefetch.
+Recent agent-speculation systems~\citep{ye_speculative_2026,zhong_dualspec_2026,sui_act_2026}
+move closer to execution-level overlap but require separate predictors, verifier policies,
+or historical traces.
+None speculates from the currently running model alone.
+
+\subsection{Cost Model for Speculative Overlap}
+\label{sec:eq1}
+
+If we could predict the next tool call before the model finishes generating it, we could
+dispatch the tool speculatively and overlap its execution with ongoing model decode.
+The realized speedup depends on four measurable parameters:
+\begin{itemize}
+  \item $\alpha$: the fraction of tool-call \emph{turns} where speculation is accepted
+        (gate rate). $\alpha$ is always measured per turn, not per dispatched probe; a
+        retrying gate may issue several probes within one turn.
+  \item $\toverlap$: mean realized time overlap per accepted turn (how much tool latency
+        is hidden behind decode).
+  \item $\Tbasestar$: the realized main-stream decode cost on the speculative path. It
+        equals the baseline $\Tbase$ unless prefix recovery is active, which lowers it by
+        letting the main stream skip re-decoding the verified tool-call tokens it recovers
+        from the rejected probe on a miss.
+  \item $\Toh$: per-turn overhead from probe computation and wasted speculative execution
+        on rejected turns.
+\end{itemize}
+
+\noindent The resulting latency-ratio formula (full derivation in Appendix~\ref{app:eq1}):
+\begin{equation}
+  \boxed{\mathrm{Ratio} = \frac{\Tbase}{\Tbasestar - \alpha\cdot\toverlap + \Toh}}
+  \label{eq:eq1}
+\end{equation}
+
+\noindent Speculation improves latency when $\mathrm{Ratio} \geq 1$, which approximately
+requires $\alpha\cdot\toverlap \geq \Toh$ (exact form in Appendix~\ref{app:eq1}): the time
+saved by overlapping tool execution on accepted turns must exceed the overhead incurred
+across all turns.
+The upper bound is set by the tool-time fraction $\ftool$: with perfect prediction
+($\alpha=1$, $\Toh=0$), $\mathrm{Ratio} = 1/(1-\ftool)$.
+For BrowseComp ($\ftool=0.366$), this ceiling is $1.58\times$.
+
+The next section establishes empirically that these parameters are achievable: $\alpha$
+is high, $\Toh$ is low, and even rejected probes contribute via prefix recovery.

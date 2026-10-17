@@ -1,0 +1,63 @@
+\section{Pseudo Code of Block Partitioning}
+Algorithm~\ref{alg:extract_and_group} illustrates the block partitioning process and outputs a grouping map $G$, where each key corresponds to an ancestor node ID in the XML tree, and the associated value is a list of UI element indices that can be grouped together. Using these indices, we partition all the UI elements into $k = |G|$ UI blocks, denoted as $B = [b_1, b_2, ..., b_k]$.
+
+\begin{algorithm}[H]
+\caption{Layout-aware Block Partitioning}
+\label{alg:extract_and_group}
+
+\KwIn{Root element $e$ of an XML tree}
+\KwOut{Grouping map $G$ from ancestor node ID to a list of important nodes' IDs}
+
+\SetKwFunction{FExtract}{extract\_ancestor\_paths}
+\SetKwFunction{FGroup}{group}
+\SetKwProg{Fn}{Function}{:}{}
+\BlankLine
+\Fn{\FExtract{$e$, $A$, $M$}}{
+    Append $e.index$ to $A$\;
+
+    \If{$e$ is interactable and semantically meaningful}{
+        $M[e.index] \gets A[:-1]$\;
+    }
+
+    \ForEach{child $c$ \textbf{in} $e.children$}{
+        \FExtract{$c$, $A$, $M$}\;
+    }
+
+    Remove the last element from $A$\;
+}
+\BlankLine
+\Fn{\FGroup{$M$}}{
+    $L \gets$ maximum length of any value in $M$\;
+
+    \For{$i \gets 0$ \KwTo $L - 1$}{
+        $G \gets$ \{\}\;
+
+        \ForEach{$(node, path)$ \textbf{in} $M$}{
+            \eIf{$i < |path|$}{
+                $g \gets path[i]$\;
+            }{
+                $g \gets path[-1]$\;
+            }
+            Append $node$ to $G[g]$\;
+        }
+
+        \If{$|G| \ge 3$}{
+            \Return{$G$}
+        }
+    }
+
+    \Return{$G$}
+}
+\BlankLine
+\textbf{Main:}
+
+$A \gets [\ ]$ \tcp*{List to store current ancestor path}
+
+$M \gets \{\}$ \tcp*{Map from important node to its ancestor path}
+
+\FExtract{$e$, $A$, $M$}\;
+
+$G \gets \FGroup(M)$\;
+
+\Return{$G$}
+\end{algorithm}

@@ -1,0 +1,177 @@
+diff --git a/spork_core/qwen.py b/spork_core/qwen.py
+index 6829ff5..4588fe2 100644
+--- a/spork_core/qwen.py
++++ b/spork_core/qwen.py
+@@ -59,11 +59,21 @@ def normalize_args(args: Any) -> dict:
+ 
+ 
+ def parse_baseline_tool_call(text: str) -> dict | None:
+-    m = TOOLCALL_RE.search(text or "")
+-    if not m:
+-        return None
++    text = text or ""
++    m = TOOLCALL_RE.search(text)
++    if m:
++        body = m.group(1)
++    else:
++        # vLLM may stop on the model's special tool-call token and omit the
++        # literal closing string. A complete JSON body is still a valid call.
++        marker_end = text.find("<tool_call>")
++        if marker_end < 0:
++            return None
++        body = _extract_json_object(text[marker_end + len("<tool_call>"):])
++        if body is None:
++            return None
+     try:
+-        obj = json.loads(m.group(1))
++        obj = json.loads(body)
+     except json.JSONDecodeError:
+         return None
+     if isinstance(obj, dict) and obj.get("name"):
+@@ -262,30 +272,41 @@ def span_min_prob(logprobs: dict, *, skip_first: bool = True) -> float | None:
+ 
+ 
+ def token_split(text: str, tokenizer: Any) -> dict:
++    """Partition returned text without inventing a stripped stop token.
++
++    ``cot_tokens`` is the legacy name for the pre-tool span (or all text on a
++    no-tool turn), not reasoning alone. Without a closing tag the tool span
++    extends to the end of returned text. JSON completeness is separate, so a
++    truncated body is not mistaken for a complete call. Counts are obtained by
++    re-tokenizing saved text, not from server-side generation usage.
++    """
+     ids = tokenizer.encode(text or "", add_special_tokens=False)
+     total = len(ids)
+     try:
+         open_idx = ids.index(TOOL_CALL_OPEN_TOKEN_ID)
+-        close_idx = ids.index(TOOL_CALL_CLOSE_TOKEN_ID)
+     except ValueError:
+         return {
+             "cot_tokens": total,
+             "tool_call_tokens": 0,
+             "post_tool_call_tokens": 0,
+             "total_decode_tokens": total,
++            "tool_call_closed": False,
++            "tool_call_parse_ok": False,
+         }
+-    if close_idx < open_idx:
+-        return {
+-            "cot_tokens": total,
+-            "tool_call_tokens": 0,
+-            "post_tool_call_tokens": 0,
+-            "total_decode_tokens": total,
+-        }
++    try:
++        close_idx = ids.index(TOOL_CALL_CLOSE_TOKEN_ID, open_idx + 1)
++        span_end = close_idx + 1
++        closed = True
++    except ValueError:
++        span_end = total
++        closed = False
+     return {
+         "cot_tokens": open_idx,
+-        "tool_call_tokens": close_idx - open_idx + 1,
+-        "post_tool_call_tokens": total - close_idx - 1,
++        "tool_call_tokens": span_end - open_idx,
++        "post_tool_call_tokens": total - span_end,
+         "total_decode_tokens": total,
++        "tool_call_closed": closed,
++        "tool_call_parse_ok": parse_baseline_tool_call(text) is not None,
+     }
+ 
+ 
+diff --git a/spork_core/vllm_client.py b/spork_core/vllm_client.py
+index f55355e..71b45ea 100644
+--- a/spork_core/vllm_client.py
++++ b/spork_core/vllm_client.py
+@@ -86,17 +86,22 @@ class VllmClient:
+         stream: bool = False,
+         seed: int = 42,
+     ) -> dict:
++        # NOTE: keep the payload conservative for vLLM compatibility. Some server
++        # builds reject the OpenAI-specific ``include_stop_str_in_output`` field or
++        # do not accept ``stop_token_ids`` unless the request is intentionally using
++        # the model's special tool-call boundary token. Only add the token-based stop
++        # when that exact trigger is present; otherwise fall back to plain string
++        # stopping only.
+         body: dict[str, Any] = {
+             "model": self.model,
+             "prompt": prompt,
+             "temperature": temperature,
+             "max_tokens": max_tokens,
+             "stop": stop or [],
+-            "include_stop_str_in_output": True,
+             "stream": stream,
+             "seed": seed,
+         }
+-        if stop and any("<tool_call>" in s for s in stop):
++        if stop and any("<tool_call>" in s for s in stop) and self.main_stop_token_ids:
+             body["stop_token_ids"] = list(self.main_stop_token_ids)
+         if logprobs is not None:
+             body["logprobs"] = logprobs
+@@ -240,7 +245,6 @@ class VllmClient:
+             "temperature": temperature,
+             "max_tokens": max_tokens,
+             "stop": stop or [],
+-            "include_stop_str_in_output": True,
+             "seed": seed,
+             "stream": stream,
+             "logprobs": bool(logprobs),
+@@ -251,6 +255,8 @@ class VllmClient:
+             body["tools"] = tools
+             if self.tool_choice is not None:
+                 body["tool_choice"] = self.tool_choice
++        if stop and any("<tool_call>" in s for s in stop) and self.main_stop_token_ids:
++            body["stop_token_ids"] = list(self.main_stop_token_ids)
+         # vLLM continue_final_message requires add_generation_prompt=False.
+         if continue_final_message:
+             body["continue_final_message"] = True
+diff --git a/spork_unified_eval.py b/spork_unified_eval.py
+index 87bef58..78af5bb 100644
+--- a/spork_unified_eval.py
++++ b/spork_unified_eval.py
+@@ -62,6 +62,25 @@ def log(msg):
+     print(f"[{time.strftime('%H:%M:%S')}] {msg}", flush=True)
+ 
+ 
++def log_progress(config: str, completed: int, total: int, started_at: float) -> None:
++    """Print an in-place task progress bar with elapsed time and ETA."""
++    total = max(1, total)
++    completed = min(completed, total)
++    width = 28
++    filled = int(width * completed / total)
++    bar = "=" * filled + ">" + " " * max(0, width - filled - 1)
++    elapsed = max(0.0, time.time() - started_at)
++    rate = completed / elapsed if completed else 0.0
++    eta = (total - completed) / rate if rate else 0.0
++    print(
++        f"\r[{time.strftime('%H:%M:%S')}] {config:<8} [{bar}] "
++        f"{completed:>3}/{total:<3} ({completed / total:>6.1%}) "
++        f"elapsed={elapsed / 60:>5.1f}m ETA={eta / 60:>5.1f}m",
++        end="",
++        flush=True,
++    )
++
++
+ def write_json(path: Path, obj):
+     path.parent.mkdir(parents=True, exist_ok=True)
+     path.write_text(json.dumps(obj, indent=2, ensure_ascii=False, default=str))
+@@ -709,6 +728,7 @@ async def run_benchmark(args):
+         config_key = config
+         log(f"=== Config: {config_key} ===")
+         config_results = []
++        config_started_at = time.time()
+ 
+         for task_idx, task in enumerate(tasks):
+             task_id = str(task.get("task_id", task.get("question", f"task_{task_idx}")))[:80]
+@@ -819,8 +839,10 @@ async def run_benchmark(args):
+             if args.benchmark == "tau2":
+                 safe_id = f"{task.get('domain', 'x')}_{safe_id}"
+             write_json(out_dir / config_key / f"{safe_id}.json", result_entry)
++            log_progress(config_key, task_idx + 1, len(tasks), config_started_at)
+ 
+         all_results[config_key] = config_results
++        print()
+         log(f"  Config {config_key} done: {len(config_results)} tasks")
+ 
+     # Write summary

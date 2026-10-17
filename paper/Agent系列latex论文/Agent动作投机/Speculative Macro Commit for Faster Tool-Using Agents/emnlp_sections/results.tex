@@ -1,0 +1,113 @@
+\subsection{Setup}
+\label{sec:setup}
+ 
+\textbf{Models and serving.}
+The authoritative actor is a quantized Qwen3.5-27B model, sized to fit on a single GPU; the speculative drafter is Qwen3.5-4B~\citep{qwen3.5}, and both use greedy decoding. 
+The sequential baseline runs only the actor on a single GPU. 
+The two speculative runtimes use three GPUs: the actor, an actor-class replica that serves speculative requests so they do not queue behind the authoritative request stream, and the drafter. The SA-only runtime (hereafter SA) and SMC share this serving configuration and differ only in whether the macro commit rule of Section~\ref{sec:commit} is enabled.
+ 
+\textbf{Benchmarks and metrics.}
+% We evaluate on two full tool-agent benchmarks. $\tau^2$ Telecom contains 2,285 tasks from the Telecom split of $\tau^2$-Bench~\citep{taubench-2024}; AppWorld
+% \texttt{test\_normal} contains 168 tasks across 56 scenarios~\citep{appworld-2024}.
+We evaluate on two full tool-agent benchmarks, $\tau^2$ Telecom~\citep{taubench-2024} and AppWorld~\citep{appworld-2024}.
+% Each task runs under a per-task step cap \texttt{max\_steps}.
+We use binary task accuracy for $\tau^2$ Telecom and task-goal completion (TGC) for AppWorld as performance metrics, and average per-task wall time as the latency metric.
+% with scenario-goal completion and other diagnostics reported where they clarify boundary behavior. Macro commits and skipped draft steps are reported as mechanism counters, not as success metrics.
+
+\subsection{Main Results}
+
+% Table~\ref{tab:main-results} reports the full-benchmark results on $\tau^2$ Telecom and AppWorld. 
+% We separate two effects. The first is the resource-for-latency effect of running speculative workers, measured by the gap between the sequential baseline and speculative-action-only execution (SA). 
+% The second is the equal-hardware effect of SMC, measured by the additional gap between SA and SMC under the same 3-GPU speculative setting.
+
+% Table~\ref{tab:main-results} reports full-benchmark results on $\tau^2$ Telecom and AppWorld. 
+% We separate two effects: the resource-for-latency effect of adding speculative workers, measured by the gap between the sequential baseline and the SA-only runtime (hereafter SA), and the equal-hardware effect of macro commit, measured by the additional gap between SA and SMC under the same 3-GPU
+% speculative setting.
+
+As shown in Table~\ref{tab:main-results} , on $\tau^2$ Telecom, SA reduces average latency from 27.60s to 25.03s per task, 9.31\% below the sequential baseline, and SMC further reduces it to 22.47s, 18.59\% below the baseline and 10.23\% below SA. 
+The paired outcomes are unchanged: SMC agrees with the sequential baseline on every task (2,274 correct and 11 incorrect under both runs), and relative to SA it fixes one task and regresses none. 
+On this benchmark, macro commit converts committed draft steps into latency savings without changing any task outcome.
+
+AppWorld shows the same direction in a harder regime. 
+SA preserves TGC while reducing latency by 40.37\% relative to the sequential baseline, and SMC reaches to 195.9s per task, 44.93\% below the baseline and 7.64\% below SA. 
+Unlike $\tau^2$-Bench, this additional speedup comes with a small TGC drop, from 70/168 to 68/168 tasks. 
+% We therefore treat AppWorld as a latency-quality boundary case rather than as a lossless acceleration result.
+
+\begin{table}[t]
+\centering
+\small
+\caption{Full benchmark results. Latency is average seconds per task; $\Delta$ is relative to the sequential baseline within each benchmark. $\tau^2$-Bench accuracy is binary task accuracy; AppWorld accuracy is TGC.}
+\label{tab:main-results}
+\begin{tabular}{llrrr}
+\toprule
+Benchmark & Run & Acc. & Lat. & $\Delta$(\%) \\
+\midrule
+\multicolumn{1}{l}{\textit{$\tau^2$ Telecom}}
+ & Baseline & 99.52 & 27.60 & -- \\
+ & SA & 99.47 & 25.03 & -9.31 \\
+ & \textbf{SMC} & \textbf{99.52} & \textbf{22.47} & \textbf{-18.59} \\
+\midrule
+\multicolumn{1}{l}{\textit{AppWorld}} 
+ & Baseline & 41.67 & 355.7 & -- \\
+ & SA & 41.67 & 212.1 & -40.37 \\
+ & \textbf{SMC} & 40.48 & \textbf{195.9} & \textbf{-44.93} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Analysis of the AppWorld Gain}
+The smaller AppWorld gain over SA is not explained by a lack of macro opportunities. 
+Table~\ref{tab:macro-coverage} reports skip density, defined as the number of skipped steps divided by total number of steps in the benchmark.
+On AppWorld, SMC commits at least one macro on 62.0\% of tasks and successfully skips 512 actor steps, yielding a skip density of 3.81\%, close to the 3.91\% observed on $\tau^2$ Telecom.
+This similarity indicates that, after normalizing for differences in dataset size and step budget, SMC commits a comparable amount of skipped work on both benchmarks.
+The two benchmarks therefore differ not in whether SMC finds reusable patterns, but in how reliably the saved work survives into end-to-end wall time.
+
+
+
+\begin{table}[t]
+\centering
+\small
+\caption{Macro-step coverage in the main benchmark runs. Skip density divides skipped steps by \texttt{tasks} $\times$ \texttt{max\_steps}.}
+\label{tab:macro-coverage}
+\begin{tabular}{lrrrr}
+\toprule
+Benchmark & Commit rate & Hits & Skipped & Skip density \\
+\midrule
+AppWorld & 62.0\% & 219 & 512 & 3.81\% \\
+$\tau^2$ Telecom & 86.2\% & 3,352 & 7,154 & 3.91\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+AppWorld is the harder case because task completion, retries, and the per-task step cap (Section~\ref{sec:setup}) all interact with latency. 
+An all-task average therefore mixes three effects: skipped draft steps on trajectories that proceed as before, trajectories whose outcome changes, and steps that consume budget without issuing a tool call.
+Table~\ref{tab:appworld-slices} controls for the latter two. 
+On the 143 tasks where SA and SMC reach the same correctness outcome, SMC reduces total wall time by 13.5\%, substantially more than the 7.64\% all-task gain. 
+On the 85 tasks where neither run emits a no-tool-call (NTC) step, the gain is 10.7\%. 
+This slice removes idle, recovery-heavy trajectories whose wasted steps inflate wall time and dilute the macro saving It does not hide a side effect of SMC, as SMC produces fewer such steps than SA (68 NTC steps over 31 tasks, versus 105 over 78 for SA), so macro commit reduces rather than induces idle recovery. 
+On comparable trajectories, macro commit thus converts skipped draft steps into latency reduction more effectively than the aggregate number suggests; the all-task figure is diluted by outcome shifts and by the idle trajectories isolated above.
+
+\begin{table}[t]
+\centering
+\small
+\caption{AppWorld controlled wall-time slices.}
+\label{tab:appworld-slices}
+\begin{tabular}{lrrr}
+\toprule
+Subset & SA & SMC & $\Delta$(\%) \\
+\midrule
+Same-acc. & 28,920s & 25,014s & -13.5 \\
+NTC-free & 16,375s & 14,625s & -10.7 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% Macro coverage further supports this interpretation. 
+% As shown in Table~\ref{tab:macro-coverage}, AppWorld still fires macros on 62.0\% of tasks and skips 512 suffix actions, with a skip budget close to that of $\tau^2$ Telecom. 
+% The difference between the two benchmarks is therefore not whether SMC finds reusable continuations, but whether those continuations remain stable enough for the saved work to appear as clean end-to-end speedup.
+
+
+% Together, these results delineate the boundary of the method. 
+% SMC is most effective when mined patterns are frequent, stable, and outcome preserving, as on $\tau^2$ Telecom. 
+% On AppWorld, macro opportunities remain frequent, but the environment is less stable: small trajectory changes can affect completion and correction behavior. 
+% Consistent with the guarded-approximation framing of Section~\ref{sec:commit}, AppWorld is evidence that SMC reduces latency on a harder agent benchmark, not evidence of lossless acceleration.

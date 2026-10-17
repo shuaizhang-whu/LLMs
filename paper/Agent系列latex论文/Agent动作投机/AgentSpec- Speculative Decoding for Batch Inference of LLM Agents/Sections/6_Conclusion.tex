@@ -1,0 +1,25 @@
+\section{Conclusion}
+\label{sec:conclusion}
+
+% In this paper, we presented \sysname, a SVD-based
+% LLM compression method. 
+% %
+% \sysname proposes a novel truncation-aware data whitening strategy to guide which singular values to be truncated with minimal compression loss. It also introduces a layer-wise closed-form model parameter update scheme to compensate for accuracy degradation under high compression ratios.
+% %
+% We have demonstrated the effectiveness of \sysname on 11 datasets and seven models from three LLM families at four scales and have shown its superiority over state-of-the-arts. We also show its effectiveness in further enhancing the performance of other LLM compression methods as well as KV cache reduction. 
+%consistently outperforms state-of-the-art SVD-based LLM compression methods. Moreover, we demonstrated its performance on integrating with other compression techniques and on reducing runtime memory by reducing KV cache size.
+In this paper, we presented \sysname, a speculative decoding algorithm tailored for batch inference of LLM agents.
+%
+\sysname introduces structure-isolated drafting to constrain speculation to semantically coherent segments of the agent workflow, achieving extremely low rejection rates. It also proposes redundancy-aware budget allocation to better exploit dynamically available token budgets using agent-level redundancy.
+%
+% We implement and evaluate \sysname in vLLM.
+Our experimental results demonstrate the superiority of \sysname over state-of-the-art baselines.
+%
+% We systematically analyzed why existing speculative decoding methods fail to scale to large batch sizes, and identified high rejection rates and token budget under-utilization as the two dominant bottlenecks.
+%
+% Extensive experiments on realistic code-generation agent workloads demonstrate that \sysname consistently outperforms state-of-the-art speculative decoding methods across a wide range of batch sizes, recovering stable and substantial throughput gains where existing methods collapse.
+
+\section*{Limitation} AgentSpec introduces a lightweight interface between the agent and serving system, which may require minor adaptation in practice. In addition, its structure-isolated drafting component benefits from explicit semantic block information. Although AgentSpec can operate without such metadata, its speedup may depend on the amount of repeated generation patterns available in the workload.
+
+\section*{Ethical Considerations}
+AgentSpec is a serving-time acceleration method for LLM-based agents. It does not modify model parameters, training data, or the generation objective, and therefore is not intended to change the output distribution or content policy of the underlying model. Existing safety mechanisms for autoregressive decoding, such as content moderation, tool-use control, and deployment restrictions, should remain applicable when AgentSpec is enabled. Improving inference efficiency may reduce the cost of deploying LLM agents at scale, which can benefit practical applications but may also lower the barrier for misuse, such as automated spam generation or unsafe tool-use workflows. We therefore encourage responsible deployment with appropriate safeguards, including rate limiting, permission control, and monitoring. AgentSpec requires only lightweight semantic structure metadata from the agent application; such metadata should describe workflow structure rather than private or sensitive user information. Our experiments use publicly available benchmarks and do not require collecting additional private user data.

@@ -98,12 +98,15 @@ class HistoryWrapper(gym.Wrapper):
     def reset(self, seed=None, return_info=False, options=None, idx=None):
         """重置 wrapper 链和两份导出轨迹。
 
-        已核验的参数传递风险：尽管该方法接收 ``seed``、``return_info``、
-        ``options`` 和 ``idx``，当前代码向内层调用时把它们全部硬编码为
-        ``None``/``False``。因此 runner 的 ``env.reset(idx=idx)`` 到这里后，
-        指定样本编号会丢失，HotPotQAWrapper 最终会随机选择样本。
+        ``idx``、随机种子和 Gym reset 选项必须原样传给内层 wrapper。旧实现
+        把这些值硬编码为 ``None``，导致日志目录编号和实际问题不一致。
         """
-        output = self.env.reset(seed=None, return_info=False, options=None, idx=None)
+        output = self.env.reset(
+            seed=seed,
+            return_info=return_info,
+            options=options,
+            idx=idx,
+        )
         self.normal_trajectory_dict = self.get_empty_traj_dict()
         self.sim_trajectory_dict = self.get_empty_traj_dict()
         return output
@@ -157,7 +160,8 @@ class HotPotQAWrapper(gym.Wrapper):
     def __init__(self, env, split):
         super().__init__(env)
         data_file = f"{DATA_DIR}/{HOTPOTQA_SPLIT_FILE[split]}"
-        self.data = json.load(open(data_file))
+        with open(data_file, encoding="utf-8") as handle:
+            self.data = json.load(handle)
         self.data = [(d['question'], d['answer']) for d in self.data]
         self.data_idx = 0
         self.split = split
@@ -165,9 +169,7 @@ class HotPotQAWrapper(gym.Wrapper):
     def reset(self, seed=None, return_info=False, options=None, idx=None):
         """重置环境并选择一个数据样本。
 
-        若 ``idx`` 能传到本层则使用指定样本，否则通过 NumPy 全局随机状态
-        抽样。当前外层 HistoryWrapper 会丢弃 idx，故 runner 的编号与实际
-        ``data_idx`` 可能不一致；episode 结束时应以 ``question_idx`` 为准。
+        若传入 ``idx`` 则严格使用指定样本，否则通过 NumPy 随机状态抽样。
         """
         self.env.reset(seed=seed, return_info=return_info, options=options)
         # 这次空 action 调用的异常会被吞掉，随后环境再次 reset；保留该流程
@@ -177,7 +179,11 @@ class HotPotQAWrapper(gym.Wrapper):
         except:
             pass
         self.env.reset(seed=seed, return_info=return_info, options=options)
-        self.data_idx = int(np.random.randint(len(self.data))) if idx is None else idx
+        self.data_idx = int(np.random.randint(len(self.data))) if idx is None else int(idx)
+        if not 0 <= self.data_idx < len(self.data):
+            raise IndexError(
+                f"HotPotQA sample index {self.data_idx} is outside [0, {len(self.data) - 1}]"
+            )
         observation = f"Question: {self.data[self.data_idx][0]}"
         info = self._get_info()
         return (observation, info) if return_info else observation
@@ -185,8 +191,10 @@ class HotPotQAWrapper(gym.Wrapper):
     def _get_info(self):
         """汇总 WikiEnv 状态与当前 HotPotQA 问题元数据。"""
         return {
-            "steps": self.steps,
-            "answer": self.answer,
+            # Gymnasium 1.x 不再通过 Wrapper.__getattr__ 隐式转发未知属性；
+            # 使用公开的 get_wrapper_attr 向内查找 WikiEnv 状态。
+            "steps": self.get_wrapper_attr("steps"),
+            "answer": self.get_wrapper_attr("answer"),
             "question": self.data[self.data_idx][0],
             "hotpot_split": self.split,
         }
@@ -260,8 +268,8 @@ class FeverWrapper(gym.Wrapper):
     def _get_info(self):
         """汇总 WikiEnv 状态与当前 FEVER claim 元数据。"""
         return {
-            "steps": self.steps,
-            "answer": self.answer,
+            "steps": self.get_wrapper_attr("steps"),
+            "answer": self.get_wrapper_attr("answer"),
             "question": self.data[self.data_idx][0],
             "fever_split": self.split,
         }

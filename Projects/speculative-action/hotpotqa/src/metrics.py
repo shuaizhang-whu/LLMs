@@ -7,6 +7,8 @@ Search 时间也只是轨迹中记录的 Search 步骤耗时；它们都不是�
 """
 
 import os
+import math
+import statistics
 
 from .utils import Utils
 
@@ -15,21 +17,21 @@ class Metrics:
     """计算单条轨迹指标，并在多个样本目录上进行等权聚合。"""
 
     @staticmethod
-    def get_action_metrics(normal_dict, sim_dict, k=None, sparse=False):
+    def get_action_metrics(normal_dict, sim_dict, k=None, sparse=False, skip_first=True):
         """按动作类型计算一条轨迹的平均命中率。
 
         参数：
             normal_dict: 含 ``actions`` 的真实轨迹字典。
             sim_dict: 含 ``actions`` 的模拟轨迹字典；每一步可以是字符串或候选列表。
-            k: 仅 ``k == 1`` 时只比较首个候选；其他值（包括 3 和 None）都会
-                检查候选列表中的全部动作，因此 Top-3 口径依赖输入列表本身只有
-                三项，而不是在此处切片得到前三项。
+            k: 正整数时严格只检查前 ``k`` 个候选；``None`` 保留旧指标文件所用的
+                “检查全部已保存候选”兼容口径。
             sparse: 为 True 时仅比较 Search/Lookup/Finish 等动作类型；为 False
                 时比较转为小写后的完整动作字符串（包括参数）。
+            skip_first: 为 True 时跳过没有前序投机机会的轨迹首步；为 False 时
+                输出包含首步的审计口径。
 
         返回：
-            ``general`` 以及各真实动作类型的平均命中率。索引 0 被固定跳过，
-            因而首步不参与本函数的任何准确率统计。
+            ``general`` 以及各真实动作类型的平均命中率。
         """
         normal_actions = normal_dict["actions"]
         sim_actions = sim_dict["actions"]
@@ -38,8 +40,7 @@ class Metrics:
 
         # zip 会以较短列表为准；这里不会主动检查两条轨迹长度是否一致。
         for idx, (na, sa) in enumerate(zip(normal_actions, sim_actions)):
-            if idx == 0:
-                # 仓库指标口径：无条件忽略轨迹的第一个动作。
+            if idx == 0 and skip_first:
                 continue
 
             score = Metrics._score_action_pair(na, sa, k, sparse)
@@ -60,24 +61,127 @@ class Metrics:
             return metric_dict
 
         for key in metric_dict:
-            metric_dict[key] /= count_dict[key]
+            if count_dict[key]:
+                metric_dict[key] /= count_dict[key]
         return metric_dict
 
     @staticmethod
     def _score_action_pair(na, sa, k, sparse):
         """给一个真实动作与一个预测值计分，返回 0 或 1。
 
-        预测值为列表时，Top-1 只看列表首项；其余模式执行“任一候选命中”。
+        预测值为列表时，正整数 ``k`` 严格截断；``k=None`` 检查全部候选。
         """
         if isinstance(sa, list):
             if not sa:
                 return 0
-            if k == 1:
-                return Metrics.compare_action(na, sa[0], sparse)
-            else:
-                return Metrics.compare_actions(na, sa, sparse)
+            candidates = sa if k is None else sa[:max(0, int(k))]
+            return Metrics.compare_actions(na, candidates, sparse)
         else:
             return Metrics.compare_action(na, sa, sparse)
+
+    @staticmethod
+    def get_action_metric_counts(
+        normal_dict,
+        sim_dict,
+        k,
+        sparse=False,
+        skip_first=True,
+        strict=True,
+    ):
+        """返回严格动作命中的分子和分母，供微平均与分类统计使用。"""
+        correct = {"general": 0, "Search": 0, "Lookup": 0, "Finish": 0}
+        total = {"general": 0, "Search": 0, "Lookup": 0, "Finish": 0}
+        normal_actions = normal_dict.get("actions", [])
+        sim_actions = sim_dict.get("actions", [])
+
+        for idx, (normal_action, candidates) in enumerate(zip(normal_actions, sim_actions)):
+            if idx == 0 and skip_first:
+                continue
+            if strict and not sparse:
+                candidate_list = candidates if isinstance(candidates, list) else [candidates]
+                candidate_list = candidate_list[:max(0, int(k))]
+                score = int(
+                    any(
+                        Metrics.compare_action_strict(normal_action, candidate)
+                        for candidate in candidate_list
+                    )
+                )
+            else:
+                score = Metrics._score_action_pair(normal_action, candidates, k, sparse)
+            action_name = Metrics.get_action_name(normal_action)
+            normalized_name = action_name.capitalize() if action_name else None
+            total["general"] += 1
+            correct["general"] += score
+            if normalized_name in total:
+                total[normalized_name] += 1
+                correct[normalized_name] += score
+        return {"correct": correct, "total": total}
+
+    @staticmethod
+    def summarize_action_predictions(normal_dict, sim_dict, top_k):
+        """同时生成论文兼容口径和包含首步的审计口径。"""
+        summary = {}
+        for label, skip_first in (("paper", True), ("all_steps", False)):
+            summary[label] = {}
+            for k in sorted({1, int(top_k)}):
+                counts = Metrics.get_action_metric_counts(
+                    normal_dict,
+                    sim_dict,
+                    k=k,
+                    sparse=False,
+                    skip_first=skip_first,
+                )
+                rates = {}
+                for action_name, denominator in counts["total"].items():
+                    rates[action_name] = (
+                        counts["correct"][action_name] / denominator
+                        if denominator
+                        else None
+                    )
+                summary[label][f"top{k}"] = {
+                    "rates": rates,
+                    **counts,
+                }
+        return summary
+
+    @staticmethod
+    def aggregate_prediction_summaries(sample_summaries, top_k):
+        """聚合逐样本命中率，输出宏平均、微平均和样本标准误。"""
+        aggregate = {"n_samples": len(sample_summaries)}
+        for scope in ("paper", "all_steps"):
+            aggregate[scope] = {}
+            for k in sorted({1, int(top_k)}):
+                key = f"top{k}"
+                aggregate[scope][key] = {}
+                for action_name in ("general", "Search", "Lookup", "Finish"):
+                    sample_rates = [
+                        item[scope][key]["rates"][action_name]
+                        for item in sample_summaries
+                        if item[scope][key]["rates"][action_name] is not None
+                    ]
+                    correct = sum(
+                        item[scope][key]["correct"][action_name]
+                        for item in sample_summaries
+                    )
+                    total = sum(
+                        item[scope][key]["total"][action_name]
+                        for item in sample_summaries
+                    )
+                    macro = statistics.fmean(sample_rates) if sample_rates else None
+                    sem = (
+                        statistics.stdev(sample_rates) / math.sqrt(len(sample_rates))
+                        if len(sample_rates) > 1
+                        else 0.0 if sample_rates else None
+                    )
+                    aggregate[scope][key][action_name] = {
+                        "macro": macro,
+                        "micro": correct / total if total else None,
+                        "sem": sem,
+                        "correct": correct,
+                        "total": total,
+                        "n_samples_with_action": len(sample_rates),
+                    }
+        return aggregate
 
     @staticmethod
     def get_actions_metric(dict1, dict2, sparse=False):
@@ -114,6 +218,18 @@ class Metrics:
             return 1 if Metrics.get_action_name(action1) == Metrics.get_action_name(action2) else 0
         else:
             return 1 if action1 == action2 else 0
+
+    @staticmethod
+    def compare_action_strict(action1, action2):
+        """严格比较完整动作，只容忍动作类型首字母的格式大小写差异。"""
+        def canonical(action):
+            action = action.strip()
+            bracket = action.find("[")
+            if bracket < 0:
+                return action
+            return action[:bracket].lower() + action[bracket:]
+
+        return int(canonical(action1) == canonical(action2))
 
     @staticmethod
     def get_action_name(full_action):

@@ -1,0 +1,121 @@
+% !TEX root = ../spec_kernel_agent_main.tex
+\section{Introduction}
+\label{sec:intro}
+
+GPU kernels underpin every layer of modern LLM training and inference.
+Even a few percent improvement to attention, GEMM, or normalization kernels translates directly into reduced infrastructure cost~\cite{kevin32b,cudaagent,cudaforge}.
+However, kernel optimization is time and labor intensive, costing experts weeks of tuning kernel performance on specific GPUs~\cite{flashattention1,flashattention2,flashattention3}.
+Agentic kernel optimization automates the manual kernel tuning procedure with reasoning LLMs. 
+It casts the kernel optimization process as a feedback-guided iterative search over a large kernel design space~\cite{K-Search,Kernel-Smith,AlphaEvolve,cudaforge}.
+Each iteration performs three phases in sequence:
+\textbf{(1)} \emph{generation}: calling reasoning LLMs to generate candidate kernels;
+\textbf{(2)} \emph{validation}: compiling and running these kernels against a reference kernel to check correctness and a first-cut speedup;
+and \textbf{(3)} \emph{profiling}: measuring detailed performance metrics and adding them to the LLM's context to inform subsequent generations.
+The objective of agentic kernel optimization is to \emph{maximize kernel performance under a fixed time or token budget}.
+
+However, the large kernel design space makes this search time- and resource-costly, with
+a kernel optimization task often taking tens of hours or even days~\cite{cudaforge,AlphaEvolve,kernelagent2025}.
+To understand where the budget goes, we conduct a comprehensive workload characterization (see \S\ref{sec:mot}) of agentic kernel optimization across
+10 \texttt{KernelBench}~\cite{kernelbench} tasks on an H200 testbed with two state-of-the-art open-source reasoning LLMs, 
+GLM-5.1~\cite{glm5} and DeepSeek-V4-Pro~\cite{deepseekv4}.
+Our workload characterization identifies three system-level inefficiencies that limit search efficiency: 
+\textbf{(C1)} long generation latency: the generation phase accounts for 70--99\% of iteration time, directly capping the iteration count under fixed time budget;
+\textbf{(C2)} insufficient profiling feedback: about 59--64\% of iterations consume GPU hours without producing profiling feedback to drive the next iteration's optimization; 
+and \textbf{(C3)} underutilized validation and profiling resources: validation
+and profiling GPUs achieve only 4.2--17.6\% utilization.
+They remain idle during the generation phase because candidate kernels emerge
+only after generation completes, and many candidates fail validation before profiling.
+
+To address these inefficiencies, prior systems adopt different harness engineering
+strategies, such as best-of-$K$~\cite{cudaforge,K-Search}, multi-agent~\cite{kernelagent2025}, 
+and evolutionary algorithms~\cite{AlphaEvolve,Kernel-Smith}.
+Despite their strategies, these systems share a common pattern. 
+They dispatch multiple reasoning generations per iteration to increase the
+candidate count and produce more profiling feedback, but this roughly multiplies
+token cost by $K$. 
+A strawman alternative is to dispatch non-reasoning generations to reduce token cost. 
+However, non-reasoning generations rarely produce valid or performant kernels (see Table~\ref{tab:nonreasoning_speedups_w_wo_shared_prefix_cache}).
+Moreover, prior systems 
+do not reduce generation latency since candidate kernels become actionable only after the 
+generation finishes, and validation/profiling resources remain idle during the reasoning 
+process of the generation phase.
+
+Our key insight is that the reasoning process exposes a window for producing
+additional candidate kernels before the reasoning generation completes
+(\S\ref{subsec:design_insight}).
+Since non-reasoning generations are faster than reasoning generations, the system can dispatch
+multiple non-reasoning generations in parallel with the ongoing reasoning generation to 
+increase the candidate kernel count.
+To improve the kernel performance of non-reasoning generations, we condition non-reasoning
+generations on the prefix of the reasoning output.
+With this conditioning, the non-reasoning generations can produce valid and performant kernels before the
+reasoning generation completes (see Table~\ref{tab:nonreasoning_speedups_w_wo_shared_prefix_cache}).
+Our further experiments show that prefix conditioning can even generate kernels with higher speedups than 
+the average speedup of previously generated kernels (see Figure~\ref{fig:spec_reach95_token_cdf}).
+This provides three benefits:
+\textbf{(1)} shorter generation latency by terminating the reasoning
+process early when a satisfactory candidate emerges (\textbf{C1});
+\textbf{(2)} more profiling feedback through generating more candidate kernels per
+iteration (\textbf{C2});
+\textbf{(3)} higher validation/profiling utilization by keeping validation/profiling
+resources busy during generation (\textbf{C3}).
+We empirically show that a pragmatic termination criterion reduces generation
+latency without compromising kernel performance
+(see \S\ref{subsec:eval_termination_analysis}).
+Building on this insight, we introduce \emph{speculative generation}, which
+forks non-reasoning generations conditioned on the reasoning prefix.
+Because each fork shares the cached reasoning prefix, speculative generation
+incurs low token overhead (see \S\ref{subsec:eval_token_consumption}).
+Moreover, speculative generation operates at the iteration level and is
+orthogonal to token-level speculative decoding~\cite{specdec,medusa}.
+The two techniques can be combined to further improve system efficiency.
+
+However, realizing speculative generation introduces two system-level challenges.
+\textbf{First,} \emph{how} to fork and \emph{when} to terminate:
+the system must identify useful conditioning context from a noisy reasoning
+trace and decide how many speculative generations to launch.
+Too few forks leave validation/profiling resources idle, while too many overload
+the queues and delay profiling feedback.
+Terminating too early sacrifices kernel performance, while terminating too late saves negligible generation time.
+\textbf{Second,} \emph{how} to manage bursty speculative-generation load.
+The legacy static ``one GPU per kernel'' partitioning cannot handle this burstiness.
+It leaves some GPUs idle while others queue, so resource allocation must adapt as bursts arrive.
+The system also needs request prioritization to bound profiling feedback latency
+and memory management to support bursty speculative generations in local LLM
+deployments.
+
+We present \sysname{}, an agentic kernel-optimization system that wraps a user-specified LLM, prompt, and search algorithm with two cooperating components.
+\textbf{(1) SpecController} monitors the reasoning model's output stream and parses it to detect trigger signals, such as kernel-design decisions, fenced code blocks, and closed kernel bodies.
+On a clean trigger, SpecController concatenates the iteration's prompt with the reasoning prefix and dispatches $K$ non-reasoning speculative generation requests.
+The number of forks adapts to the available validation/profiling resource capacity, exposing enough candidates to keep GPUs busy without overloading the queues.
+Once a speculatively generated kernel exceeds the average speedup of previously generated kernels, \sysname{} terminates the reasoning generation early to reduce the generation latency.
+This threshold avoids terminating on weak speculative kernels while still allowing frequent early terminations.
+\textbf{(2) ElasticScheduler} manages one elastic GPU pool, dynamically split between validation and profiling.
+Each request takes any free GPU in its pool, so no GPU idles while another queues up.
+Between iterations, ElasticScheduler reallocates the two pools based on the arrival rates of the previous iteration.
+Within an iteration, the validation queue is served last-arrival-first.
+Later candidates carry more reasoning prefix and are more likely to validate.
+The profiling queue is served FIFO, so any validated kernel returns feedback fast and SpecController decides on the freshest signal.
+We also observe that validation/profiling GPUs retain substantial unused memory
+even under bursty speculative load.
+We therefore repurpose this spare memory as remote storage for the
+reasoning prefix cache, eliminating prefix recomputation of speculative generations.
+
+Across \texttt{KernelBench} Level~1/2/3 tasks with two reasoning LLMs on H200,
+\sysname{} consistently improves the efficiency of agentic kernel optimization
+against CudaForge~\cite{cudaforge}, AlphaEvolve~\cite{AlphaEvolve}, and KernelAgent~\cite{kernelagent2025}.
+Compared with these baselines, \sysname{} reduces end-to-end execution time by
+1.68--1.82$\times$ and increases profiling feedback by 1.58--1.98$\times$.
+It also improves final kernel speedup by 1.24--1.91$\times$, showing that
+shorter E2E time does not come at the cost of kernel performance.
+Finally, \sysname{} increases validation/profiling utilization from
+4.2--17.6\% to 88.2--96.1\%.
+
+This paper makes the following contributions:
+\begin{itemize}
+    \item \textbf{Characterization.} We conduct a comprehensive workload characterization of agentic kernel optimization and identify three system-level inefficiencies.
+    \item \textbf{Insight.} We empirically establish that the reasoning process exposes a window for
+    speculative generations conditioned on the reasoning prefix.
+    \item \textbf{System.} We implement \sysname{}, comprising a SpecController and an ElasticScheduler that realize the above insight to address the three inefficiencies without sacrificing kernel performance.
+    \item \textbf{Evaluation.} We evaluate \sysname{} on 20 \texttt{KernelBench} Level~1/2/3 tasks across two reasoning LLMs on H200 against three state-of-the-art agentic kernel optimization systems, with detailed results in \S\ref{sec:eval}.
+\end{itemize}

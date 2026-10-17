@@ -1,0 +1,22 @@
+% !TEX root = ../spec_kernel_agent_main.tex
+\section{Related Work}\label{sec:related}
+
+\noindent\textbf{Training-based kernel optimization.}
+Recent work improves CUDA and Triton kernel generation by adapting the \emph{model} itself through reinforcement learning and post-training
+over execution feedback.
+Kevin~\cite{kevin32b}, CUDA-L1~\cite{cudal1}, and CUDA Agent~\cite{cudaagent} define the basic recipe: optimize the LLM on execution outcomes,
+pairwise fast-vs.-slow comparisons, or large-scale agentic RL curricula to raise intrinsic kernel performance.
+Later systems broaden this recipe with memory-augmented in-context RL and cross-task reuse~\cite{kernelblaster}, 
+hierarchical strategy decomposition~\cite{qimengkernel,tritonrl}, stronger training environments and synthetic 
+curricula~\cite{drkernel,drtriton}, and frontier-model fine-tuning~\cite{gpt5kernelgen}.
+The common pattern is to spend additional training compute and infrastructure to improve the generator itself.
+\sysname{} is complementary: we leave the LLM unchanged and instead reorganize how the agent loop consumes its
+outputs, so the gains from better-trained kernel models and from our runtime can compose rather than substitute for one another.
+
+\noindent\textbf{Speculative decoding.}
+Speculative decoding~\cite{specdec,specsample} accelerates a \emph{single} LLM generation by drafting several
+future tokens and verifying them in parallel. Medusa~\cite{medusa} removes the separate draft model with lightweight
+decoding heads, and later variants explore feature-level drafting, self-speculation, adaptive depth, and simpler draft architectures~\cite{eagle,hydra,kangaroo,swiftspecdec,ddd,beagle}.
+All of these methods remain strictly \emph{token-level}, speculatively generating tokens to raise throughput.
+\sysname{} instead operates at the \emph{iteration-level}, speculatively generating kernels to raise the kernel count per iteration.
+The two forms of speculation are orthogonal.

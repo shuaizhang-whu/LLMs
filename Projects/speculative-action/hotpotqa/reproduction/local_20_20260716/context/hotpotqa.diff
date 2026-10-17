@@ -1,0 +1,1268 @@
+diff --git a/Projects/speculative-action/hotpotqa/README.md b/Projects/speculative-action/hotpotqa/README.md
+index a73ebe9..853d9a4 100755
+--- a/Projects/speculative-action/hotpotqa/README.md
++++ b/Projects/speculative-action/hotpotqa/README.md
+@@ -75,6 +75,49 @@ python run.py --modelname "openai/gpt-4" --guessmodelname "openai/gpt-3.5-turbo"
+ 
+ Pass `--norun` to skip execution and only post-process existing results. Pass `--noprint` for silent mode.
+ 
++### Reproducible local runner
++
++The legacy command above is retained for compatibility with the attached repository
++trajectories. New experiments should explicitly select an execution mode:
++
++```bash
++python run.py \
++  --execution-mode sequential \
++  --modelname local/local-qwen2.5-7b-instruct \
++  --guessmodelname local/local-qwen2.5-7b-instruct \
++  --sample-ids 7107,5619 \
++  --num-steps 8 --top-k 1 --seed 248 --temperature 0 \
++  --run-id local_smoke
++
++python run.py \
++  --execution-mode paired \
++  --modelname local/local-qwen2.5-7b-instruct \
++  --guessmodelname local/local-qwen2.5-7b-instruct \
++  --sample-ids 7107,5619 \
++  --num-steps 8 --top-k 3 --seed 248 --temperature 0 \
++  --run-id local_smoke
++```
++
++`sequential` records only the authoritative ReAct trajectory. `paired` records the
++authoritative trajectory and the predicted-observation trajectory serially in isolated
++environments; its wall clock is collection cost, not online speedup. `online` only
++pre-launches side-effect-free `Search[...]` calls and can replay authority traces for a
++strict lossless audit:
++
++```bash
++python run.py \
++  --execution-mode online \
++  --modelname local/local-qwen2.5-7b-instruct \
++  --guessmodelname local/local-qwen2.5-7b-instruct \
++  --sample-ids 7107,5619 --num-steps 8 --top-k 3 \
++  --seed 248 --temperature 0 --run-id local_smoke \
++  --authority-trace-root /absolute/path/to/sequential/run/root
++```
++
++These runs are written below `reproduction/experiments/<run-id>/` and include raw
++trajectories, exact dataset indices, task metrics, strict Top-K action accuracy, token
++usage, per-action latency, authority hashes, and aggregate JSON/CSV files.
++
+ ### Compute metrics
+ 
+ ```bash
+diff --git a/Projects/speculative-action/hotpotqa/run.py b/Projects/speculative-action/hotpotqa/run.py
+index 445f8d1..9eb5f37 100644
+--- a/Projects/speculative-action/hotpotqa/run.py
++++ b/Projects/speculative-action/hotpotqa/run.py
+@@ -120,25 +120,125 @@ def main():
+     parser.add_argument("--noprint", action="store_false", help="Suppress command line output")
+     parser.add_argument("--norun", action="store_false", help="Skip running the experiment")
+     parser.add_argument("--modelname", default=constants.openrouter_model_name, help="Agent model name")
+-    parser.add_argument("--guessmodelname", default=constants.openrouter_guess_model_name, help="Guess model name")
+-    parser.add_argument("--cleanuptrajs", action="store_true", help="Clean up incomplete trajectories")
+-    args = parser.parse_args()
+-
+-    if args.norun:
+-        # HotPotQARun 会进一步导入并初始化模型客户端，只允许在真实运行分支中构造。
+-        from src.runner import HotPotQARun
+-
+-        runner = HotPotQARun(
+-            model_name=args.modelname,
+-            guess_model_name=args.guessmodelname,
+-            to_print_output=args.noprint,
+-        )
+-        if args.cleanuptrajs:
+-            Utils.cleanup_trajs(runner.base_traj_path)
+-        # webthink_simulate=True 表示同时采集 normal/sim 两套轨迹；runner 内部仍按
+-        # 串行顺序执行，并不在这里创建 Actor/工具调用的在线并发流水线。
+-        runner.run(webthink_simulate=True, skip_done=True)
+-        Utils.cleanup_trajs(runner.base_traj_path)
++    parser.add_argument("--guessmodelname", default=constants.openrouter_guess_model_name, help="Guess model name")
++    parser.add_argument(
++        "--execution-mode",
++        choices=("sequential", "paired", "online"),
++        help=(
++            "Use the reproducible runner. Omit this option to retain the legacy "
++            "official trajectory runner."
++        ),
++    )
++    parser.add_argument(
++        "--sample-ids",
++        help="Comma-separated HotPotQA dev indices, for example 7107,5619",
++    )
++    parser.add_argument(
++        "--seed",
++        type=int,
++        default=constants.random_seed,
++        help="Dataset ordering and supported LLM sampling seed",
++    )
++    parser.add_argument(
++        "--top-k",
++        type=int,
++        choices=(1, 3),
++        default=constants.guess_num_actions,
++        help="Strict number of speculative action candidates",
++    )
++    parser.add_argument(
++        "--run-id",
++        help="Experiment name stored below reproduction/experiments/",
++    )
++    parser.add_argument(
++        "--temperature",
++        type=float,
++        help="Override authority/candidate Actor temperature (use 0 for deterministic local runs)",
++    )
++    parser.add_argument(
++        "--authority-trace-root",
++        help=(
++            "Replay authority_trace.json files from this run root. "
++            "Used to audit online lossless equivalence."
++        ),
++    )
++    parser.add_argument(
++        "--skip-done",
++        action="store_true",
++        help="Skip samples with an existing sample_metrics.json in reproducible runs",
++    )
++    parser.add_argument(
++        "--num-samples",
++        type=int,
++        help="Override constants.n_samples_to_run (use 1 for a smoke test)",
++    )
++    parser.add_argument(
++        "--num-steps",
++        type=int,
++        help="Override constants.n_steps_to_run (the loop executes at most num_steps - 1 actions)",
++    )
++    parser.add_argument("--cleanuptrajs", action="store_true", help="Clean up incomplete trajectories")
++    args = parser.parse_args()
++
++    if args.num_samples is not None:
++        if args.num_samples < 1:
++            parser.error("--num-samples must be at least 1")
++        constants.n_samples_to_run = args.num_samples
++    if args.num_steps is not None:
++        if args.num_steps < 2:
++            parser.error("--num-steps must be at least 2")
++        constants.n_steps_to_run = args.num_steps
++    constants.random_seed = args.seed
++    constants.guess_num_actions = args.top_k
++
++    if args.norun:
++        if args.execution_mode:
++            from src.reproduction_runner import ReproductionRunner, parse_sample_ids
++
++            try:
++                sample_ids = parse_sample_ids(args.sample_ids)
++            except ValueError as error:
++                parser.error(str(error))
++            if sample_ids is not None and args.num_samples is not None:
++                parser.error("use either --sample-ids or --num-samples, not both")
++
++            runner = ReproductionRunner(
++                model_name=args.modelname,
++                guess_model_name=args.guessmodelname,
++                execution_mode=args.execution_mode,
++                sample_ids=sample_ids,
++                seed=args.seed,
++                top_k=args.top_k,
++                run_id=args.run_id,
++                num_steps=args.num_steps or constants.n_steps_to_run,
++                temperature=args.temperature,
++                authority_trace_root=args.authority_trace_root,
++                to_print_output=args.noprint,
++            )
++            if args.num_samples is not None:
++                runner.sample_ids = runner.sample_ids[: args.num_samples]
++            summary = runner.run(skip_done=args.skip_done)
++            print(
++                "Saved reproducible run:",
++                runner.base_traj_path,
++                "\nSummary:",
++                json.dumps(summary, indent=2),
++            )
++        else:
++            # HotPotQARun 会进一步导入并初始化模型客户端，只允许在真实运行分支中构造。
++            from src.runner import HotPotQARun
++
++            runner = HotPotQARun(
++                model_name=args.modelname,
++                guess_model_name=args.guessmodelname,
++                to_print_output=args.noprint,
++            )
++            if args.cleanuptrajs:
++                Utils.cleanup_trajs(runner.base_traj_path)
++            # webthink_simulate=True 表示同时采集 normal/sim 两套轨迹；runner 内部仍按
++            # 串行顺序执行，并不在这里创建 Actor/工具调用的在线并发流水线。
++            runner.run(webthink_simulate=True, skip_done=True)
++            Utils.cleanup_trajs(runner.base_traj_path)
+     elif args.cleanuptrajs:
+         # 仅清理已有目录时不应为获得路径而初始化任何模型客户端。
+         Utils.cleanup_trajs(get_base_traj_path(args.modelname, args.guessmodelname))
+diff --git a/Projects/speculative-action/hotpotqa/src/environment.py b/Projects/speculative-action/hotpotqa/src/environment.py
+index e34b80e..60b4d07 100644
+--- a/Projects/speculative-action/hotpotqa/src/environment.py
++++ b/Projects/speculative-action/hotpotqa/src/environment.py
+@@ -6,8 +6,9 @@
+ 游标这些可变状态，是判断投机分支是否相互隔离的关键。
+ """
+ 
+-import time
+-import gymnasium as gym
++import time
++import threading
++import gymnasium as gym
+ import requests
+ from bs4 import BeautifulSoup
+ 
+@@ -38,7 +39,7 @@ class WikiEnv(gym.Env):
+     状态；所有调用共享下列 ``page``、lookup 游标和 ``obs``。
+     """
+ 
+-    def __init__(self, guess_model_name):
++    def __init__(self, guess_model_name=None, guess_llm=None):
+         super().__init__()
+         # 当前页面全文。真实 search 和 Guess LLM 都会写入该字段；lookup 直接
+         # 从它构造结果列表，所以一次模拟 search 可能影响之后的真实 lookup。
+@@ -58,13 +59,20 @@ class WikiEnv(gym.Env):
+         # simulate search 的截断 observation。普通 guess 不更新该字段，且
+         # reset() 也不清空它，调用方应只在对应 simulate step 后立即读取。
+         self.sim_obs = None
+-        self.guess_model_name = guess_model_name
+-        self.guess_llm = LLMClient(
+-            model_name=guess_model_name,
+-            temperature=constants.guess_temperature,
+-            max_tokens=constants.max_guess_output_tokens,
+-            top_p=constants.guess_top_p,
+-        )
++        self.guess_model_name = guess_model_name
++        self.guess_llm = guess_llm
++        if self.guess_llm is None and guess_model_name is not None:
++            self.guess_llm = LLMClient(
++                model_name=guess_model_name,
++                temperature=constants.guess_temperature,
++                max_tokens=constants.max_guess_output_tokens,
++                top_p=constants.guess_top_p,
++            )
++        # 在线模式只把无副作用 Search 的真实 HTTP 结果放入此缓存。缓存命中后
++        # 仍通过正常 env.step 提交权威 Actor 动作，wrapper 奖励和日志语义不变。
++        self._prefetch_lock = threading.Lock()
++        self._prefetched_search_results = {}
++        self.last_search_metadata = None
+ 
+     def _get_obs(self):
+         """返回当前共享 observation。"""
+@@ -87,7 +95,10 @@ class WikiEnv(gym.Env):
+         self.lookup_list = None
+         self.lookup_cnt = None
+         self.steps = 0
+-        self.answer = None
++        self.answer = None
++        with self._prefetch_lock:
++            self._prefetched_search_results.clear()
++        self.last_search_metadata = None
+         observation = self._get_obs()
+         info = self._get_info()
+         return (observation, info) if return_info else observation
+@@ -116,14 +127,16 @@ class WikiEnv(gym.Env):
+         sentences = [s.strip() + '.' for s in sentences if s.strip()]
+         return ' '.join(sentences[:5])
+ 
+-    def guess_step(self, entity, simulate=False, max_retries=3):
++    def guess_step(self, entity, simulate=False, max_retries=3):
+         """让 Guess LLM 为实体生成模拟页面，并写回共享环境状态。
+ 
+         ``simulate=True`` 只额外保存 ``sim_obs``；无论该标志为何值，
+         ``self.page`` 和 ``self.obs`` 都会被模拟页面覆盖。这里并未保存或恢复
+         真实 Wikipedia 页面，也没有为 Top-K 分支建立独立缓存。
+         """
+-        prompt_wrap = PromptTemplates.GUESS_STEP_PROMPT.format(entity)
++        if self.guess_llm is None:
++            raise RuntimeError("This WikiEnv has no observation speculator configured")
++        prompt_wrap = PromptTemplates.GUESS_STEP_PROMPT.format(entity)
+         llm_response = None
+         for _ in range(max_retries):
+             llm_response = self.guess_llm.call(prompt_wrap)
+@@ -137,38 +150,119 @@ class WikiEnv(gym.Env):
+         self.page = llm_response
+         self.obs = self.get_page_obs(self.page)
+ 
+-    def search_step(self, entity):
+-        """同步请求 Wikipedia 搜索页并更新真实 observation。
+-
+-        ``search_time`` 只覆盖 HTTP 请求本身，不包含随后 HTML 解析的耗时。
+-        当搜索页给出相似标题列表时，本分支只更新 ``obs``，不会清空先前
+-        ``page``/lookup 状态；成功取得正文时才会重置 lookup 游标。
+-        """
+-        entity_ = entity.replace(" ", "+")
+-        search_url = f"https://en.wikipedia.org/w/index.php?search={entity_}"
+-        old_time = time.time()
+-        requests_headers = {"User-Agent": "React/1.0"}
+-        response_text = requests.get(search_url, headers=requests_headers).text
+-        self.search_time += time.time() - old_time
+-        self.num_searches += 1
+-        soup = BeautifulSoup(response_text, features="html.parser")
+-        result_divs = soup.find_all("div", {"class": "mw-search-result-heading"})
+-        if result_divs:
+-            self.result_titles = [clean_str(div.get_text().strip()) for div in result_divs]
+-            self.obs = f"Could not find {entity}. Similar: {self.result_titles[:5]}."
+-        else:
+-            page = [p.get_text().strip() for p in soup.find_all("p") + soup.find_all("ul")]
+-            if any("may refer to:" in p for p in page):
+-                self.search_step("[" + entity + "]")
+-            else:
+-                self.page = ""
+-                for p in page:
+-                    if len(p.split(" ")) > 2:
+-                        self.page += clean_str(p)
+-                        if not p.endswith("\n"):
+-                            self.page += "\n"
+-                self.obs = self.get_page_obs(self.page)
+-                self.lookup_keyword = self.lookup_list = self.lookup_cnt = None
++    @staticmethod
++    def _search_cache_key(action):
++        """只规范化动作名称，保留参数大小写与空白以执行严格字符串命中。"""
++        action = action.strip()
++        bracket = action.find("[")
++        if bracket < 0:
++            return action
++        return action[:bracket].lower() + action[bracket:]
++
++    @staticmethod
++    def fetch_search_result(entity):
++        """执行无状态 Wikipedia Search，并返回可稍后应用的真实结果。
++
++        此函数不读取或修改 ``WikiEnv`` 实例，可安全放入线程池。返回对象保留
++        HTTP 耗时、请求数、页面正文和 observation，供在线预取与普通 Search
++        共用同一解析实现。
++        """
++        entity_ = entity.replace(" ", "+")
++        search_url = f"https://en.wikipedia.org/w/index.php?search={entity_}"
++        started = time.perf_counter()
++        requests_headers = {"User-Agent": "React/1.0"}
++        response_text = requests.get(search_url, headers=requests_headers).text
++        elapsed = time.perf_counter() - started
++        soup = BeautifulSoup(response_text, features="html.parser")
++        result_divs = soup.find_all("div", {"class": "mw-search-result-heading"})
++        if result_divs:
++            result_titles = [clean_str(div.get_text().strip()) for div in result_divs]
++            return {
++                "requested_entity": entity,
++                "resolved_entity": entity,
++                "observation": f"Could not find {entity}. Similar: {result_titles[:5]}.",
++                "page": None,
++                "result_titles": result_titles,
++                "fetch_seconds": elapsed,
++                "num_requests": 1,
++            }
++
++        page_parts = [p.get_text().strip() for p in soup.find_all("p") + soup.find_all("ul")]
++        if any("may refer to:" in part for part in page_parts):
++            nested = WikiEnv.fetch_search_result("[" + entity + "]")
++            nested["requested_entity"] = entity
++            nested["fetch_seconds"] += elapsed
++            nested["num_requests"] += 1
++            return nested
++
++        page = ""
++        for part in page_parts:
++            if len(part.split(" ")) > 2:
++                page += clean_str(part)
++                if not part.endswith("\n"):
++                    page += "\n"
++        return {
++            "requested_entity": entity,
++            "resolved_entity": entity,
++            "observation": WikiEnv.get_page_obs(page),
++            "page": page,
++            "result_titles": [],
++            "fetch_seconds": elapsed,
++            "num_requests": 1,
++        }
++
++    def install_prefetched_search(self, action, result, prefetch_metadata=None):
++        """把真实 Search 结果安装到严格动作键下，等待权威 env.step 消费。"""
++        key = self._search_cache_key(action)
++        with self._prefetch_lock:
++            self._prefetched_search_results[key] = {
++                "result": result,
++                "prefetch_metadata": dict(prefetch_metadata or {}),
++            }
++
++    def discard_prefetched_searches(self):
++        """清空尚未由权威 Actor 命中的预取结果。"""
++        with self._prefetch_lock:
++            self._prefetched_search_results.clear()
++
++    def apply_search_result(self, result, prefetched=False, prefetch_metadata=None):
++        """将纯 Search 结果应用到权威环境状态。"""
++        self.search_time += result["fetch_seconds"]
++        self.num_searches += result["num_requests"]
++        if result["result_titles"]:
++            self.result_titles = result["result_titles"]
++            self.obs = result["observation"]
++        else:
++            self.page = result["page"]
++            self.obs = result["observation"]
++            self.lookup_keyword = self.lookup_list = self.lookup_cnt = None
++        self.last_search_metadata = {
++            "prefetched": bool(prefetched),
++            "fetch_seconds": result["fetch_seconds"],
++            "num_requests": result["num_requests"],
++            **dict(prefetch_metadata or {}),
++        }
++
++    def search_step(self, entity, action=None):
++        """同步请求或消费预取的 Wikipedia Search，并更新真实 observation。
++
++        ``search_time`` 只覆盖 HTTP 请求本身，不包含随后 HTML 解析的耗时。
++        当搜索页给出相似标题列表时，本分支只更新 ``obs``，不会清空先前
++        ``page``/lookup 状态；成功取得正文时才会重置 lookup 游标。
++        """
++        action = action or f"search[{entity}]"
++        key = self._search_cache_key(action)
++        with self._prefetch_lock:
++            cached = self._prefetched_search_results.pop(key, None)
++        if cached is not None:
++            self.apply_search_result(
++                cached["result"],
++                prefetched=True,
++                prefetch_metadata=cached["prefetch_metadata"],
++            )
++            return
++        result = self.fetch_search_result(entity)
++        self.apply_search_result(result, prefetched=False)
+ 
+     def step(self, action, step_type="wiki"):
+         """解释并执行一条文本 action。
+@@ -189,10 +283,10 @@ class WikiEnv(gym.Env):
+             done = True
+             return self.obs, reward, done, self._get_info()
+ 
+-        if action.startswith("search[") and action.endswith("]"):
+-            entity = action[len("search["):-1]
+-            if step_type == "wiki":
+-                self.search_step(entity)
++        if action.startswith("search[") and action.endswith("]"):
++            entity = action[len("search["):-1]
++            if step_type == "wiki":
++                self.search_step(entity, action=action)
+             elif step_type == "guess":
+                 self.guess_step(entity)
+             elif step_type == "simulate":
+diff --git a/Projects/speculative-action/hotpotqa/src/llm_client.py b/Projects/speculative-action/hotpotqa/src/llm_client.py
+index 80339a5..d72cc11 100644
+--- a/Projects/speculative-action/hotpotqa/src/llm_client.py
++++ b/Projects/speculative-action/hotpotqa/src/llm_client.py
+@@ -1,12 +1,14 @@
+-"""Gemini、OpenAI 与 OpenRouter 的同步文本生成客户端封装。
+-
+-依赖包在导入模块时即加载，三个 provider 客户端则在每个 ``LLMClient`` 实例
+-初始化时全部创建，不会根据当前模型延迟构造。因此，即便只走一个 provider，
+-另外两个客户端所需的配置字段和初始化条件也必须可用。当前实现没有本地
+-OpenAI-compatible 服务的可配置 ``base_url`` 参数。
+-"""
+-
+-import openai
++"""Gemini、OpenAI、OpenRouter 与本地兼容服务的同步文本生成客户端封装。
++
++使用 ``local/<served-model-name>`` 可把请求发给 OpenAI-compatible 本地服务。
++各 provider 客户端按模型路由延迟构造，因此本地 smoke test 不需要任何云 API Key。
++"""
++
++import os
++import threading
++import time
++
++import openai
+ from google import genai
+ from google.genai import types
+ 
+@@ -14,88 +16,239 @@ from . import constants
+ 
+ 
+ class LLMClient:
+-    """根据模型名前缀路由到 Gemini、OpenAI 或 OpenRouter 的统一客户端。"""
+-
+-    def __init__(self, model_name, temperature, max_tokens, top_p):
+-        """保存生成参数，并立即构造三个 provider 的客户端。
++    """根据模型名前缀路由到 Gemini、OpenAI、OpenRouter 或本地服务。"""
+ 
+-        客户端构造是 eager 的：它不依据 ``model_name`` 只初始化目标 provider。
+-        这里直接读取 ``constants`` 中的三个 API Key 字段，且 OpenRouter 地址
+-        固定为其公开 API 端点。
+-        """
+-        self.model_name = model_name
+-        self.temperature = temperature
+-        self.max_tokens = max_tokens
+-        self.top_p = top_p
+-        # 即使最终只调用 OpenAI 或 OpenRouter，Gemini 客户端仍会在这里创建。
+-        self.gemini_client = genai.Client(api_key=constants.gemini_api_key)
+-        self.openai_client = openai.OpenAI(api_key=constants.openai_api_key)
+-        self.openrouter_client = openai.OpenAI(
+-            base_url="https://openrouter.ai/api/v1",
+-            api_key=constants.openrouter_api_key,
+-        )
++    def __init__(self, model_name, temperature, max_tokens, top_p, seed=None):
++        """保存生成参数，并且只构造当前模型实际需要的 provider 客户端。"""
++        self.model_name = model_name
++        self.temperature = temperature
++        self.max_tokens = max_tokens
++        self.top_p = top_p
++        self.seed = seed
++        self.provider = self._get_provider(model_name)
++        self._stats_lock = threading.Lock()
++        self._stats = {
++            "model": model_name,
++            "provider": self.provider,
++            "calls": 0,
++            "failed_calls": 0,
++            "prompt_tokens": 0,
++            "output_tokens": 0,
++            "reasoning_tokens": 0,
++            "total_tokens": 0,
++            "latency_seconds": 0.0,
++        }
++
++        if self.provider == "local":
++            base_url = os.environ.get("LOCAL_OPENAI_BASE_URL", "http://127.0.0.1:8000/v1")
++            api_key = os.environ.get("LOCAL_OPENAI_API_KEY", "local")
++            self.local_client = openai.OpenAI(base_url=base_url, api_key=api_key)
++            # local/ 是客户端路由标记，不是 vLLM 暴露的真实模型名称。
++            self.request_model_name = model_name.removeprefix("local/")
++        elif self.provider == "gemini":
++            api_key = os.environ.get("GEMINI_API_KEY", getattr(constants, "gemini_api_key", None))
++            self.gemini_client = genai.Client(api_key=api_key)
++            self.request_model_name = model_name
++        elif self.provider == "openai":
++            api_key = os.environ.get("OPENAI_API_KEY", getattr(constants, "openai_api_key", None))
++            self.openai_client = openai.OpenAI(api_key=api_key)
++            self.request_model_name = model_name
++        else:
++            api_key = os.environ.get("OPENROUTER_API_KEY", constants.openrouter_api_key)
++            self.openrouter_client = openai.OpenAI(
++                base_url="https://openrouter.ai/api/v1",
++                api_key=api_key,
++            )
++            self.request_model_name = model_name
++
++    @staticmethod
++    def _get_provider(model_name):
++        """把模型名映射到 provider；``local/`` 是本仓库新增的显式本地前缀。"""
++        if model_name.startswith("local/"):
++            return "local"
++        if model_name.startswith("gemini"):
++            return "gemini"
++        if model_name.startswith("gpt"):
++            return "openai"
++        return "openrouter"
+ 
+-    def call(self, prompt, stop=None):
++    def call(self, prompt, stop=None):
+         """按模型名前缀执行一次同步请求并返回文本。
+ 
+-        ``gemini*`` 路由到 Gemini，``gpt*`` 路由到 OpenAI，其余所有模型名均
+-        落入 OpenRouter；这里没有显式 provider 参数或本地服务分支。
+-        """
+-        if self.model_name.startswith("gemini"):
+-            return self._gemini_call(prompt, stop)
+-        elif self.model_name.startswith("gpt"):
+-            return self._openai_call(prompt, stop)
+-        else:
+-            return self._openrouter_call(prompt, stop)
+-
+-    def _gemini_call(self, prompt, stop):
+-        """调用 Gemini generate_content，并仅将 stop 写入生成配置。
+-
+-        构造函数保存的 temperature、max_tokens 和 top_p 没有在此请求中传入。
+-        """
+-        if stop is not None:
+-            config = types.GenerateContentConfig(stop_sequences=stop)
+-        else:
+-            config = types.GenerateContentConfig()
++        ``local/*`` 路由到本地兼容服务，``gemini*`` 路由到 Gemini，``gpt*``
++        路由到 OpenAI，其余模型名落入 OpenRouter。
++        """
++        started = time.perf_counter()
++        with self._stats_lock:
++            self._stats["calls"] += 1
++        try:
++            if self.provider == "local":
++                text, usage = self._local_call(prompt, stop)
++            elif self.provider == "gemini":
++                text, usage = self._gemini_call(prompt, stop)
++            elif self.provider == "openai":
++                text, usage = self._openai_call(prompt, stop)
++            else:
++                text, usage = self._openrouter_call(prompt, stop)
++        except Exception:
++            with self._stats_lock:
++                self._stats["failed_calls"] += 1
++                self._stats["latency_seconds"] += time.perf_counter() - started
++            raise
++
++        with self._stats_lock:
++            self._stats["prompt_tokens"] += usage["prompt_tokens"]
++            self._stats["output_tokens"] += usage["output_tokens"]
++            self._stats["reasoning_tokens"] += usage["reasoning_tokens"]
++            self._stats["total_tokens"] += usage["total_tokens"]
++            self._stats["latency_seconds"] += time.perf_counter() - started
++        return text
++
++    def get_stats(self):
++        """返回线程安全的累计调用统计快照。"""
++        with self._stats_lock:
++            return dict(self._stats)
++
++    def stats_since(self, before):
++        """用两个累计快照计算单样本增量。"""
++        after = self.get_stats()
++        result = {"model": after["model"], "provider": after["provider"]}
++        for key in (
++            "calls",
++            "failed_calls",
++            "prompt_tokens",
++            "output_tokens",
++            "reasoning_tokens",
++            "total_tokens",
++            "latency_seconds",
++        ):
++            result[key] = after[key] - before.get(key, 0)
++        return result
++
++    @staticmethod
++    def _openai_usage(response):
++        """从 OpenAI-compatible 响应中提取 token；缺失时显式记为 0。"""
++        usage = getattr(response, "usage", None)
++        prompt_tokens = int(getattr(usage, "prompt_tokens", 0) or 0)
++        output_tokens = int(getattr(usage, "completion_tokens", 0) or 0)
++        completion_details = getattr(usage, "completion_tokens_details", None)
++        reasoning_tokens = int(
++            getattr(completion_details, "reasoning_tokens", 0) or 0
++        )
++        total_tokens = int(
++            getattr(usage, "total_tokens", prompt_tokens + output_tokens)
++            or prompt_tokens + output_tokens
++        )
++        return {
++            "prompt_tokens": prompt_tokens,
++            "output_tokens": output_tokens,
++            "reasoning_tokens": reasoning_tokens,
++            "total_tokens": total_tokens,
++        }
++
++    @staticmethod
++    def _gemini_usage(response):
++        """从 Gemini usage_metadata 中提取 token；字段缺失时记为 0。"""
++        usage = getattr(response, "usage_metadata", None)
++        prompt_tokens = int(getattr(usage, "prompt_token_count", 0) or 0)
++        visible_output_tokens = int(
++            getattr(usage, "candidates_token_count", 0) or 0
++        )
++        reasoning_tokens = int(getattr(usage, "thoughts_token_count", 0) or 0)
++        output_tokens = visible_output_tokens + reasoning_tokens
++        total_tokens = int(
++            getattr(usage, "total_token_count", prompt_tokens + output_tokens)
++            or prompt_tokens + output_tokens
++        )
++        return {
++            "prompt_tokens": prompt_tokens,
++            "output_tokens": output_tokens,
++            "reasoning_tokens": reasoning_tokens,
++            "total_tokens": total_tokens,
++        }
++
++    def _local_call(self, prompt, stop):
++        """通过 OpenAI Chat Completions 协议调用本地 vLLM 服务。"""
++        request = {
++            "model": self.request_model_name,
++            "messages": [
++                {"role": "system", "content": "You are a helpful assistant."},
++                {"role": "user", "content": prompt},
++            ],
++            "temperature": self.temperature,
++            "max_tokens": self.max_tokens,
++            "top_p": self.top_p,
++            "stop": stop,
++            "frequency_penalty": 0.0,
++            "presence_penalty": 0.0,
++        }
++        if self.seed is not None:
++            request["seed"] = self.seed
++        response = self.local_client.chat.completions.create(
++            **request,
++        )
++        return response.choices[0].message.content, self._openai_usage(response)
++
++    def _gemini_call(self, prompt, stop):
++        """调用 Gemini generate_content，并仅将 stop 写入生成配置。
++
++        显式传入实验温度、Top-p、输出上限和随机种子，避免 provider 默认值
++        随时间变化后悄悄改变复现协议。
++        """
++        config = types.GenerateContentConfig(
++            temperature=self.temperature,
++            top_p=self.top_p,
++            max_output_tokens=self.max_tokens,
++            stop_sequences=stop,
++            seed=self.seed,
++        )
+         response = self.gemini_client.models.generate_content(
+-            model=self.model_name, contents=prompt, config=config
++            model=self.request_model_name, contents=prompt, config=config
+         )
+-        return str(response.text)
++        return str(response.text), self._gemini_usage(response)
+ 
+     def _openai_call(self, prompt, stop):
+         """调用 OpenAI Chat Completions 并返回首个 choice 的正文。
+ 
+-        ``stop`` 参数虽然由上层传入，但当前请求体没有使用它。
++        Chat Completions 的 stop 参数与本地 OpenAI-compatible 路径保持一致。
+         """
+-        response = self.openai_client.chat.completions.create(
+-            model=self.model_name,
+-            messages=[
+-                {"role": "system", "content": "You are a helpful assistant."},
+-                {"role": "user", "content": prompt},
+-            ],
+-            temperature=self.temperature,
+-            max_tokens=self.max_tokens,
+-            top_p=self.top_p,
+-            frequency_penalty=0.0,
+-            presence_penalty=0.0,
+-        )
+-        return response.choices[0].message.content
++        request = {
++            "model": self.request_model_name,
++            "messages": [
++                {"role": "system", "content": "You are a helpful assistant."},
++                {"role": "user", "content": prompt},
++            ],
++            "temperature": self.temperature,
++            "max_tokens": self.max_tokens,
++            "top_p": self.top_p,
++            "frequency_penalty": 0.0,
++            "presence_penalty": 0.0,
++            "stop": stop,
++        }
++        if self.seed is not None:
++            request["seed"] = self.seed
++        response = self.openai_client.chat.completions.create(**request)
++        return response.choices[0].message.content, self._openai_usage(response)
+ 
+     def _openrouter_call(self, prompt, stop):
+         """通过 OpenAI SDK 调用 OpenRouter，并返回首个 choice 的正文。
+ 
+-        与 OpenAI 分支相同，当前请求体不会转发 ``stop`` 参数。
++        与 OpenAI 分支相同，转发 stop 和可选 seed。
+         """
+-        response = self.openrouter_client.chat.completions.create(
+-            model=self.model_name,
+-            messages=[
+-                {"role": "system", "content": "You are a helpful assistant."},
+-                {"role": "user", "content": prompt},
+-            ],
+-            temperature=self.temperature,
+-            max_tokens=self.max_tokens,
+-            top_p=self.top_p,
+-            frequency_penalty=0.0,
+-            presence_penalty=0.0,
+-        )
+-        return response.choices[0].message.content
++        request = {
++            "model": self.request_model_name,
++            "messages": [
++                {"role": "system", "content": "You are a helpful assistant."},
++                {"role": "user", "content": prompt},
++            ],
++            "temperature": self.temperature,
++            "max_tokens": self.max_tokens,
++            "top_p": self.top_p,
++            "frequency_penalty": 0.0,
++            "presence_penalty": 0.0,
++            "stop": stop,
++        }
++        if self.seed is not None:
++            request["seed"] = self.seed
++        response = self.openrouter_client.chat.completions.create(**request)
++        return response.choices[0].message.content, self._openai_usage(response)
+diff --git a/Projects/speculative-action/hotpotqa/src/metrics.py b/Projects/speculative-action/hotpotqa/src/metrics.py
+index b6b6aa1..fe3b390 100644
+--- a/Projects/speculative-action/hotpotqa/src/metrics.py
++++ b/Projects/speculative-action/hotpotqa/src/metrics.py
+@@ -6,30 +6,32 @@ Search 时间也只是轨迹中记录的 Search 步骤耗时；它们都不是
+ 端到端 wall-clock 指标。
+ """
+ 
+-import os
+-
+-from .utils import Utils
++import os
++import math
++import statistics
++
++from .utils import Utils
+ 
+ 
+ class Metrics:
+     """计算单条轨迹指标，并在多个样本目录上进行等权聚合。"""
+ 
+     @staticmethod
+-    def get_action_metrics(normal_dict, sim_dict, k=None, sparse=False):
++    def get_action_metrics(normal_dict, sim_dict, k=None, sparse=False, skip_first=True):
+         """按动作类型计算一条轨迹的平均命中率。
+ 
+         参数：
+             normal_dict: 含 ``actions`` 的真实轨迹字典。
+             sim_dict: 含 ``actions`` 的模拟轨迹字典；每一步可以是字符串或候选列表。
+-            k: 仅 ``k == 1`` 时只比较首个候选；其他值（包括 3 和 None）都会
+-                检查候选列表中的全部动作，因此 Top-3 口径依赖输入列表本身只有
+-                三项，而不是在此处切片得到前三项。
+-            sparse: 为 True 时仅比较 Search/Lookup/Finish 等动作类型；为 False
+-                时比较转为小写后的完整动作字符串（包括参数）。
++            k: 正整数时严格只检查前 ``k`` 个候选；``None`` 保留旧指标文件所用的
++                “检查全部已保存候选”兼容口径。
++            sparse: 为 True 时仅比较 Search/Lookup/Finish 等动作类型；为 False
++                时比较转为小写后的完整动作字符串（包括参数）。
++            skip_first: 为 True 时跳过没有前序投机机会的轨迹首步；为 False 时
++                输出包含首步的审计口径。
+ 
+         返回：
+-            ``general`` 以及各真实动作类型的平均命中率。索引 0 被固定跳过，
+-            因而首步不参与本函数的任何准确率统计。
++            ``general`` 以及各真实动作类型的平均命中率。
+         """
+         normal_actions = normal_dict["actions"]
+         sim_actions = sim_dict["actions"]
+@@ -38,9 +40,8 @@ class Metrics:
+ 
+         # zip 会以较短列表为准；这里不会主动检查两条轨迹长度是否一致。
+         for idx, (na, sa) in enumerate(zip(normal_actions, sim_actions)):
+-            if idx == 0:
+-                # 仓库指标口径：无条件忽略轨迹的第一个动作。
+-                continue
++            if idx == 0 and skip_first:
++                continue
+ 
+             score = Metrics._score_action_pair(na, sa, k, sparse)
+             metric_dict["general"] += score
+@@ -56,28 +57,131 @@ class Metrics:
+             metric_dict[na_name] += score
+             count_dict[na_name] += 1
+ 
+-        if count_dict["general"] == 0:
+-            return metric_dict
+-
+-        for key in metric_dict:
+-            metric_dict[key] /= count_dict[key]
+-        return metric_dict
++        if count_dict["general"] == 0:
++            return metric_dict
++
++        for key in metric_dict:
++            if count_dict[key]:
++                metric_dict[key] /= count_dict[key]
++        return metric_dict
+ 
+     @staticmethod
+     def _score_action_pair(na, sa, k, sparse):
+         """给一个真实动作与一个预测值计分，返回 0 或 1。
+ 
+-        预测值为列表时，Top-1 只看列表首项；其余模式执行“任一候选命中”。
+-        """
+-        if isinstance(sa, list):
+-            if not sa:
+-                return 0
+-            if k == 1:
+-                return Metrics.compare_action(na, sa[0], sparse)
+-            else:
+-                return Metrics.compare_actions(na, sa, sparse)
+-        else:
+-            return Metrics.compare_action(na, sa, sparse)
++        预测值为列表时，正整数 ``k`` 严格截断；``k=None`` 检查全部候选。
++        """
++        if isinstance(sa, list):
++            if not sa:
++                return 0
++            candidates = sa if k is None else sa[:max(0, int(k))]
++            return Metrics.compare_actions(na, candidates, sparse)
++        else:
++            return Metrics.compare_action(na, sa, sparse)
++
++    @staticmethod
++    def get_action_metric_counts(
++        normal_dict,
++        sim_dict,
++        k,
++        sparse=False,
++        skip_first=True,
++        strict=True,
++    ):
++        """返回严格动作命中的分子和分母，供微平均与分类统计使用。"""
++        correct = {"general": 0, "Search": 0, "Lookup": 0, "Finish": 0}
++        total = {"general": 0, "Search": 0, "Lookup": 0, "Finish": 0}
++        normal_actions = normal_dict.get("actions", [])
++        sim_actions = sim_dict.get("actions", [])
++
++        for idx, (normal_action, candidates) in enumerate(zip(normal_actions, sim_actions)):
++            if idx == 0 and skip_first:
++                continue
++            if strict and not sparse:
++                candidate_list = candidates if isinstance(candidates, list) else [candidates]
++                candidate_list = candidate_list[:max(0, int(k))]
++                score = int(
++                    any(
++                        Metrics.compare_action_strict(normal_action, candidate)
++                        for candidate in candidate_list
++                    )
++                )
++            else:
++                score = Metrics._score_action_pair(normal_action, candidates, k, sparse)
++            action_name = Metrics.get_action_name(normal_action)
++            normalized_name = action_name.capitalize() if action_name else None
++            total["general"] += 1
++            correct["general"] += score
++            if normalized_name in total:
++                total[normalized_name] += 1
++                correct[normalized_name] += score
++        return {"correct": correct, "total": total}
++
++    @staticmethod
++    def summarize_action_predictions(normal_dict, sim_dict, top_k):
++        """同时生成论文兼容口径和包含首步的审计口径。"""
++        summary = {}
++        for label, skip_first in (("paper", True), ("all_steps", False)):
++            summary[label] = {}
++            for k in sorted({1, int(top_k)}):
++                counts = Metrics.get_action_metric_counts(
++                    normal_dict,
++                    sim_dict,
++                    k=k,
++                    sparse=False,
++                    skip_first=skip_first,
++                )
++                rates = {}
++                for action_name, denominator in counts["total"].items():
++                    rates[action_name] = (
++                        counts["correct"][action_name] / denominator
++                        if denominator
++                        else None
++                    )
++                summary[label][f"top{k}"] = {
++                    "rates": rates,
++                    **counts,
++                }
++        return summary
++
++    @staticmethod
++    def aggregate_prediction_summaries(sample_summaries, top_k):
++        """聚合逐样本命中率，输出宏平均、微平均和样本标准误。"""
++        aggregate = {"n_samples": len(sample_summaries)}
++        for scope in ("paper", "all_steps"):
++            aggregate[scope] = {}
++            for k in sorted({1, int(top_k)}):
++                key = f"top{k}"
++                aggregate[scope][key] = {}
++                for action_name in ("general", "Search", "Lookup", "Finish"):
++                    sample_rates = [
++                        item[scope][key]["rates"][action_name]
++                        for item in sample_summaries
++                        if item[scope][key]["rates"][action_name] is not None
++                    ]
++                    correct = sum(
++                        item[scope][key]["correct"][action_name]
++                        for item in sample_summaries
++                    )
++                    total = sum(
++                        item[scope][key]["total"][action_name]
++                        for item in sample_summaries
++                    )
++                    macro = statistics.fmean(sample_rates) if sample_rates else None
++                    sem = (
++                        statistics.stdev(sample_rates) / math.sqrt(len(sample_rates))
++                        if len(sample_rates) > 1
++                        else 0.0 if sample_rates else None
++                    )
++                    aggregate[scope][key][action_name] = {
++                        "macro": macro,
++                        "micro": correct / total if total else None,
++                        "sem": sem,
++                        "correct": correct,
++                        "total": total,
++                        "n_samples_with_action": len(sample_rates),
++                    }
++        return aggregate
+ 
+     @staticmethod
+     def get_actions_metric(dict1, dict2, sparse=False):
+@@ -106,14 +210,26 @@ class Metrics:
+         return 1 if total_score > 0 else 0
+ 
+     @staticmethod
+-    def compare_action(action1, action2, sparse=False):
++    def compare_action(action1, action2, sparse=False):
+         """比较两个动作；可选择只比较动作类型或比较完整字符串。"""
+         action1 = action1.lower()
+         action2 = action2.lower()
+         if sparse:
+             return 1 if Metrics.get_action_name(action1) == Metrics.get_action_name(action2) else 0
+         else:
+-            return 1 if action1 == action2 else 0
++            return 1 if action1 == action2 else 0
++
++    @staticmethod
++    def compare_action_strict(action1, action2):
++        """严格比较完整动作，只容忍动作类型首字母的格式大小写差异。"""
++        def canonical(action):
++            action = action.strip()
++            bracket = action.find("[")
++            if bracket < 0:
++                return action
++            return action[:bracket].lower() + action[bracket:]
++
++        return int(canonical(action1) == canonical(action2))
+ 
+     @staticmethod
+     def get_action_name(full_action):
+@@ -240,9 +356,9 @@ class Metrics:
+             metric_dict_top1 = Metrics.get_action_metrics(
+                 normal_observations_dict, sim_observations_dict, k=1, sparse=False
+             )
+-            metric_dict_top3 = Metrics.get_action_metrics(
+-                normal_observations_dict, sim_observations_dict, k=3, sparse=False
+-            )
++            metric_dict_top3 = Metrics.get_action_metrics(
++                normal_observations_dict, sim_observations_dict, k=3, sparse=False
++            )
+             for metric in metric_names:
+                 avg_metrics_dict[metric + "_top1"].append(metric_dict_top1.get(metric, 0))
+                 avg_metrics_dict[metric + "_top3"].append(metric_dict_top3.get(metric, 0))
+diff --git a/Projects/speculative-action/hotpotqa/src/runner.py b/Projects/speculative-action/hotpotqa/src/runner.py
+index 66f6e80..061725d 100644
+--- a/Projects/speculative-action/hotpotqa/src/runner.py
++++ b/Projects/speculative-action/hotpotqa/src/runner.py
+@@ -110,7 +110,8 @@ class HotPotQARun:
+             start = time.perf_counter()
+             obs, r, done, info = env.step(action, step_type="simulate")
+             end = time.perf_counter()
+-            return env.sim_obs, r, done, info, end - start
++            # Gymnasium 1.x 要求通过公开接口访问内层 WikiEnv 的状态。
++            return env.get_wrapper_attr("sim_obs"), r, done, info, end - start
+ 
+         attempts = 0
+         while attempts < 10:
+@@ -428,4 +429,5 @@ class HotPotQARun:
+             Utils.save_json(metric_dict, join(current_dir_path, "metrics.json"))
+ 
+         # 将 LoggingWrapper 累积的 Gym 轨迹写入其独立的 trajs 文件。
+-        self.env.write()
++        # write 定义在中间的 LoggingWrapper；Gymnasium 1.x 不再隐式转发属性。
++        self.env.get_wrapper_attr("write")()
+diff --git a/Projects/speculative-action/hotpotqa/src/wrappers.py b/Projects/speculative-action/hotpotqa/src/wrappers.py
+index 11ce024..c5563c9 100644
+--- a/Projects/speculative-action/hotpotqa/src/wrappers.py
++++ b/Projects/speculative-action/hotpotqa/src/wrappers.py
+@@ -95,18 +95,21 @@ class HistoryWrapper(gym.Wrapper):
+                 obs_dict["actions"].append(a)
+         return obs_dict
+ 
+-    def reset(self, seed=None, return_info=False, options=None, idx=None):
+-        """重置 wrapper 链和两份导出轨迹。
+-
+-        已核验的参数传递风险：尽管该方法接收 ``seed``、``return_info``、
+-        ``options`` 和 ``idx``，当前代码向内层调用时把它们全部硬编码为
+-        ``None``/``False``。因此 runner 的 ``env.reset(idx=idx)`` 到这里后，
+-        指定样本编号会丢失，HotPotQAWrapper 最终会随机选择样本。
+-        """
+-        output = self.env.reset(seed=None, return_info=False, options=None, idx=None)
+-        self.normal_trajectory_dict = self.get_empty_traj_dict()
+-        self.sim_trajectory_dict = self.get_empty_traj_dict()
+-        return output
++    def reset(self, seed=None, return_info=False, options=None, idx=None):
++        """重置 wrapper 链和两份导出轨迹。
++
++        ``idx``、随机种子和 Gym reset 选项必须原样传给内层 wrapper。旧实现
++        把这些值硬编码为 ``None``，导致日志目录编号和实际问题不一致。
++        """
++        output = self.env.reset(
++            seed=seed,
++            return_info=return_info,
++            options=options,
++            idx=idx,
++        )
++        self.normal_trajectory_dict = self.get_empty_traj_dict()
++        self.sim_trajectory_dict = self.get_empty_traj_dict()
++        return output
+ 
+ 
+ def normalize_answer(s):
+@@ -154,21 +157,20 @@ def f1_score(prediction, ground_truth):
+ class HotPotQAWrapper(gym.Wrapper):
+     """为 WikiEnv 绑定 HotPotQA 样本、答案评分和题目元数据。"""
+ 
+-    def __init__(self, env, split):
+-        super().__init__(env)
+-        data_file = f"{DATA_DIR}/{HOTPOTQA_SPLIT_FILE[split]}"
+-        self.data = json.load(open(data_file))
+-        self.data = [(d['question'], d['answer']) for d in self.data]
+-        self.data_idx = 0
+-        self.split = split
++    def __init__(self, env, split):
++        super().__init__(env)
++        data_file = f"{DATA_DIR}/{HOTPOTQA_SPLIT_FILE[split]}"
++        with open(data_file, encoding="utf-8") as handle:
++            self.data = json.load(handle)
++        self.data = [(d['question'], d['answer']) for d in self.data]
++        self.data_idx = 0
++        self.split = split
+ 
+     def reset(self, seed=None, return_info=False, options=None, idx=None):
+         """重置环境并选择一个数据样本。
+ 
+-        若 ``idx`` 能传到本层则使用指定样本，否则通过 NumPy 全局随机状态
+-        抽样。当前外层 HistoryWrapper 会丢弃 idx，故 runner 的编号与实际
+-        ``data_idx`` 可能不一致；episode 结束时应以 ``question_idx`` 为准。
+-        """
++        若传入 ``idx`` 则严格使用指定样本，否则通过 NumPy 随机状态抽样。
++        """
+         self.env.reset(seed=seed, return_info=return_info, options=options)
+         # 这次空 action 调用的异常会被吞掉，随后环境再次 reset；保留该流程
+         # 是为了忠实说明原实现，不代表空 action 属于有效任务步骤。
+@@ -177,7 +179,11 @@ class HotPotQAWrapper(gym.Wrapper):
+         except:
+             pass
+         self.env.reset(seed=seed, return_info=return_info, options=options)
+-        self.data_idx = int(np.random.randint(len(self.data))) if idx is None else idx
++        self.data_idx = int(np.random.randint(len(self.data))) if idx is None else int(idx)
++        if not 0 <= self.data_idx < len(self.data):
++            raise IndexError(
++                f"HotPotQA sample index {self.data_idx} is outside [0, {len(self.data) - 1}]"
++            )
+         observation = f"Question: {self.data[self.data_idx][0]}"
+         info = self._get_info()
+         return (observation, info) if return_info else observation
+@@ -185,8 +191,10 @@ class HotPotQAWrapper(gym.Wrapper):
+     def _get_info(self):
+         """汇总 WikiEnv 状态与当前 HotPotQA 问题元数据。"""
+         return {
+-            "steps": self.steps,
+-            "answer": self.answer,
++            # Gymnasium 1.x 不再通过 Wrapper.__getattr__ 隐式转发未知属性；
++            # 使用公开的 get_wrapper_attr 向内查找 WikiEnv 状态。
++            "steps": self.get_wrapper_attr("steps"),
++            "answer": self.get_wrapper_attr("answer"),
+             "question": self.data[self.data_idx][0],
+             "hotpot_split": self.split,
+         }
+@@ -260,8 +268,8 @@ class FeverWrapper(gym.Wrapper):
+     def _get_info(self):
+         """汇总 WikiEnv 状态与当前 FEVER claim 元数据。"""
+         return {
+-            "steps": self.steps,
+-            "answer": self.answer,
++            "steps": self.get_wrapper_attr("steps"),
++            "answer": self.get_wrapper_attr("answer"),
+             "question": self.data[self.data_idx][0],
+             "fever_split": self.split,
+         }
+diff --git a/Projects/speculative-action/hotpotqa/tests/test_metrics.py b/Projects/speculative-action/hotpotqa/tests/test_metrics.py
+index 19679fa..44033cd 100644
+--- a/Projects/speculative-action/hotpotqa/tests/test_metrics.py
++++ b/Projects/speculative-action/hotpotqa/tests/test_metrics.py
+@@ -34,7 +34,7 @@ class MetricsSemanticsTest(unittest.TestCase):
+             Metrics.get_action_metrics(normal, simulated, k=3)["general"], 1
+         )
+ 
+-    def test_top3_label_uses_every_stored_candidate(self):
++    def test_top3_strictly_truncates_extra_candidates(self):
+         normal = {"actions": ["Search[ignored]", "Search[target]"]}
+         simulated = {
+             "actions": [
+@@ -43,11 +43,23 @@ class MetricsSemanticsTest(unittest.TestCase):
+             ]
+         }
+ 
+-        # 当前实现仅对 k == 1 特判；k=3 并不会在代码层切片到前三项。
+         self.assertEqual(
+-            Metrics.get_action_metrics(normal, simulated, k=3)["general"], 1
++            Metrics.get_action_metrics(normal, simulated, k=3)["general"], 0
++        )
++        self.assertEqual(
++            Metrics.get_action_metrics(normal, simulated, k=None)["general"], 1
+         )
+ 
++    def test_all_steps_audit_includes_first_action(self):
++        normal = {"actions": ["Search[first]", "Finish[answer]"]}
++        simulated = {"actions": [["Lookup[wrong]"], ["Finish[answer]"]]}
++
++        paper = Metrics.get_action_metrics(normal, simulated, k=1, skip_first=True)
++        audit = Metrics.get_action_metrics(normal, simulated, k=1, skip_first=False)
++
++        self.assertEqual(paper["general"], 1)
++        self.assertEqual(audit["general"], 0.5)
++
+     def test_full_action_comparison_is_case_insensitive(self):
+         self.assertEqual(Metrics.compare_action("Search[Alpha]", "search[alpha]"), 1)
+         self.assertEqual(Metrics.compare_action("Search[Alpha]", "search[beta]"), 0)
+diff --git a/Projects/speculative-action/hotpotqa/tests/test_offline_pipeline.py b/Projects/speculative-action/hotpotqa/tests/test_offline_pipeline.py
+index 74cc2f2..66bfa7d 100644
+--- a/Projects/speculative-action/hotpotqa/tests/test_offline_pipeline.py
++++ b/Projects/speculative-action/hotpotqa/tests/test_offline_pipeline.py
+@@ -26,8 +26,26 @@ class OfflineCliTest(unittest.TestCase):
+     """证明指标入口不加载 Runner，并保持官方 CLI 的输出矩阵。"""
+ 
+     def test_importing_cli_does_not_import_runner_or_llm_client(self):
+-        self.assertNotIn("src.runner", sys.modules)
+-        self.assertNotIn("src.llm_client", sys.modules)
++        # 在独立解释器中检查 import run，避免其他测试预先导入 llm_client 后
++        # 污染当前进程的 sys.modules，使结果依赖 unittest 的模块加载顺序。
++        completed = subprocess.run(
++            [
++                sys.executable,
++                "-c",
++                (
++                    "import sys; import run; "
++                    "assert 'src.runner' not in sys.modules; "
++                    "assert 'src.llm_client' not in sys.modules"
++                ),
++            ],
++            cwd=HOTPOTQA_ROOT,
++            capture_output=True,
++            text=True,
++            timeout=30,
++            check=False,
++        )
++
++        self.assertEqual(completed.returncode, 0, completed.stderr)
+ 
+     def test_base_traj_path_matches_existing_naming_rule(self):
+         self.assertEqual(
+@@ -103,7 +121,8 @@ class AttachedResultsTest(unittest.TestCase):
+                     with (sample_dir / "metrics.json").open(encoding="utf-8") as handle:
+                         saved = json.load(handle)
+ 
+-                    recalculated = Metrics.get_action_metrics(normal, simulated, k=3)
++                    # 仓库附带 metrics.json 来自旧版“检查全部候选”的兼容口径。
++                    recalculated = Metrics.get_action_metrics(normal, simulated, k=None)
+                     self.assertEqual(recalculated.keys(), saved.keys(), sample_dir)
+                     for metric_name, expected in saved.items():
+                         self.assertAlmostEqual(
+@@ -111,9 +130,15 @@ class AttachedResultsTest(unittest.TestCase):
+                         )
+ 
+                     top1 = Metrics.get_action_metrics(normal, simulated, k=1)
++                    strict_top3 = Metrics.get_action_metrics(normal, simulated, k=3)
+                     for metric_name in ("general", "Search", "Lookup", "Finish"):
+                         self.assertLessEqual(
+                             top1.get(metric_name, 0),
++                            strict_top3.get(metric_name, 0),
++                            sample_dir,
++                        )
++                        self.assertLessEqual(
++                            strict_top3.get(metric_name, 0),
+                             recalculated.get(metric_name, 0),
+                             sample_dir,
+                         )

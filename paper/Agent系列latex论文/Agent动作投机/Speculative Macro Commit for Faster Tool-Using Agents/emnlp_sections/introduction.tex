@@ -1,0 +1,47 @@
+Language agents are becoming a practical interface to software, data, web, and customer-service workflows~\citep{xu2026evolutiontoolusellm, ling2026agentskillsdatadrivenanalysis,
+wei2026agenticreasoninglargelanguage}. 
+Unlike a model that makes a single prediction, a tool agent runs a loop: it calls the model to choose an action, executes that action in an environment, observes the result, and conditions its next decision on what it observed~\citep{react-2023}. 
+This iterative interaction gives agents much of their flexibility, but it also creates a wall-clock bottleneck that model throughput alone does not capture: a single task can wait through dozens of sequential turns even when the model server is well batched.
+
+This latency has several sources. Repeated large-model calls reprocess long contexts and stress cache management~\citep{kvflow-2025}. Tool orchestration adds scheduling, state, and environment-lifecycle overhead~\citep{thunderagent-2026}. The tools and environments can themselves dominate a request; PASTE reports tool execution at 35\% to 61\% of total latency in representative agents~\citep{paste-2026}. 
+Across these sources, the main constraint is sequential dependence: the next prompt usually cannot be built until the previous action returns its observation. 
+Token-level speculative decoding~\citep{leviathan-2023-specdec} drafts several tokens with a cheap model and verifies them with the expensive one, but it operates strictly inside one model call and cannot remove this cross-step dependency.
+
+Speculative Actions (SA) lifts the draft-then-verify idea from tokens to actions~\citep{speculative-actions-2026}. 
+A fast speculative drafter predicts likely future actions while a slower authoritative actor computes the next verified action; when the actor later agrees, an action that was already launched can be committed. 
+However, the core SA mechanism only accepts progress at the granularity of adjacent action steps: a correct guess lets the executor reuse work for the next step, while naively longer lookahead has limited benefits. 
+Therefore, how to effectively commit multi-step actions still remains underexplored.
+% SA represents a useful demonstration of action-level speculation, but it did not answer the full-runtime question: if a tool agent runs with speculation enabled from start to finish, does the complete task actually finish faster under the same quality metric? This leaves a systems gap between speculative-action opportunity analysis and end-to-end speculative tool-agent execution.
+% We build on this actor/speculator framing but target a different engineering problem: the public SA codebase ships self-contained environments for benchmarks such as chess~\citep{speculative-actions-2026} and HotpotQA~\citep{yang2018hotpotqadatasetdiverseexplainable}, whereas long-horizon tool agents need a full runtime. 
+A complementary line of work observes that tool-agent traces contain repeated sequences of tool calls. 
+AWO~\citep{awo-metatools-2026}, for example, mines recurring tool-call sequences and turns them into deterministic composite meta-tools that bundle multiple actions into one invocation. 
+This can remove several reasoning steps when the model chooses the right meta-tool.
+% Moreover, long-horizon tool-agent traces contain repeated short sequences of tool calls, so the latency bottleneck is not only the next action but also the decisions that often follow it~\citep{awo-metatools-2026}. 
+In our experiments, however, simply exposing mined action sequences as additional callable tools is unreliable: open models like Qwen3.5-27B~\citep{qwen3.5} rarely select these mined macros.
+This raises the central question of the paper:
+\begin{quote}
+\emph{Can recurring action patterns reduce agent latency without requiring the model to choose new meta tools?}
+\end{quote}
+Our answer is \textbf{Speculative Macro Commit} (SMC), 
+where a \emph{macro} is a recurring multi-action pattern mined from execution traces.
+% , such as a short sequence of tool calls that often appears after the same kind of state.
+A \emph{commit} means accepting already executed draft tool calls and their returned results into the agent's real execution history, so that the large model does not need to choose and execute those steps again. 
+% The key reframing is that a mined macro should not be an action chain the model chooses, but guarded runtime state: speculative work that becomes eligible for runtime commit only after the authoritative worker verifies the first drafted action and a state-compatible suffix materializes online. 
+% SMC uses macro steps as runtime evidence rather than model-visible tools.
+When one macro from the mined macro library is identified in this long action chain, and the first action of the macro matches the authoritative action, SMC attempts a \emph{macro commit}: it commits the remaining matched draft steps and their observations into the official trajectory, skipping the corresponding large-model calls as well as environment delays. 
+As a macro commit does not ask the actor to regenerate and verify every skipped step, SMC is approximate rather than strictly lossless but is empirically shown to preserve task quality while reducing latency.
+
+% Because a committed macro skips the authoritative model's forward pass and verification entirely, SMC is not lossless, which is precisely why the guards matter. Concretely, our contributions are:
+\begin{enumerate}
+    \item \textbf{An end-to-end runtime for action-level speculation.} 
+    We build a two-tier runtime in which an authoritative actor model and a speculative drafter model run concurrently throughout complete long-horizon tool-agent tasks.
+    The executor measures actual wall-clock latency, lets the drafter run ahead on draft action--observation chains, and falls back to ordinary execution when speculation cannot be used.
+    % This runtime measures actual wall-clock latency and supports fallback when speculation fails.
+    \item \textbf{Speculative Macro Commit.} 
+    We introduce SMC, which shifts mined recurring action patterns from model-side macro selection to executor-side validation.
+    The executor first identifies macro matches in the drafter's pre-executed action chain; after the authoritative actor agrees with the first matched draft action, SMC can commit the remaining matched draft steps and their observations into the official trajectory.
+    This skips the corresponding large-model calls and avoids waiting again for already returned tool results, making SMC an approximate but guarded latency optimization.
+
+    \item \textbf{Evaluation on full tool-agent benchmarks.} 
+    With Qwen3.5-27B INT4 as the authoritative actor and Qwen3.5-4B as the speculative drafter on the $\tau^2$-bench Telecom subset, the SMC run matches the single-model baseline's reward while cutting latency by 18.59\%; and reduces latency by 10.23\% over SA. On AppWorld benchmark, SA reduces the latency by 40.37\% compared with the baseline, and SMC further reduces wall time by 7.64\% with a small accuracy tradeoff. 
+\end{enumerate}

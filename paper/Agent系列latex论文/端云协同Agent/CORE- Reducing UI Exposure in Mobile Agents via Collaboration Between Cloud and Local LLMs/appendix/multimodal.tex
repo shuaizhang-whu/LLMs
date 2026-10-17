@@ -1,0 +1,33 @@
+\section{Adaptability to Screenshot-based and Multimodal Settings}
+\label{sec:appendix-multimodal}
+
+Prior to 2025, foundation multimodal LLMs exhibited limited reliability in accurately localizing UI elements. Consequently, CORE was initially developed upon XML-based UI representations, which provide precise bounding box information and a structured hierarchy, both crucial for reliable decision-making in mobile UI automation.
+
+Nonetheless, multi-modality plays a complementary and increasingly important role. XML encodes semantic metadata such as \textit{content-description}, reflecting developer intent, whereas screenshots capture richer visual context. Recognizing this complementarity, the CORE framework was designed to be modality-agnostic and can be seamlessly extended to incorporate screenshot-based or multimodal inputs.
+
+The key modules of CORE, including layout-aware block partitioning, co-planning, and co-decision-making are all designed independently of the input modality. Each can operate on XML-only, screenshot-only, or hybrid representations. For instance, the block partitioning module may employ either an XML-based structural strategy or a visual segmentation approach. Similarly, the local and cloud LLMs can be replaced with multimodal LLMs without altering the collaborative workflow.
+
+To extend CORE to multimodal settings, a straightforward masking strategy was adopted. The selective UI reduction mechanism precisely identifies which elements should be hidden from the cloud model. Screenshots of the current UI are captured, and gray masks are applied to the bounding boxes corresponding to the filtered-out elements. The resulting masked screenshot, together with textual UI element descriptions, is then provided to a multimodal cloud LLM (e.g., GPT-4o). In comparison, the GPT-4o baseline receives the full, unmasked screenshot. The multimodal extension of CORE was evaluated on DroidTask and AndroidLab datasets, using GPT-4o as the cloud LLM and Gemma 2-9B as the local LLM. Table~\ref{tab:screenshot-results} summarizes the task success rate and UI exposure reduction.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Performance of CORE with multimodal (screenshot-based) input on DroidTask and AndroidLab datasets.}
+  \label{tab:screenshot-results}
+  \resizebox{\columnwidth}{!}{
+  \begin{tabular}{lcccc}
+    \toprule
+    \multirow{2}{*}{\textbf{Methods (+Screenshot)}} & 
+    \multicolumn{2}{c}{\textbf{DroidTask Dataset}} & 
+    \multicolumn{2}{c}{\textbf{AndroidLab Dataset}} \\
+    \cmidrule(r){2-3} \cmidrule(r){4-5}
+    & \textbf{Success Rate} & \textbf{Reduction Rate} 
+    & \textbf{Success Rate} & \textbf{Reduction Rate} \\
+    \midrule
+    GPT-4o Baseline & 74.13\% & 0.00\% & 46.94\% & 0.00\% \\
+    CORE (GPT-4o + Gemma 2-9B) & 69.93\% & 56.84\% & 39.80\% & 37.51\% \\
+    \bottomrule
+  \end{tabular}
+  }
+\end{table}
+
+These results indicate that the multimodal extension of CORE preserves high decision quality while substantially reducing unnecessary UI exposure, achieving reduction rates of 56.84\% on DroidTask and 37.51\% on AndroidLab. This confirms the generality and robustness of CORE across both XML and screenshot-based input modalities.

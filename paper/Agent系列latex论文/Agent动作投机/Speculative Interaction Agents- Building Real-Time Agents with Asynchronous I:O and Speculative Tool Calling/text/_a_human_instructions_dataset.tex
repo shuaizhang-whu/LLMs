@@ -1,0 +1,124 @@
+\section{Human Instructions Dataset}
+\label{sec:appendix_human_dataset}
+\subsection{Dataset Details}
+
+Our Human Instructions Dataset consists of real-world voice-assistant interactions paired with LLM-generated execution plans which have gone under LLM-as-a-judge and subsequent human review. Each dataset entry contains: (1) a verbatim transcript of a spoken user query and (2) a structured plan consisting of a sequence of tool/function calls intended to fulfill the user’s request. 
+We aim to use these samples to evaluate our streaming methodology on challenging real-world samples with voice transcription challenges or where the user's intent drifts. 
+
+\subsection{Data Collection Process Details}
+
+Our team of 24 project contributors produced evaluation samples for Human Instructions. 
+In each session, a contributor was provided with a description of the available tools and their functionalities, based on which they generated a diverse set of tasks that could be accomplished using these tools.
+The generated tasks range from extremely simple requests that required a single tool invocation to more complex scenarios involving multi-step workflows and mid-utterance intent changes. 
+A total of 278 sessions were produced initially; after post-processing, we retain 177 sessions that are used as final evaluation data.
+
+All interactions were recorded as raw audio. In addition to the transcript text, we retained timestamp annotations for each utterance, enabling reconstruction of the temporal structure of the original speech.
+Since questions were derived from real voice transcripts, they naturally contain speech disfluencies including filler words such as "uh" or "um", pauses (``...''), repetition, and imperfect grammar. These features are preserved to maintain transcript fidelity. Transcripts were generated using Deepgram \texttt{nova-2-general} and are not normalized to preserve realistic downstream evaluation conditions. 
+
+\subsection{Post-Processing}
+
+\paragraph{Initial Transcript Set.}
+We begin with a corpus of real voice-assistant transcripts. Labels or annotations are not present at this stage.
+
+\paragraph{Generation of Candidate Plans.}
+To construct transcript--plan pairs, we generate execution plans using GPT-5.2 in a zero-label evaluation setting. The model is prompted to produce structured tool-call sequences that fulfill each transcript’s request. This produces an initial dataset of 278 entries consisting of transcripts paired with model-generated plans.
+
+\paragraph{LLM-as-Judge Annotation.}
+To assign quality labels, we use a structured judging prompt (shown in section A.4) that defines the classification task and evaluation criteria. The prompt is augmented with few-shot examples to calibrate model behavior. Notably, each entry is assigned to exactly one of the following four mutually exclusive categories:
+
+\begin{description}
+
+\item[\textbf{Perfect.}] The question is coherent and the generated plan correctly fulfills the request using the appropriate functions, arguments, and ordering. No modifications are required.
+
+\item[\textbf{Passable.}] The question contains minor issues but the intent remains interpretable, and the generated plan reasonably satisfies the request. The judge must provide minimal one-to-one word substitutions to clarify ambiguities while preserving transcript fidelity. If necessary, corresponding answer fixes must also be provided.
+
+\item[\textbf{LLM\_Wrong.}] The question is understandable but the generated plan is incorrect, incomplete, improperly ordered, or fails to account for user intent (including changes of mind). The judge must provide a corrected plan together with an explanation of the error.
+
+\item[\textbf{Delete.}] The request is either incoherent or fundamentally unachievable with the available tools. In this case, no fixes are produced.
+
+\end{description}
+
+In addition to assigning a category label, judges are required to produce a natural-language explanation justifying their decision. When edits are proposed to either the question or the answer, the judge must separately provide the corrected text and an accompanying explanation.
+
+\paragraph{Question Fix Guidelines.}
+Question fixes are strictly limited to one-to-one word substitutions and must result in a coherent request without rewriting, normalization, or stylistic modification of the transcript. This constraint is necessary because we preserve word-level timestamp annotations, which are used to replicate natural speech characteristics in both training and evaluation settings.
+
+\paragraph{Answer Fix Guidelines.}
+Answer fixes must produce a corrected execution plan that fully satisfies the user’s request using valid tool calls, correct arguments, and proper ordering. The corrected plan must explicitly include all initial tool calls even when the user changes their mind. Judges may not introduce unsupported tools, omit required calls, or alter the task definition beyond what is necessary to faithfully execute the clarified request.
+
+Each entry is evaluated independently by three judge models:
+\begin{itemize}
+    \item GPT-5.2 (\texttt{gpt-5.2-2025-12-11})
+    \item Gemini 3.1 Pro Preview
+    \item Claude Opus 4.6
+\end{itemize}
+
+\paragraph{Aggregation via Majority Voting.}
+Final labels are assigned using majority vote across the three judge models. The resulting distribution is:
+
+\begin{center}
+\begin{tabular}{lr}
+\textbf{Label} & \textbf{Count} \\
+\hline
+delete & 91 \\
+llm\_wrong & 114 \\
+perfect & 43 \\
+passable & 16 \\
+three-way split & 14 \\
+\end{tabular}
+\end{center}
+
+\paragraph{Human Verification.}
+After automatic labeling, a thorough human review pass is conducted to validate label correctness, resolve three-way disagreements, and correct any errors. The final data set statistics after human verification are reported below:
+
+\vspace{0.5em}
+\begin{center}
+\begin{tabular}{lr}
+\textbf{Label} & \textbf{Count} \\
+\hline
+delete & 101 \\
+valid & 177
+\end{tabular}
+\end{center}
+
+
+\subsection{Evaluation Results}
+
+Table \ref{tab:human-instructions} provides evaluation for the Qwen2.5-3B-Instruct and Llama-3.2-3B-Instruct models on Human Instructions. 
+We evaluate the base checkpoints and baseline SFT checkpoints without streaming, and we evaluate our method using the post-SI-SFT model.
+We use the SFT checkpoints trained using the TinyAgent training set since the provided tool set is the same.
+On Human Instructions, we observe substantially lower accuracy relative to evaluation on TinyAgent, even with the post-SFT models. 
+We also observe a larger discrepancy between the normal-SFT baseline and our Speculative Interaction Agent model adapted using SI-SFT.
+Additionally, we observe higher latency with the Speculative Interaction Agent method relative to the baseline, as we observe degenerative behavior where the model produces repeated actions.
+These results highlight that there is room for further development in model adaptation strategies for processing streaming user inputs with naturalistic speech.
+
+\begin{table*}[!htbp]%%{r}%{0.55\textwidth}
+\caption{
+Evaluation accuracy for the Qwen2.5-3B-Instruct and Llama-3.2-3B-Instruct models on Human Instructions.
+We report results with our Speculative Interaction Agent methodology as well as the reason-and-act baseline, trained using SFT (as well as baseline results without training).
+We also report latency in seconds, which was benchmarked on a single A100 GPU (averaged across 10 samples from the evaluation set). 
+Note that we only report latency results for the baseline with normal SFT and for Speculative Interaction Agent with SI-SFT, as the other configuration struggled to follow the desired behavior (e.g. not executing any tool calls before responding) which makes the latency not directly comparable.
+}\label{tab:human-instructions}
+% \vspace{2mm}
+\centering
+\scriptsize{
+\setlength{\tabcolsep}{5.5pt}{
+\begin{tabular}{c|cc|cc}
+        \toprule
+\multirow{2}{*}{\textbf{Config}} &
+\multicolumn{2}{c|}{\textbf{Qwen2.5-3B}} & \multicolumn{2}{c}{\textbf{Llama-3.2-3B}} 
+% & \multicolumn{2}{c|}{\textbf{BFCL}} 
+\\ 
+& \textbf{Accuracy} & \textbf{Latency} 
+% & \textbf{Accuracy} & \textbf{TTFT (s)} 
+& \textbf{Accuracy} & \textbf{Latency}  \\ 
+% \hline
+\midrule
+Baseline (no SFT) & 4.0 & -  &  4.0 & -\\
+Baseline (normal SFT) & 22.0 & 9.3  &  19.2 & 5.6 \\
+Speculative Interaction (SI-SFT) & 13.6 & 14.3 & 15.3 & 9.3 \\
+\bottomrule
+\end{tabular}
+}
+}
+\end{table*}

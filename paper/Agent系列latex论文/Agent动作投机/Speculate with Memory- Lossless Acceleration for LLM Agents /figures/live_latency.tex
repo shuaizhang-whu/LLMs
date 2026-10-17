@@ -1,0 +1,117 @@
+\begin{figure}[t]
+\centering
+
+% (a) ALFWorld: time saved per 100 steps vs env delay
+\begin{minipage}[t]{0.48\textwidth}
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+    width=\textwidth,
+    height=0.82\textwidth,
+    xlabel={\small Environment delay (s)},
+    ylabel={\small Time saved (s\,/\,100 steps)},
+    ymin=0, ymax=250,
+    xmin=0, xmax=22,
+    xtick={0,5,10,15,20},
+    ytick={0,50,100,150,200,250},
+    legend style={at={(0.97,0.5)}, anchor=east, font=\scriptsize,
+                  draw=none, fill=white, fill opacity=0.9,
+                  row sep=-1pt},
+    ymajorgrids=true,
+    grid style={gray!20, line width=0.3pt},
+    tick label style={font=\scriptsize},
+    label style={font=\small},
+    title={\small\textbf{(a) ALFWorld: savings vs.\ env delay}},
+    title style={yshift=-2pt},
+]
+% Upper bound (instant spec)
+\addplot[color=cGray, line width=1.2pt, mark=none, densely dotted]
+  coordinates {(0,0) (2,81.9) (3,116.6) (5,159.6) (7,184.5) (10,207.0) (12,215.8) (15,223.5) (20,231.0)};
+\addlegendentry{Upper bound}
+
+% Predicted
+\addplot[color=cBlueDark, line width=1.2pt, mark=none, dashed]
+  coordinates {(0,0) (2,0) (3,11.1) (5,83.2) (7,134.6) (10,172.0) (12,185.6) (15,196.7) (20,204.8)};
+\addlegendentry{Predicted}
+
+% Measured 
+\addplot[color=cOrange, line width=1.5pt, mark=*, mark size=1.5pt]
+  coordinates {(0,0) (2,2.2) (3,20.8) (5,86.7) (7,138.7) (10,182.6) (12,199.3) (15,214.2) (20,226.4)};
+\addlegendentry{Measured}
+
+% Annotation: spec latency bottleneck
+\draw[<->, red, line width=0.6pt] (axis cs:3,20.8) -- (axis cs:3,116.6)
+  node[midway, anchor=north west, xshift=8pt, font=\small, text=red] {spec overhead};
+
+\end{axis}
+\end{tikzpicture}
+\end{minipage}%
+\hfill
+% (b) HotpotQA: actor/spec latency + accuracy by step depth
+\begin{minipage}[t]{0.48\textwidth}
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+    width=\textwidth,
+    height=0.82\textwidth,
+    xlabel={\small Step depth},
+    ylabel={\small Median latency (s)},
+    ymin=0, ymax=12,
+    xmin=0.5, xmax=7.5,
+    xtick={1,2,3,4,5,6,7},
+    legend style={at={(0.03,0.97)}, anchor=north west, font=\tiny,
+                  draw=none, fill=white, fill opacity=0.9,
+                  row sep=-1pt},
+    ymajorgrids=true,
+    grid style={gray!20, line width=0.3pt},
+    tick label style={font=\scriptsize},
+    label style={font=\small},
+    title={\small\textbf{(b) HotpotQA: latency and accuracy}},
+    title style={yshift=-2pt},
+    axis y line*=left,
+]
+% Actor
+\addplot[color=cBlueDark, line width=1.2pt, mark=*, mark size=1.2pt]
+  coordinates {(1,4.0) (2,3.4) (3,2.8) (4,4.2) (5,7.2) (6,9.4) (7,7.2)};
+\addlegendentry{Actor (GPT-5.4)}
+
+% Speculator
+\addplot[color=cOrange, line width=1.2pt, mark=square*, mark size=1.2pt]
+  coordinates {(1,1.7) (2,1.6) (3,1.6) (4,1.6) (5,1.6) (6,1.8) (7,1.9)};
+\addlegendentry{Spec (GPT-4.1-mini)}
+\end{axis}
+
+% Secondary y-axis for accuracy
+\begin{axis}[
+    width=\textwidth,
+    height=0.82\textwidth,
+    ylabel={\small Action accuracy (\%)},
+    ymin=0, ymax=70,
+    xmin=0.5, xmax=7.5,
+    xtick=\empty,
+    ytick={0,20,40,60},
+    legend style={at={(0.97,0.97)}, anchor=north east, font=\tiny,
+                  draw=none, fill=white, fill opacity=0.9,
+                  row sep=-1pt},
+    tick label style={font=\scriptsize},
+    label style={font=\small},
+    axis y line*=right,
+    axis x line=none,
+]
+% Stateless
+\addplot[color=cGray, line width=1.0pt, mark=o, mark size=1.2pt, densely dotted]
+  coordinates {(1,32.7) (2,19.2) (3,11.0) (4,9.5) (5,4.8) (6,10.5) (7,3.1)};
+\addlegendentry{Stateless acc.}
+
+% Memory
+\addplot[color=cBlueMed, line width=1.2pt, mark=triangle*, mark size=1.5pt, dashed]
+  coordinates {(1,33.0) (2,33.6) (3,22.0) (4,14.3) (5,7.1) (6,18.4) (7,9.4)};
+\addlegendentry{Memory acc.}
+\end{axis}
+\end{tikzpicture}
+\end{minipage}
+
+\caption{\textbf{Live latency validation.} \textbf{(a)}~ALFWorld savings vs.\ delay $\ell_{\mathrm{env}}$. Dotted: theoretical bound (zero-latency speculator). At $\ell_{\mathrm{env}} < 3$\,s, speculator latency ($\sim$2.7\,s) constrains gains (red). Measured results (solid) track replay predictions (dashed), validating the offline model. \textbf{(b)}~HotpotQA latency and accuracy by step. Speculator is $2\text{--}5\times$ faster than actor, providing a consistent head start. Memory accuracy (dashed) consistently outperforms Stateless (dotted) across all depths.}
+
+\label{fig:live_latency}
+\end{figure}

@@ -1,0 +1,24 @@
+\begin{algorithm}[t]
+\small
+\begin{algorithmic}[1]
+\Require Policy $\pi_\theta$, query set $\mathcal{D}$, speculation suffix $s_{\mathrm{sp}}$, alternation schedule $m(k)$, group sizes $G_{\mathrm{ag}},G_{\mathrm{sp}}$
+\State $m_{\mathrm{prev}}\gets \varnothing$
+\For{RL iteration $k = 1,2,\ldots$}
+    \State Sample query batch $Q \sim \mathcal{D}$
+    \State Generate agent groups $\mathcal{T}=\{\tau_i(x)\}_{x\in Q,\,i=1}^{G_{\mathrm{ag}}}$
+    \State Build speculation pairs $\mathcal{S}=\{(h_t,a_t)\!: t\in\tau,\tau\in\mathcal{T}\}$
+    \State Generate speculator groups $\widehat{\mathcal{A}}=\{\hat a_{t,j}\sim\pi_\theta(\cdot\mid h_t\oplus s_{\mathrm{sp}})\}_{(h_t,a_t)\in\mathcal{S},\,j=1}^{G_{\mathrm{sp}}}$
+    \If{$m(k)\ne m_{\mathrm{prev}}$}
+        \State Reset optimizer state
+    \EndIf
+    \If{$m(k)=\mathrm{ag}$}
+        \State DAPO update $\pi_\theta$ on grouped agent rewards $R_{\mathrm{ag}}(\mathcal{T})$
+    \Else
+        \State DAPO update $\pi_\theta$ on grouped speculation rewards $\{R_{\mathrm{sp}}(\hat a_{t,j},a_t)\}_{(h_t,a_t)\in\mathcal{S},\,j=1}^{G_{\mathrm{sp}}}$
+    \EndIf
+    \State $m_{\mathrm{prev}}\gets m(k)$
+\EndFor
+\end{algorithmic}
+\caption{Joint Agent-Speculator RL}
+\label{alg:training-recipe}
+\end{algorithm}

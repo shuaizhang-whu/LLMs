@@ -1,0 +1,113 @@
+\documentclass[letterpaper]{article} % DO NOT CHANGE THIS
+\usepackage[preprint]{aaai2027}  % DO NOT CHANGE THIS
+% Fonts are loaded automatically by aaai2027.sty (newtxtext, helvet, courier).
+\usepackage[hyphens]{url}  % DO NOT CHANGE THIS
+\usepackage{graphicx} % DO NOT CHANGE THIS
+\urlstyle{rm} % DO NOT CHANGE THIS
+\def\UrlFont{\rm}  % DO NOT CHANGE THIS
+\usepackage{natbib}  % DO NOT CHANGE THIS AND DO NOT ADD ANY OPTIONS TO IT
+\usepackage{caption} % DO NOT CHANGE THIS AND DO NOT ADD ANY OPTIONS TO IT
+\frenchspacing  % DO NOT CHANGE THIS
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{amssymb}
+
+% Keep the \pdfinfo as shown here.
+\pdfinfo{
+/TemplateVersion (2027.1)
+}
+
+% NOTE: hyperref, geometry, float, wrapfig, multicol, setspace, titlesec, ulem,
+% balance, flushend, stfloats, tabu, authblk, CJK are all FORBIDDEN by the kit.
+% No \clearpage/\newpage/\pagebreak, no negative \vspace near floats/sections.
+
+\setcounter{secnumdepth}{2} % numbered sections; kit allows 0--2
+
+% ---------------------------------------------------------------------------
+% Paper-wide macros
+% ---------------------------------------------------------------------------
+% System name: Action and Observation Speculation.
+\newcommand{\sysname}{\textsc{AOSpec}}
+% Observation speculation component
+\newcommand{\evd}{EVD}   % Expected Value Decoding
+% Restrained insight callout using xcolor, which is loaded by the AAAI style.
+\newcommand{\insightbox}[1]{%
+  \begin{center}%
+  \begingroup
+  \setlength{\fboxsep}{5pt}%
+  \setlength{\fboxrule}{0.75pt}%
+  \fcolorbox{black!80}{black!2}{%
+    \parbox{0.92\columnwidth}{%
+      \small\itshape
+      \ensuremath{\bigstar}\enspace #1}}%
+  \endgroup
+  \end{center}}
+% Notation
+\newcommand{\dtime}{D}   % decode time of a window
+\newcommand{\ttime}{T}   % tool-execution time of a window
+% Placeholder marker for numbers pending the final experiment sweep
+\newcommand{\old}[1]{#1} % wraps OLD-DATA placeholder numbers; \renewcommand to highlight
+
+\title{\sysname{}: Action and Observation Co-Speculation\\for Low-Latency Agent Serving}
+\author{
+    Hao (Mark) Chen, Jinnan Guo, Wayne Luk, Hongxiang Fan
+}
+\affiliations{
+    Imperial College London, UK
+}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Large language model agents increasingly act through stateful tools, yet model
+generation and environment execution remain serialized at every step. As
+decoding accelerates, tool execution becomes a growing bottleneck. Existing
+action- or observation-only speculation leaves much of this latency exposed:
+value is concentrated in a few slow calls, some outcomes emerge only through
+execution, and longer lookahead typically requires an increasingly unlikely
+chain of action predictions.
+We present \sysname{}, a lossless framework that co-speculates actions and
+observations across the full agent--environment loop. Expected Value Decoding
+(EVD) directs observation speculation toward outcomes with the greatest
+expected latency benefit, optimizing expected time hidden rather than hit
+rate. For outcomes only execution can reveal, \sysname{} launches
+latency-critical target actions in isolated forks that contain their effects,
+while Joint Action--State Verification (JASV) verifies both the action and its
+origin state against committed execution before reuse. JASV recasts
+long-horizon action dependency from full-chain prediction into target
+action--state verification, breaking the lookahead--accuracy tradeoff and
+unlocking long-range overlap without sacrificing serial semantics.
+Across Terminal-Bench serving settings spanning four harnesses, five actor
+models, and five serving speeds, \sysname{} outperforms every practical
+baseline, reducing mean end-to-end latency by 11.8--32.5\% and p99 latency by
+up to 42.8\%. Its gains increase as decoding accelerates, and its observation
+model transfers from Terminal-Bench to SWE-bench Verified without retraining.
+\end{abstract}
+
+% ===========================================================================
+\input{sections/introduction}
+
+% ===========================================================================
+\input{sections/related_work}
+
+% ===========================================================================
+\input{sections/motivation}
+
+% ===========================================================================
+\input{sections/methodology}
+
+% ===========================================================================
+\input{sections/experiments}
+
+% ===========================================================================
+\input{sections/conclusion}
+
+% ===========================================================================
+% \newpage
+\bibliography{references}
+
+\end{document}

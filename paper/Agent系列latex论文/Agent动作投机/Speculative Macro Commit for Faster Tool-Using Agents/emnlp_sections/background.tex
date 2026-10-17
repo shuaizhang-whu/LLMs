@@ -1,0 +1,26 @@
+\textbf{Speculative decoding and speculative agent execution.}
+Speculative decoding accelerates a single model call by letting a cheap drafter model propose tokens that a target model verifies in batches~\cite{leviathan-2023-specdec}. 
+This line of work reduces decoding latency inside one model invocation, but a ReAct-style tool agent, which interleaves model reasoning with tool calls over many steps~\cite{react-2023}, also pays latency across invocations, since each tool result must return before the next prompt can be formed. 
+Speculative Actions extends the draft-and-verify idea from tokens to agent actions, launching predicted future API calls in parallel with an authoritative actor and committing them only when predictions match~\cite{speculative-actions-2026}. 
+Our SMC shares this action-level view but differs in what a commit covers: rather than verifying one action at a time, it commits several already executed draft steps, trading the lossless guarantee of one-step verification for a guarded multi-step approximation.
+
+SMC builds on the same actor--speculator setting but uses a different commit rule.
+After the actor verifies the first drafted action, SMC may commit a matched suffix of already executed action--observation pairs without verifying each skipped action with the actor.
+This enables multi-step runtime skipping, at the cost of making SMC approximate rather than strictly lossless.
+
+
+% SMC follows this action-level view, but studies multi-step continuation commit in full tool-agent runtimes where forked environment state, tool observations, and wall-clock serving contention must be handled end to end.
+
+\textbf{Speculative tool execution systems.}
+Recent LLM-serving systems attack the same serial LLM--tool loop from complementary angles. 
+PASTE speculatively executes likely tool calls while the model is still computing, exploiting stable application-level control flow and data dependencies~\citep{paste-2026}, while ThunderAgent~\citep{thunderagent-2026} and KVFlow~\citep{kvflow-2025} reduce latency through program-aware serving and prefix/cache management without changing which actions enter the trajectory. 
+These systems motivate the runtime setting of our work: latency depends on whether useful tool work can move off the serial critical path, not only on model calls. 
+% SMC differs by committing a verified multi-action suffix as official trajectory progress, rather than only prefetching, caching, or scheduling individual calls.
+
+\textbf{Workflow compression and meta-tools.}
+Agent Workflow Optimization (AWO) mines recurrent tool-call sequences from traces and registers the resulting composites as meta-tools available to the model~\citep{awo-metatools-2026}. 
+The key difference is the interface: AWO changes the model-visible toolset and lets the model choose when to call a composite, whereas our SMC keeps the mined steps as hidden runtime state and commits them only after the anchor call is verified.
+% This is the closest workflow-mining baseline to SMC because both approaches exploit repeated multi-tool structure. The design choice is different, however. In AWO, the model-visible toolset changes and the model must decide when to invoke a composite tool. In SMC, mined continuations are hidden runtime state: the authoritative model sees the original tool schema, and a suffix can be committed only after the first drafted action is verified and the remaining suffix is already materialized on forked state. We also evaluate a single-GPU passive diagnostic that keeps macros hidden but executes a matched mined suffix immediately after an ordinary model-produced tool call. Its latency/accuracy tradeoff shows why hidden macros alone are not enough; SMC adds speculative materialization and guards before commit.
+
+% \textbf{Benchmarks for tool-using agents.}
+% Tool-agent benchmarks such as AppWorld, $\tau^2$-Bench, and WebShop evaluate agents that interact with APIs, applications, users, or web environments over many serial steps~\citep{appworld-2024,taubench-2024,webshop-2022}. These benchmarks make latency optimization harder than isolated model-inference settings because the runtime must preserve environment state, tool observations, and task outcomes while attempting to overlap work. They also expose different reliability regimes: $\tau^2$ Telecom has highly structured service workflows, while AppWorld contains broader application interactions and more benchmark-specific failure modes. Our experiments use these benchmarks to test when mined continuations become safe and useful runtime commits, rather than treating macro frequency or offline replay quality alone as sufficient evidence.

@@ -121,24 +121,124 @@ def main():
     parser.add_argument("--norun", action="store_false", help="Skip running the experiment")
     parser.add_argument("--modelname", default=constants.openrouter_model_name, help="Agent model name")
     parser.add_argument("--guessmodelname", default=constants.openrouter_guess_model_name, help="Guess model name")
+    parser.add_argument(
+        "--execution-mode",
+        choices=("sequential", "paired", "online"),
+        help=(
+            "Use the reproducible runner. Omit this option to retain the legacy "
+            "official trajectory runner."
+        ),
+    )
+    parser.add_argument(
+        "--sample-ids",
+        help="Comma-separated HotPotQA dev indices, for example 7107,5619",
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=constants.random_seed,
+        help="Dataset ordering and supported LLM sampling seed",
+    )
+    parser.add_argument(
+        "--top-k",
+        type=int,
+        choices=(1, 3),
+        default=constants.guess_num_actions,
+        help="Strict number of speculative action candidates",
+    )
+    parser.add_argument(
+        "--run-id",
+        help="Experiment name stored below reproduction/experiments/",
+    )
+    parser.add_argument(
+        "--temperature",
+        type=float,
+        help="Override authority/candidate Actor temperature (use 0 for deterministic local runs)",
+    )
+    parser.add_argument(
+        "--authority-trace-root",
+        help=(
+            "Replay authority_trace.json files from this run root. "
+            "Used to audit online lossless equivalence."
+        ),
+    )
+    parser.add_argument(
+        "--skip-done",
+        action="store_true",
+        help="Skip samples with an existing sample_metrics.json in reproducible runs",
+    )
+    parser.add_argument(
+        "--num-samples",
+        type=int,
+        help="Override constants.n_samples_to_run (use 1 for a smoke test)",
+    )
+    parser.add_argument(
+        "--num-steps",
+        type=int,
+        help="Override constants.n_steps_to_run (the loop executes at most num_steps - 1 actions)",
+    )
     parser.add_argument("--cleanuptrajs", action="store_true", help="Clean up incomplete trajectories")
     args = parser.parse_args()
 
-    if args.norun:
-        # HotPotQARun 会进一步导入并初始化模型客户端，只允许在真实运行分支中构造。
-        from src.runner import HotPotQARun
+    if args.num_samples is not None:
+        if args.num_samples < 1:
+            parser.error("--num-samples must be at least 1")
+        constants.n_samples_to_run = args.num_samples
+    if args.num_steps is not None:
+        if args.num_steps < 2:
+            parser.error("--num-steps must be at least 2")
+        constants.n_steps_to_run = args.num_steps
+    constants.random_seed = args.seed
+    constants.guess_num_actions = args.top_k
 
-        runner = HotPotQARun(
-            model_name=args.modelname,
-            guess_model_name=args.guessmodelname,
-            to_print_output=args.noprint,
-        )
-        if args.cleanuptrajs:
+    if args.norun:
+        if args.execution_mode:
+            from src.reproduction_runner import ReproductionRunner, parse_sample_ids
+
+            try:
+                sample_ids = parse_sample_ids(args.sample_ids)
+            except ValueError as error:
+                parser.error(str(error))
+            if sample_ids is not None and args.num_samples is not None:
+                parser.error("use either --sample-ids or --num-samples, not both")
+
+            runner = ReproductionRunner(
+                model_name=args.modelname,
+                guess_model_name=args.guessmodelname,
+                execution_mode=args.execution_mode,
+                sample_ids=sample_ids,
+                seed=args.seed,
+                top_k=args.top_k,
+                run_id=args.run_id,
+                num_steps=args.num_steps or constants.n_steps_to_run,
+                temperature=args.temperature,
+                authority_trace_root=args.authority_trace_root,
+                to_print_output=args.noprint,
+            )
+            if args.num_samples is not None:
+                runner.sample_ids = runner.sample_ids[: args.num_samples]
+            summary = runner.run(skip_done=args.skip_done)
+            print(
+                "Saved reproducible run:",
+                runner.base_traj_path,
+                "\nSummary:",
+                json.dumps(summary, indent=2),
+            )
+        else:
+            # HotPotQARun 会进一步导入并初始化模型客户端，只允许在真实运行分支中构造。
+            from src.runner import HotPotQARun
+
+            runner = HotPotQARun(
+                model_name=args.modelname,
+                guess_model_name=args.guessmodelname,
+                to_print_output=args.noprint,
+            )
+            if args.cleanuptrajs:
+                Utils.cleanup_trajs(runner.base_traj_path)
+            # webthink_simulate=True 表示同时采集 normal/sim 两套轨迹；runner 内部仍按
+            # 串行顺序执行，并不在这里创建 Actor/工具调用的在线并发流水线。
+            runner.run(webthink_simulate=True, skip_done=True)
             Utils.cleanup_trajs(runner.base_traj_path)
-        # webthink_simulate=True 表示同时采集 normal/sim 两套轨迹；runner 内部仍按
-        # 串行顺序执行，并不在这里创建 Actor/工具调用的在线并发流水线。
-        runner.run(webthink_simulate=True, skip_done=True)
-        Utils.cleanup_trajs(runner.base_traj_path)
     elif args.cleanuptrajs:
         # 仅清理已有目录时不应为获得路径而初始化任何模型客户端。
         Utils.cleanup_trajs(get_base_traj_path(args.modelname, args.guessmodelname))

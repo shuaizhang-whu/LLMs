@@ -1,0 +1,27 @@
+\subsection{Controlling the Cost-Latency Trade-Off}
+\label{sec_4.3}
+In speculative planning, the balance between cost and latency is intrinsically tied to the predicted step $k$.
+%Crucially, an overestimated (i.e., larger) $k$ could lead to faster execution and high cost while an underestimated (i.e., smaller) $k$ can help reduce the cost at the expense of increasing the latency.
+Thus, by adjusting the estimation bias of the step $k$, we allow users to control the trade-off between cost and latency according to their specific needs.
+There are in general two approaches for adjusting the speculative step $k$: one implemented during predictor training through modified loss functions, and another applied at inference time through post-prediction adjustment parameters.
+
+\textbf{Biased $k$ Prediction} ~ One method to flexibly modulate the estimation bias of step values is to implement expectile regression \citep{kostrikov2022offline} during training. This approach applies asymmetric penalties that systematically shift the predicted values in a desired direction, allowing for principled control over the bias-variance tradeoff in step prediction.
+% Unlike standard regression that minimizes the symmetric squared error, expectile regression employs an asymmetric loss function that penalizes over-predictions and under-predictions differently. 
+Essentially, expectile regression generalizes ordinary least square (OLS) regression by replacing (symmetric) mean squared error (MSE) with an asymmetric MSE: $\E_{(x,y) \sim \gD}[L^{\tau}_2 (y - f(x))]$
+where $L^{\tau}_2(u) = |\tau - \mathbf{1}(u < 0)| u^2$ and $\tau \in (0,1)$ determines which expectile to estimate.
+% \qingfeng{TODO: If there is still time, add a figure similar to Figure 1 (a) in \citep{kostrikov2022offline}; use \label{fig:expectile_loss}.}
+% We plot $L^{\tau}_2(u)$ in \cref{fig:expectile_loss}. 
+The loss reduces to MSE when $\tau=0.5$.
+% When $\tau > 0.5$, underestimations ($u>0$) are penalized more than overestimations ($u<0$), so the regression is pulled upward to upper expectiles.
+% When $\tau < 0.5$, underestimations are penalized less which pulls the regression downward to lower expectiles.
+% In summary, we can control the estimation bias easily by adjusting $\tau$.
+
+In DSP, we apply expectile regression to train the step predictor $V_{\theta}(s)$, by simply replacing MSE in \cref{eq:td_loss} with the asymmetric MSE: $\label{eq:td_asymmetric_loss}
+L_{\theta} = \E_{\tau \sim \pi} [L^{\tau}_2(G_t^\lambda - V_{\theta}(s_t))].$
+By tuning the value of $\tau$, we can flexibly balance cost and latency in dynamic speculative planning.
+When $\tau > 0.5$, a negative prediction error ($G_t^\lambda - V_{\theta}(s_t) < 0$) incurs a lower penalty, causing $V_{\theta}(s)$ to overestimate $G_t^\lambda$, which leads to faster execution but higher cost.
+Conversely, when $\tau < 0.5$, $V_{\theta}(s)$ tends to underestimate $G_t^\lambda$, resulting in lower cost but increased execution latency.
+
+\textbf{$k$ with Biased Offset} ~ Another way to flexibly control the bias is to directly add or minus some offset to the unbiased predicted $k$ without retraining the predictor. This method offers a straightforward and convenient mechanism for implementing user-controlled preferences in the latency-cost tradeoff. After the predictor generates its initial unbiased estimate $\hat{k}$, we apply a user-specified bias parameter $\beta \in \sN$ to obtain the final step value: $k = \max(1, \hat{k} + \beta)$. Positive values of $\beta$ shift predictions toward more aggressive speculation while negative values produce more conservative predictions. The maximum function ensures that the final step is at least 1, maintaining a valid speculation step.
+
+% Positive values of $\beta$ shift predictions toward more aggressive speculation, which favors acceleration at potential cost increase; while negative values produce more conservative predictions, which favors cost efficiency with possible latency implications. The maximum function ensures that the final step is at least 1, maintaining a valid speculation step.

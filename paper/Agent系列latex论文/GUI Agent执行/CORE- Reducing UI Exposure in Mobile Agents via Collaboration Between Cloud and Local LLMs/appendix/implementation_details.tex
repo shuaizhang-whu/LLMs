@@ -1,0 +1,56 @@
+\vspace{-0.3mm}
+\section{More Implementation Details}
+\subsection{Details of Local LLMs}
+To ensure manageable memory usage and efficiency, we use the following quantized GGUF versions: Gemma2-9B-Instruct-Q5\_K\_M, Qwen2.5-7B-Instruct-Q6\_K\_L, and LLaMA3.1-8B-Instruct-Q6\_K, each reduced to approximately 6.5GB on disk. 
+\subsection{Details of Action Space}
+In our work, the agent supports the following action types: Click, Long Click, and Input Text. More complex interaction types are not considered. To handle scrollable pages, we adopt a specific strategy: if the cloud LLM is unable to make a decision for the current step after the co-decision-making stage of our framework, we attempt to scroll the page. The framework then processes the new UI state, repeating this process until no further scrolling is possible. To prevent infinite scrolling, we set an upper limit on the number of scroll attempts per round.
+\subsection{Agent Prompt}
+The prompts used by the local and cloud LLMs in our framework for collaborative planning and decision-making are presented below.
+
+\textbf{Prompts used for collaborative planning:}
+\begin{tcolorbox}[colback=orange!5!white, colframe=orange!50!black, title=Prompt for generating the sub-task candidate of each UI block (local LLM):]
+You are a Planner, skilled at analyzing mobile UI states and task progress. Given a task description, previous UI actions, and part of current UI state, your job is to provide the most appropriate current step instruction.\\
+
+You receive the task description from the user: [Task]. \\
+The previously completed steps for the task include: [History]. \\
+This is one section of current UI state: [UI Block State]. \\
+
+You must give the current step instruction based on the given section of current UI state(others are masked for privacy), even if the section seems irrelevant. Your response should be a single, precise current step instruction, it can't involve precise UI element information but should involve a logic task explanation, focusing only on what needs to be done immediately in the current UI state to progress the task.
+\end{tcolorbox}
+
+\begin{tcolorbox}[colback=blue!5!white, colframe=blue!50!black, title=Prompt for confirming the best sub-task (cloud LLM):]
+  You are a Planner, skilled at analyzing mobile UI states and task progress. Based on a whole task description and previous UI actions, you need to give the current step instruction focusing only on what needs to be done immediately. A weaker local LLM has generated several current step instructions based on different sections of current UI state. Due to its weaker ability and incomplete information, some of them may be wrong. You can't see any private UI state, but the weaker local LLM can. You can analyze based on its generated current step instructions. \\
+  
+  You receive the task description from the user: [Task]. \\
+  The previously completed steps for the task include: [History]. \\
+  The weaker local LLM generated several current step instructions based on different part of current UI: [Sub-task Candidates]. \\
+  
+  You can choose a most appropriate one from them, if you think all of them are wrong, you can correct them and give a new correct current step instruction. Never output other explanations. If you think the task has been finished, output FINISHED only.
+\end{tcolorbox}
+
+\textbf{Prompts used for collaborative decision-making:}
+\begin{tcolorbox}[colback=orange!5!white, colframe=orange!50!black, title=Prompt for ranking UI blocks (local LLM):]
+You are a smartphone assistant to help users complete tasks by interacting with mobile apps. The current UI state is shown below. It is separated into several sections, and each section is composed by several UI elements. \\
+
+Current UI state: [UI State]\\
+Given a current task, and the sections of part of current UI state, your job is to score each section to judge the probability that it can solve or progress current task: [Sub-task]. \\
+
+In most time, elements grouped in one section are relevant. Sometimes, maybe only one UI element is most useful and other elements in the same section are irrelevant, this section should still be assigned high score.
+Output json like \{"0": "<score of section 0>", "1": "<score of section 1>", ...\}, the score should be a float between 0 and 1 and sum up to 1. Also output your explanation briefly.
+\end{tcolorbox}
+
+\begin{tcolorbox}[colback=blue!5!white, colframe=blue!50!black, title=Prompt for making decisions (cloud LLM):]
+You are a smartphone assistant to help users complete tasks by interacting with mobile apps. Given the whole task, the previous UI actions, the content of current UI state(may be incomplete), you should first decide the current task. Then you need to decide which UI element in current UI state should be interacted.\\
+
+Whole Task: [Task]\\
+Previous UI actions: [History]\\
+Current UI state: [UI Block State]\\
+
+You should first give a current task. It should be a single, precise current step instruction, it can't involve precise UI element information but should involve a logic task explanation, focusing only on what needs to be done immediately in the current UI state to progress the task. But note that the current UI state may not be complete for privacy protection. First, you need to judge whether the information in the current UI state can help the current task. If not, set the index to `-1'. Your response should always be in the following JSON format:\\ 
+\{\\
+\hspace*{2em}"current\_task": "<a brief description of what to do at current step>",\\
+\hspace*{2em}"index": "<an integer, representing the index number of the UI element to interact with for current task or -1 (if none of the elements in the current UI state is relevant to the task)>",\\
+\hspace*{2em}"action": "tap, longtap or input",\\
+\hspace*{2em}"input\_text": "<input text (if action is `input') or `N/A' (if action is `tap' or `longtap')>"\\
+\}
+\end{tcolorbox}
