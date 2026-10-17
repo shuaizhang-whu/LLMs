@@ -156,7 +156,7 @@ def apply_lora(model, tokenizer, batch_size=64, micro_batch_size=4, cutoff_len=2
             num_train_epochs=num_epochs,
             learning_rate=learning_rate,
             fp16=True,
-            logging_steps=10,
+            logging_steps=50,
             logging_first_step=True,
             optim="adamw_torch",
             evaluation_strategy="steps",
@@ -193,8 +193,18 @@ def main(args):
     os.environ["WANDB_PROJECT"] = args.wandb_project
 
     # Load Pruned Model
-    pruned_dict = torch.load(args.prune_model, map_location='cpu')
+    pruned_dict = torch.load(args.prune_model, map_location='cpu', weights_only=False)
     tokenizer, model = pruned_dict['tokenizer'], pruned_dict['model']
+    
+    # 修复 tokenizer 的特殊 token（LLaMA tokenizer 的标准设置）
+    # LLaMA 使用 1 作为 bos_token_id, 2 作为 eos_token_id
+    if not hasattr(tokenizer, 'bos_token_id') or tokenizer.bos_token_id is None:
+        tokenizer.bos_token_id = 1
+        tokenizer.bos_token = tokenizer.convert_ids_to_tokens(1)
+    if not hasattr(tokenizer, 'eos_token_id') or tokenizer.eos_token_id is None:
+        tokenizer.eos_token_id = 2
+        tokenizer.eos_token = tokenizer.convert_ids_to_tokens(2)
+    
     gradient_accumulation_steps = args.batch_size // args.micro_batch_size
     if not args.no_instruction:
         prompter = Prompter(args.prompt_template_name)
@@ -204,6 +214,7 @@ def main(args):
     if device == 'cuda':
         model.half()
 
+    # 设置 tokenizer 的 pad token
     tokenizer.pad_token_id = 0
     tokenizer.padding_side = "left"
 

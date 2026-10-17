@@ -46,29 +46,26 @@ def profle_svdllm(name, model, calib_loader, dev):
 
     # 定义前向传播钩子函数,用于收集输入特征的协方差信息
     def hook(module, input, output):
-        # 捕获模型在前向传播时的中间结果。
-        inp = input[0].detach().float()
-        if inp.dim() == 2:   # for opt
+        inp = input[0].detach().float()  # 获取输入并转为float32
+        if inp.dim() == 2:   # 针对OPT模型的特殊处理
             inp = inp.unsqueeze(0)
-        adds = torch.matmul(inp.transpose(1,2), inp)
-        # 并计算其协方差矩阵
-        adds_sum = torch.sum(adds, dim=0)
-        # 累加到每个线性层上
-        module.raw_scaling_diag_matrix += adds_sum
+        adds = torch.matmul(inp.transpose(1,2), inp)  # 计算 X^T @ X
+        adds_sum = torch.sum(adds, dim=0)  # 对batch维度求和
+        module.raw_scaling_diag_matrix += adds_sum  # 累加到该层
         del inp, adds, adds_sum
         torch.cuda.empty_cache()
 
-        # 注册钩子到所有线性层上
+        # 注册Hook到所有线性层
         for name, module in model.named_modules():
             if isinstance(module, nn.Linear):
                 # 对这些线性层,我们将 hook 函数注册为它们的前向钩子
                 module.raw_scaling_diag_matrix = 0
                 module.register_forward_hook(hook)
 
-        # 使用校准数据运行模型,触发钩子收集统计信息
+        # 运行模型收集统计信息
         for batch in tqdm(calib_loader):
             batch = {k: v.to(dev) for k, v in batch.items()}
-            model(**batch)
+            model(**batch)  # 触发前向传播，hook自动执行
 
         # 清除注册的钩子
         for name, module in model.named_modules():
@@ -245,9 +242,7 @@ def profle_svdllm_low_resource(model_name, model, calib_loader, dev):
             inp = input[0].detach().float()
             if inp.dim() == 2:  # 对于OPT模型,增加一个维度
                 inp = inp.unsqueeze(0)
-            
-            # 计算输入的自乘矩阵并累加
-            adds = torch.matmul(inp.transpose(1,2), inp)
+            adds = torch.matmul(inp.transpose(1,2), inp)  # 计算 X^T @ X
             # 将每个批次的统计结果累加到 scaling_diag_matrix 中，用于后续分析
             adds_sum = torch.sum(adds, dim=0)
             module.scaling_diag_matrix += adds_sum
@@ -809,18 +804,20 @@ if __name__ == '__main__':
     # 解析命令行参数
     args = parser.parse_args()
 
-    # 反转压缩比率，因为传入的比率是目标压缩的比例，而代码实现时使用的是需要保留的比例
+    # 反转压缩比率，因为传入的比率是目标截断的比例，而代码实现时使用的是需要保留的比例
     args.ratio = 1 - args.ratio
 
     current_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     print(f"current_time is: {current_time.replace('-', '_')}")
-
 
     # 根据步骤数选择不同的操作流程
     if args.step == 1:
         # 获取LLaMA模型和tokenizer
         model, tokenizer = get_model_from_huggingface(model_id=args.model)
         model = model.eval()  # 设置为评估模式
+
+        if not os.path.exists(args.save_path):
+            os.makedirs(args.save_path)
         
         # 如果没有指定profiling矩阵路径，则进行白化前的准备工作
         if args.profiling_mat_path is None:
@@ -831,23 +828,19 @@ if __name__ == '__main__':
             
             # 保存profiling矩阵
             if args.save_path is not None:
-                # 获取当前时间并格式化为字符串（例如：2023-10-12_15-30-45）
-                current_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-
-                torch.save(profiling_mat, args.save_path + "/" + args.model.replace("/", "_").replace("-", "_") + '_profiling_'+ args.dataset + '_' + str(args.whitening_nsamples)  + '_' + str(args.seed)+ '_'+ current_time.replace('-', '_') + '.pt')
+                torch.save(profiling_mat, args.save_path + "/" + args.model.replace("/", "_").replace("-", "_") + '_profiling_'+ args.dataset + '_' + str(args.whitening_nsamples)  + '_' + str(args.seed) + '.pt')
         else:
             # 如果指定了profiling矩阵路径，则直接加载
-            profiling_mat = torch.load(args.profiling_mat_path)
+            profiling_mat = torch.load(args.profiling_mat_path, weights_only=False)
+        
+        print(f"start svd whtening:")
         
         # 执行白化操作
         whitening(args.model, model, profiling_mat, args.ratio, args.DEV)
         
         # 如果指定了保存路径，则保存白化后的模型和tokenizer
         if args.save_path is not None:
-            # 获取当前时间并格式化为字符串（例如：2023-10-12_15-30-45）
-            current_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-
-            torch.save({'model': model, 'tokenizer': tokenizer}, args.save_path + "/" + args.model.replace("/", "_").replace("-", "_") +'_whitening_only_' + str(args.ratio) + '_'+ current_time.replace('-', '_') + '.pt')   # fp32
+            torch.save({'model': model, 'tokenizer': tokenizer}, args.save_path + "/" + args.model.replace("/", "_").replace("-", "_") +'_whitening_only_' + str(args.ratio) + '.pt')   # fp32
 
     elif args.step == 2:
         # 如果步骤是2，执行模型更新和白化操作
@@ -856,6 +849,10 @@ if __name__ == '__main__':
         dataloader, _ = get_loaders(args.dataset, nsamples=args.updating_nsamples, seed=args.seed, tokenizer=tokenizer, seqlen=args.model_seq_len)
         model = model.eval()  # 设置为评估模式
         model = model.float()  # 设置为float精度，白化和更新时需要保持高精度
+        
+        # 检查并创建保存路径
+        if not os.path.exists(args.save_path):
+            os.makedirs(args.save_path)
         
         # 如果没有指定profiling矩阵路径，则重新生成profiling矩阵
         if args.profiling_mat_path is None:
@@ -868,7 +865,7 @@ if __name__ == '__main__':
                 torch.save(profiling_mat, args.save_path + "/" + args.model.replace("/", "_").replace("-", "_") + '_profiling_'+ args.dataset + '_' + str(args.whitening_nsamples)  + '_' + str(args.seed)+ '.pt')
         else:
             # 如果指定了profiling矩阵路径，则直接加载
-            profiling_mat = torch.load(args.profiling_mat_path)
+            profiling_mat = torch.load(args.profiling_mat_path, weights_only=False)
         
         # 执行白化和本地更新操作
         whitening_local_update(args.model, model, dataloader, profiling_mat, args.ratio, args.DEV)
@@ -882,6 +879,10 @@ if __name__ == '__main__':
         model, tokenizer = get_model_from_huggingface(args.model)
         model = model.eval()  # 设置为评估模式
         model = model.float()  # 设置为float精度
+
+        # 检查并创建保存路径
+        if not os.path.exists(args.save_path):
+            os.makedirs(args.save_path)
         
         # 获取更新数据加载器
         dataloader, _ = get_loaders(args.dataset, nsamples=args.updating_nsamples, seed=args.seed, tokenizer=tokenizer, seqlen=args.model_seq_len)
@@ -912,6 +913,9 @@ if __name__ == '__main__':
                     torch_dtype=torch.float16,
                 )
                 model = model.merge_and_unload()
+                # 检查并创建LoRA保存路径
+                if not os.path.exists(args.lora):
+                    os.makedirs(args.lora)
                 torch.save({'model': model, 'tokenizer': tokenizer}, args.lora + '/merge.pt')
         
         model.eval()  # 设置为评估模式

@@ -246,7 +246,7 @@ def profle_svdllm_low_resource(model_name, model, calib_loader, dev):
                 inp = inp.unsqueeze(0)
             
             # 计算输入的自乘矩阵并累加
-            adds = torch.matmul(inp.transpose(1,2), inp)
+            adds = torch.matmul(inp.transpose(1,2), inp) # 计算 X^T * X
             # 将每个批次的统计结果累加到 scaling_diag_matrix 中，用于后续分析
             adds_sum = torch.sum(adds, dim=0)
             module.scaling_diag_matrix += adds_sum
@@ -286,7 +286,7 @@ def profle_svdllm_low_resource(model_name, model, calib_loader, dev):
 
         # 计算每层子模块的scaling diagonal矩阵
         for name in subset:
-            # 逐个子层：把累计矩阵拿回来（转为 double 精度，搬到 GPU），准备做 Cholesky。
+            # 逐个子层：把累计矩阵拿回来（转为 double 精度，搬到 GPU），准备做SVD。
             raw_scaling_diag_matrix = subset[name].scaling_diag_matrix.double().to(dev)
 
             # 对 scaling_diag_matrix 进行 SVD 分解
@@ -359,12 +359,12 @@ def whitening(model_name, model, profiling_mat, target_ratio, dev):  # 定义函
 
     def compute_theoretical_loss(W, scaling_matrix, ratio, dev):
         """
-        计算给定压缩比率下的理论截断损失（基于SVD奇异值）
+        计算给定压缩比率下的理论截断损失（基于参数量的压缩比）
         
         参数:
             W: 权重矩阵
             scaling_matrix: 白化缩放矩阵 L
-            ratio: 压缩比率
+            ratio: 压缩比率（基于参数量）
             dev: 设备
             
         返回:
@@ -380,9 +380,9 @@ def whitening(model_name, model, profiling_mat, target_ratio, dev):  # 定义函
         # 二次SVD分解
         U, S, VT = torch.linalg.svd(W_scale, full_matrices=False)
         
-        # 使用自适应压缩比率计算要截断的奇异值数量
-        # ratio表示压缩比例，例如ratio=0.8表示保留80%
-        num_s_after_trunc = int(len(S) * ratio)
+        # 使用基于参数量的压缩比率计算（与 local_update 一致）
+        # ratio 控制压缩后的参数量占原始参数量的比例
+        num_s_after_trunc = int(W.shape[0] * W.shape[1] * ratio / (W.shape[0] + W.shape[1]))
         num_s_after_trunc = max(1, num_s_after_trunc)  # 至少保留1个
         
         # 计算被截断部分的Frobenius范数（奇异值平方和的平方根）
@@ -482,7 +482,7 @@ def whitening(model_name, model, profiling_mat, target_ratio, dev):  # 定义函
     # Step 1: 执行压缩比率分配算法
     allocated_ratios = ratio_allocation(model_name, model, profiling_mat, target_ratio, dev)
 
-    print(f"Ratio allocation completion: \n{allocated_ratios}\n")
+    # print(f"Ratio allocation completion: \n{allocated_ratios}\n")
     
     print("\nStarting SVD decomposition with adaptive compression ratios...")
     
@@ -510,36 +510,36 @@ def whitening(model_name, model, profiling_mat, target_ratio, dev):  # 定义函
         for name in subset:
             W = subset[name].weight.data.float().to(dev)
             dtype = W.dtype
-            scaling_diag_matrix = profiling_mat[i][name].to(dev)
+            scaling_diag_matrix = profiling_mat[i][name].to(dev) #拿到经过SVD分解计算的白化矩阵 S = U_s * sqrt(S_s)
             
             # 使用该权重矩阵的专属压缩比率
             ratio = allocated_ratios.get((i, name), target_ratio)
 
             print(f"Layer {i}, {name} ratio: {ratio:.4f}")
             
-            scaling_matrix_inv = torch.linalg.inv(scaling_diag_matrix) # 经过SVD分解计算的白化矩阵L可以直接计算逆矩阵
+            scaling_matrix_inv = torch.linalg.inv(scaling_diag_matrix) # 经过SVD分解计算的白化矩阵可以直接计算逆矩阵
             
             scaling_diag_matrix = scaling_diag_matrix.float()
             scaling_matrix_inv = scaling_matrix_inv.float()
-            W_scale = torch.matmul(W, scaling_diag_matrix)
+            W_scale = torch.matmul(W, scaling_diag_matrix) # 计算白化空间的权重矩阵
             
             # 二次SVD分解
             U, S, VT = torch.linalg.svd(W_scale, full_matrices=False)
             
             # 使用自适应压缩比率计算截断逻辑
-            # ratio表示截断比例，例如ratio=0.8表示保留80%
-            num_s_after_trunc = int(len(S) * ratio)
+            # ratio 表示基于参数量的压缩比，确保压缩后参数量 = 原始参数量 × ratio
+            num_s_after_trunc = int(W.shape[0] * W.shape[1] * ratio / (W.shape[0] + W.shape[1]))
             num_s_after_trunc = max(1, num_s_after_trunc)  # 至少保留1个
             
-            truc_s = S[:num_s_after_trunc]
-            truc_u = U[:, :num_s_after_trunc]
-            truc_v = torch.matmul(VT[:num_s_after_trunc, :], scaling_matrix_inv)
-            truc_sigma = torch.diag(truc_s)
+            truc_s = S[:num_s_after_trunc] # 取前 r 个奇异值
+            truc_u = U[:, :num_s_after_trunc] # U_r
+            truc_v = torch.matmul(VT[:num_s_after_trunc, :], scaling_matrix_inv) # 还原到原坐标系 V^T_r · S^{-1} → 相当于把白化消掉
+            truc_sigma = torch.diag(truc_s) # 将 r 个奇异值组成对角矩阵 Σ_r,将一维奇异值向量转换为对角矩阵
             
             # 分解为两个低秩矩阵
-            sqrtSigma = torch.sqrt(truc_sigma)
-            svd_u = torch.matmul(truc_u, sqrtSigma).cpu().to(dtype)
-            svd_v = torch.matmul(sqrtSigma, truc_v).cpu().to(dtype)
+            sqrtSigma = torch.sqrt(truc_sigma) # √Σ_r 
+            svd_u = torch.matmul(truc_u, sqrtSigma).cpu().to(dtype) # U_r · √Σ_r
+            svd_v = torch.matmul(sqrtSigma, truc_v).cpu().to(dtype) # √Σ_r · (V^T_r · S^{-1})
             
             # 替换权重（与原始代码相同的替换逻辑）
             if 'opt' in model_name:
@@ -547,26 +547,51 @@ def whitening(model_name, model, profiling_mat, target_ratio, dev):  # 定义函
                     svd_decoder.self_attn.q_u_proj.weight.data = svd_u
                     svd_decoder.self_attn.q_v_proj.weight.data = svd_v
                     svd_decoder.self_attn.q_u_proj.bias.data = layer.self_attn.q_proj.bias.data
+                    # 为 LoRA 添加真实的输入输出维度标记
+                    svd_decoder.self_attn.q_v_proj.in_features = W.shape[1]  # 原始输入维度
+                    svd_decoder.self_attn.q_v_proj.out_features = svd_v.shape[0]  # SVD后的中间维度
+                    svd_decoder.self_attn.q_u_proj.in_features = svd_u.shape[1]  # SVD后的中间维度  
+                    svd_decoder.self_attn.q_u_proj.out_features = W.shape[0]  # 原始输出维度
                 elif "k_proj" in name:
                     svd_decoder.self_attn.k_u_proj.weight.data = svd_u
                     svd_decoder.self_attn.k_v_proj.weight.data = svd_v
                     svd_decoder.self_attn.k_u_proj.bias.data = layer.self_attn.k_proj.bias.data
+                    svd_decoder.self_attn.k_v_proj.in_features = W.shape[1]
+                    svd_decoder.self_attn.k_v_proj.out_features = svd_v.shape[0]
+                    svd_decoder.self_attn.k_u_proj.in_features = svd_u.shape[1]
+                    svd_decoder.self_attn.k_u_proj.out_features = W.shape[0]
                 elif "v_proj" in name:
                     svd_decoder.self_attn.v_u_proj.weight.data = svd_u
                     svd_decoder.self_attn.v_v_proj.weight.data = svd_v
                     svd_decoder.self_attn.v_u_proj.bias.data = layer.self_attn.v_proj.bias.data
+                    svd_decoder.self_attn.v_v_proj.in_features = W.shape[1]
+                    svd_decoder.self_attn.v_v_proj.out_features = svd_v.shape[0]
+                    svd_decoder.self_attn.v_u_proj.in_features = svd_u.shape[1]
+                    svd_decoder.self_attn.v_u_proj.out_features = W.shape[0]
                 elif "out_proj" in name:
                     svd_decoder.self_attn.out_u_proj.weight.data = svd_u
                     svd_decoder.self_attn.out_v_proj.weight.data = svd_v
                     svd_decoder.self_attn.out_u_proj.bias.data = layer.self_attn.out_proj.bias.data
+                    svd_decoder.self_attn.out_v_proj.in_features = W.shape[1]
+                    svd_decoder.self_attn.out_v_proj.out_features = svd_v.shape[0]
+                    svd_decoder.self_attn.out_u_proj.in_features = svd_u.shape[1]
+                    svd_decoder.self_attn.out_u_proj.out_features = W.shape[0]
                 elif "fc1" in name:
                     svd_decoder.fc1_u_proj.weight.data = svd_u
                     svd_decoder.fc1_v_proj.weight.data = svd_v
                     svd_decoder.fc1_u_proj.bias.data = layer.fc1.bias.data
+                    svd_decoder.fc1_v_proj.in_features = W.shape[1]
+                    svd_decoder.fc1_v_proj.out_features = svd_v.shape[0]
+                    svd_decoder.fc1_u_proj.in_features = svd_u.shape[1]
+                    svd_decoder.fc1_u_proj.out_features = W.shape[0]
                 elif "fc2" in name:
                     svd_decoder.fc2_u_proj.weight.data = svd_u
                     svd_decoder.fc2_v_proj.weight.data = svd_v
                     svd_decoder.fc2_u_proj.bias.data = layer.fc2.bias.data
+                    svd_decoder.fc2_v_proj.in_features = W.shape[1]
+                    svd_decoder.fc2_v_proj.out_features = svd_v.shape[0]
+                    svd_decoder.fc2_u_proj.in_features = svd_u.shape[1]
+                    svd_decoder.fc2_u_proj.out_features = W.shape[0]
                     svd_decoder.self_attn_layer_norm = layer.self_attn_layer_norm
                     svd_decoder.final_layer_norm = layer.final_layer_norm
                     layers[i] = svd_decoder
@@ -574,25 +599,54 @@ def whitening(model_name, model, profiling_mat, target_ratio, dev):  # 定义函
                 if "q_proj" in name:
                     svd_attn.q_u_proj.weight.data = svd_u
                     svd_attn.q_v_proj.weight.data = svd_v
+                    # 为 LoRA 添加真实的输入输出维度标记
+                    svd_attn.q_v_proj.in_features = W.shape[1]
+                    svd_attn.q_v_proj.out_features = svd_v.shape[0]
+                    svd_attn.q_u_proj.in_features = svd_u.shape[1]
+                    svd_attn.q_u_proj.out_features = W.shape[0]
                 elif "k_proj" in name:
                     svd_attn.k_u_proj.weight.data = svd_u
                     svd_attn.k_v_proj.weight.data = svd_v
+                    svd_attn.k_v_proj.in_features = W.shape[1]
+                    svd_attn.k_v_proj.out_features = svd_v.shape[0]
+                    svd_attn.k_u_proj.in_features = svd_u.shape[1]
+                    svd_attn.k_u_proj.out_features = W.shape[0]
                 elif "v_proj" in name:
                     svd_attn.v_u_proj.weight.data = svd_u
                     svd_attn.v_v_proj.weight.data = svd_v
+                    svd_attn.v_v_proj.in_features = W.shape[1]
+                    svd_attn.v_v_proj.out_features = svd_v.shape[0]
+                    svd_attn.v_u_proj.in_features = svd_u.shape[1]
+                    svd_attn.v_u_proj.out_features = W.shape[0]
                 elif "o_proj" in name:
                     svd_attn.o_u_proj.weight.data = svd_u
                     svd_attn.o_v_proj.weight.data = svd_v
+                    svd_attn.o_v_proj.in_features = W.shape[1]
+                    svd_attn.o_v_proj.out_features = svd_v.shape[0]
+                    svd_attn.o_u_proj.in_features = svd_u.shape[1]
+                    svd_attn.o_u_proj.out_features = W.shape[0]
                     layer.self_attn = svd_attn
                 elif "gate_proj" in name:
                     svd_mlp.gate_u_proj.weight.data = svd_u
                     svd_mlp.gate_v_proj.weight.data = svd_v
+                    svd_mlp.gate_v_proj.in_features = W.shape[1]
+                    svd_mlp.gate_v_proj.out_features = svd_v.shape[0]
+                    svd_mlp.gate_u_proj.in_features = svd_u.shape[1]
+                    svd_mlp.gate_u_proj.out_features = W.shape[0]
                 elif "down_proj" in name:
                     svd_mlp.down_u_proj.weight.data = svd_u
                     svd_mlp.down_v_proj.weight.data = svd_v
+                    svd_mlp.down_v_proj.in_features = W.shape[1]
+                    svd_mlp.down_v_proj.out_features = svd_v.shape[0]
+                    svd_mlp.down_u_proj.in_features = svd_u.shape[1]
+                    svd_mlp.down_u_proj.out_features = W.shape[0]
                 elif "up_proj" in name:
                     svd_mlp.up_u_proj.weight.data = svd_u
                     svd_mlp.up_v_proj.weight.data = svd_v
+                    svd_mlp.up_v_proj.in_features = W.shape[1]
+                    svd_mlp.up_v_proj.out_features = svd_v.shape[0]
+                    svd_mlp.up_u_proj.in_features = svd_u.shape[1]
+                    svd_mlp.up_u_proj.out_features = W.shape[0]
                     layer.mlp = svd_mlp
             
             # 清理内存
@@ -608,7 +662,7 @@ def whitening(model_name, model, profiling_mat, target_ratio, dev):  # 定义函
 
 
 @torch.no_grad()
-def whitening_local_update(model_name, model, dataloader, profiling_mat, ratio, dev, direct_update=False):
+def whitening_local_update(model_name, model, dataloader, profiling_mat, ratio, dev, direct_update=False, use_dynamic_ratio=False):
      # 定义函数：白化+SVD后做局部更新（可选直达SVD）
     """
     对模型的每一层进行白化（whitening）处理并更新参数。该函数通过SVD分解对注意力和MLP层的权重进行压缩和重构。
@@ -621,6 +675,7 @@ def whitening_local_update(model_name, model, dataloader, profiling_mat, ratio, 
         ratio (float): 压缩比例，用于控制SVD保留的奇异值数量。
         dev (torch.device): 指定模型运行的设备（如 CPU 或 GPU）。
         direct_update (bool, optional): 是否直接更新权重而不进行额外的SVD处理。默认为 False。
+        use_dynamic_ratio (bool, optional): 是否使用动态压缩比分配。默认为 False。
 
     返回:
         无返回值。函数会直接修改传入的 model 对象。
@@ -628,6 +683,10 @@ def whitening_local_update(model_name, model, dataloader, profiling_mat, ratio, 
     print("Start SVD decomposition then update...")  # 提示开始SVD分解并执行局部更新
     use_cache = model.config.use_cache  # 备份原来的use_cache配置
     model.config.use_cache = False  # 关闭KV cache，避免截获与逐层前向时干扰
+    
+    # 导入必要的工具函数（无论是否使用动态压缩比都需要）
+    from utils.model_utils import find_layers
+    import numpy as np
 
     if "opt" in model_name:  # OPT结构分支（其层与嵌入模块路径不同）
         layers = model.model.decoder.layers  # 取OPT的decoder层列表
@@ -638,6 +697,82 @@ def whitening_local_update(model_name, model, dataloader, profiling_mat, ratio, 
         layers = model.model.layers  # 取通用的层列表
         model.model.embed_tokens = model.model.embed_tokens.to(dev)  # 嵌入搬到GPU
         model.model.norm = model.model.norm.to(dev)  # 末端RMSNorm/LN搬到GPU
+    
+    # 如果启用动态压缩比且提供了白化矩阵，则计算每层的专属压缩比
+    allocated_ratios = {}
+    if use_dynamic_ratio and profiling_mat is not None:
+        print("Computing dynamic compression ratios for local update...")
+        # 调用 ratio_allocation 函数（定义在 whitening 函数内部）
+        # 需要导入或重新定义相关函数
+        
+        def group_weights_by_layer(layers):
+            """对每一层内部的权重矩阵进行分组"""
+            layer_groups = []
+            for i, layer in enumerate(layers):
+                subset = find_layers(layer)
+                layer_group = {}
+                for name in subset:
+                    W = subset[name].weight.data
+                    layer_group[name] = {
+                        'layer_idx': i,
+                        'name': name,
+                        'shape': W.shape,
+                        'num_params': W.shape[0] * W.shape[1]
+                    }
+                layer_groups.append(layer_group)
+            return layer_groups
+        
+        def compute_theoretical_loss(W, scaling_matrix, ratio, dev):
+            """计算给定压缩比率下的理论截断损失（基于参数量的压缩比）"""
+            W = W.float().to(dev)
+            scaling_matrix = scaling_matrix.float().to(dev)
+            scaling_matrix_inv = torch.linalg.inv(scaling_matrix)
+            W_scale = torch.matmul(W, scaling_matrix)
+            U, S, VT = torch.linalg.svd(W_scale, full_matrices=False)
+            # 使用与 local_update 相同的公式：基于参数量控制
+            num_s_after_trunc = int(W.shape[0] * W.shape[1] * ratio / (W.shape[0] + W.shape[1]))
+            num_s_after_trunc = max(1, num_s_after_trunc)
+            if num_s_after_trunc < len(S):
+                truncated_singular_values = S[num_s_after_trunc:]
+                loss = torch.sqrt(torch.sum(truncated_singular_values ** 2)).item()
+            else:
+                loss = 0.0
+            return loss
+        
+        # 执行压缩比分配
+        layer_groups = group_weights_by_layer(layers)
+        for layer_idx in range(len(layers)):
+            layer = layers[layer_idx]
+            layer_group = layer_groups[layer_idx]
+            loss_list = []
+            weight_names = []
+            subset = find_layers(layer)
+            for name in subset:
+                W = subset[name].weight.data
+                scaling_matrix = profiling_mat[layer_idx][name].to(dev)
+                loss = compute_theoretical_loss(W, scaling_matrix, ratio, dev)
+                loss_list.append(loss)
+                weight_names.append(name)
+            
+            loss_array = np.array(loss_list)
+            if loss_array.sum() == 0:
+                loss_array = np.ones_like(loss_array)
+            normalized_loss = 1.0 / np.log(loss_array + 1e-6)  # 加小常数避免log(0)
+            num_weights_in_layer = len(weight_names)
+            
+            for idx, name in enumerate(weight_names):
+                allocated_ratio = num_weights_in_layer * ratio * normalized_loss[idx] / normalized_loss.sum()
+                allocated_ratio = max(0.01, min(allocated_ratio, 1.0))
+                allocated_ratios[(layer_idx, name)] = allocated_ratio
+        
+        print(f"Dynamic ratio allocation completed. Ratio range: [{min(allocated_ratios.values()):.4f}, {max(allocated_ratios.values()):.4f}]")
+    else:
+        print(f"Using fixed compression ratio: {ratio}")
+        # 如果不使用动态压缩比，所有层都使用相同的ratio
+        for i in range(len(layers)):
+            subset = find_layers(layers[i])
+            for name in subset:
+                allocated_ratios[(i, name)] = ratio
 
     model.model.norm = model.model.norm.to(dev)  # 冗余防御：再次确保norm在GPU（上一分支已做，此行重复）
     layers[0] = layers[0].to(dev)  # 仅将第0层先搬到GPU，后续逐层上/下GPU以省显存
@@ -702,8 +837,11 @@ def whitening_local_update(model_name, model, dataloader, profiling_mat, ratio, 
                 scaling_diag_matrix = profiling_mat[i][name].to(dev)  # 若提供白化矩阵，则取对应Cholesky因子L
             else:
                 scaling_diag_matrix = None  # 否则直接对原W做SVD（direct_update控制）
-            gpts[name] = local_update(subset[name], scaling_diag_matrix = scaling_diag_matrix, ratio=ratio, name=name, direct_update=direct_update)  # 构造local_update（完成白化→SVD→截断的初始化）
+            # 使用该层该子层的专属压缩比
+            layer_ratio = allocated_ratios.get((i, name), ratio)
+            gpts[name] = local_update(subset[name], scaling_diag_matrix = scaling_diag_matrix, ratio=layer_ratio, name=name, direct_update=direct_update)  # 构造local_update（完成白化→SVD→截断的初始化）
 
+        # 计算与真实输出的误差
         def add_batch(name):  # 构造hook闭包：把当前子层的inp/out喂给local_update以更新U
             def tmp(_, inp, out):
                 gpts[name].add_batch_update_u(inp[0].data, out.data)  # 传入子层的输入/输出张量，做最小二乘更新（仅更新U侧）
@@ -909,12 +1047,12 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
     # 添加命令行参数：模型路径（默认为指定的LLaMA模型）
-    parser.add_argument('--model', type=str, default='/mnt/data/zhangshuai/LLMs/Models/jeffwan/llama-7b-hf', help='LLaMA model to load, pass `jeffwan/llama-7b-hf`')
+    parser.add_argument('--model', type=str, default='/data/zhangs/LLMs/Models/jeffwan/llama-7b-hf', help='LLaMA model to load, pass `jeffwan/llama-7b-hf`')
     
     # 添加命令行参数：本地压缩模型路径或白化信息路径
     parser.add_argument('--model_path', type=str, default=None, help='local compressed model path or whitening information path')
     
-    # 添加命令行参数：目标压缩比率，默认为0.2，表示保留约20%的参数
+    # 添加命令行参数：目标压缩比率，默认为0.2，表示压缩约20%的参数
     parser.add_argument('--ratio', type=float, default=0.2, help='Target compression ratio,(0,1), default=0.2, means only keeping about 20% of the params.')
     
     # 添加命令行参数：是否在低资源环境下运行白化，尤其是压缩LLaMA-7B到15G以下的GPU
@@ -955,11 +1093,14 @@ if __name__ == '__main__':
     
     # 添加命令行参数：LoRA更新的权重路径，用于精度评估
     parser.add_argument('--lora', type=str, default=None, help='the lora updated weight path to run the accuracy evaluation')
+    
+    # 添加命令行参数：是否在 step 2/3 中使用动态压缩比
+    parser.add_argument('--use_dynamic_ratio', action='store_true', help='use dynamic compression ratio allocation in step 2/3')
 
     # 解析命令行参数
     args = parser.parse_args()
 
-    # 反转压缩比率，因为传入的比率是目标压缩的比例，而代码实现时使用的是需要保留的比例
+    # 反转压缩比率，因为传入的比率是目标截断的比例，而代码实现时使用的是需要保留的比例
     args.ratio = 1 - args.ratio
 
     current_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -970,6 +1111,9 @@ if __name__ == '__main__':
         # 获取模型和分词器
         model, tokenizer = get_model_from_huggingface(model_id=args.model)
         model = model.eval()  # 设置为评估模式
+
+        if not os.path.exists(args.save_path):
+            os.makedirs(args.save_path)
 
         # 如果没有指定profiling矩阵路径，则进行白化前的准备工作
         if args.profiling_mat_path is None:
@@ -982,18 +1126,15 @@ if __name__ == '__main__':
             if args.save_path is not None:
                 # 创建目录（如果不存在）
                 os.makedirs(args.save_path, exist_ok=True)
-
-                # 获取当前时间并格式化为字符串（例如：2023-10-12_15-30-45）
-                current_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
                 
-                torch.save(profiling_mat, f"{args.save_path}/{args.model.replace('/', '_').replace('-', '_')}_profiling_{args.dataset}_{args.whitening_nsamples}_{args.seed}_{current_time.replace('-', '_')}.pt")
+                torch.save(profiling_mat, f"{args.save_path}/{args.model.replace('/', '_').replace('-', '_')}_profiling_{args.dataset}_{args.whitening_nsamples}_{args.seed}.pt")
                 # 打印保存路径
-                print(f"Saved profiling matrix to {args.save_path}/{args.model.replace('/', '_').replace('-', '_')}_profiling_{args.dataset}_{args.whitening_nsamples}_{args.seed}_{current_time.replace('-', '_')}.pt")
+                print(f"Saved profiling matrix to {args.save_path}/{args.model.replace('/', '_').replace('-', '_')}_profiling_{args.dataset}_{args.whitening_nsamples}_{args.seed}.pt")
         else:
             # 如果指定了profiling矩阵路径，则直接加载
-            profiling_mat = torch.load(args.profiling_mat_path)
+            profiling_mat = torch.load(args.profiling_mat_path, weights_only=False)
 
-        print(f"Profiling Mat: {profiling_mat}")
+        # print(f"Profiling Mat: {profiling_mat}")
 
 
         print(f"start svd whtening:")
@@ -1003,14 +1144,10 @@ if __name__ == '__main__':
         
         # 如果指定了保存路径，则保存白化后的模型和tokenizer
         if args.save_path is not None:
-            # 获取当前时间用于保存路径
-            current_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-            print(f"current_time is: {current_time}")
-
-            torch.save({'model': model, 'tokenizer': tokenizer}, f"{args.save_path}/{args.model.replace('/', '_').replace('-', '_')}_whitening_only_{args.ratio}_{current_time.replace('-', '_')}.pt")
+            torch.save({'model': model, 'tokenizer': tokenizer}, f"{args.save_path}/{args.model.replace('/', '_').replace('-', '_')}_whitening_only_{args.ratio}.pt")
 
             # 打印保存路径
-            print(f"Saved whitening model to {args.save_path}/{args.model.replace('/', '_').replace('-', '_')}_whitening_only_{args.ratio}_{current_time.replace('-', '_')}.pt")
+            print(f"Saved whitening model to {args.save_path}/{args.model.replace('/', '_').replace('-', '_')}_whitening_only_{args.ratio}.pt")
 
     elif args.step == 2:
         # 如果步骤是2，执行模型更新和白化操作
@@ -1019,6 +1156,10 @@ if __name__ == '__main__':
         dataloader, _ = get_loaders(args.dataset, nsamples=args.updating_nsamples, seed=args.seed, tokenizer=tokenizer, seqlen=args.model_seq_len)
         model = model.eval()  # 设置为评估模式
         model = model.float()  # 设置为float精度，白化和更新时需要保持高精度
+        
+        # 检查并创建保存路径
+        if not os.path.exists(args.save_path):
+            os.makedirs(args.save_path)
         
         # 如果没有指定profiling矩阵路径，则重新生成profiling矩阵
         if args.profiling_mat_path is None:
@@ -1031,10 +1172,10 @@ if __name__ == '__main__':
                 torch.save(profiling_mat, args.save_path + "/" + args.model.replace("/", "_").replace("-", "_") + '_profiling_'+ args.dataset + '_' + str(args.whitening_nsamples)  + '_' + str(args.seed)+ '.pt')
         else:
             # 如果指定了profiling矩阵路径，则直接加载
-            profiling_mat = torch.load(args.profiling_mat_path)
+            profiling_mat = torch.load(args.profiling_mat_path, weights_only=False)
         
         # 执行白化和本地更新操作
-        whitening_local_update(args.model, model, dataloader, profiling_mat, args.ratio, args.DEV)
+        whitening_local_update(args.model, model, dataloader, profiling_mat, args.ratio, args.DEV, use_dynamic_ratio=args.use_dynamic_ratio)
         
         # 如果指定了保存路径，则保存更新后的模型和tokenizer
         if args.save_path is not None:
@@ -1046,11 +1187,16 @@ if __name__ == '__main__':
         model = model.eval()  # 设置为评估模式
         model = model.float()  # 设置为float精度
         
+        # 检查并创建保存路径
+        if not os.path.exists(args.save_path):
+            os.makedirs(args.save_path)
+        
         # 获取更新数据加载器
         dataloader, _ = get_loaders(args.dataset, nsamples=args.updating_nsamples, seed=args.seed, tokenizer=tokenizer, seqlen=args.model_seq_len)
         
         # 执行本地更新操作，直接更新模型
-        whitening_local_update(model_name=args.model, model=model, dataloader=dataloader, profiling_mat=None, ratio=args.ratio, dev=args.DEV, direct_update=True)
+        # Step 3 不使用白化矩阵，所以 use_dynamic_ratio 对 step 3 无效（因为动态压缩比依赖白化矩阵）
+        whitening_local_update(model_name=args.model, model=model, dataloader=dataloader, profiling_mat=None, ratio=args.ratio, dev=args.DEV, direct_update=True, use_dynamic_ratio=False)
         
         # 如果指定了保存路径，则保存更新后的模型和tokenizer
         if args.save_path is not None:
@@ -1075,6 +1221,9 @@ if __name__ == '__main__':
                     torch_dtype=torch.float16,
                 )
                 model = model.merge_and_unload()
+                # 检查并创建LoRA保存路径
+                if not os.path.exists(args.lora):
+                    os.makedirs(args.lora)
                 torch.save({'model': model, 'tokenizer': tokenizer}, args.lora + '/merge.pt')
         
         model.eval()  # 设置为评估模式
@@ -1088,3 +1237,4 @@ if __name__ == '__main__':
         elif args.step == 5:
             # 执行效率评估
             eff_eval(model, tokenizer, generated_len=args.gen_seq_len, batch_size=args.eval_batch_size, device=args.DEV)
+

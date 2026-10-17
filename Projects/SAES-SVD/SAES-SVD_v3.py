@@ -17,6 +17,9 @@ print(f"CUDA_VISIBLE_DEVICES: {os.environ.get('CUDA_VISIBLE_DEVICES')}")
 import sys
 import argparse
 import inspect
+import hashlib
+import math
+import json
 import torch
 import torch.nn as nn
 from tqdm import tqdm
@@ -176,6 +179,119 @@ def _detect_arch_family(model):
     return 'llama'  # 默认按 LLaMA 结构处理
 
 
+def _default_runtime_dtype_for_arch(arch_family):
+    """Qwen 系列默认用 bf16；其他模型沿用 fp16 路径。"""
+    if arch_family in ('qwen', 'qwen3_moe'):
+        return torch.bfloat16
+    return torch.float16
+
+
+def _dtype_name(dtype):
+    if dtype == torch.bfloat16:
+        return 'bf16'
+    if dtype == torch.float16:
+        return 'fp16'
+    if dtype == torch.float32:
+        return 'fp32'
+    return str(dtype)
+
+
+def _resolve_eval_dtype(model, requested):
+    """解析评估 dtype；auto 时按模型架构选择默认 dtype。"""
+    if requested == 'fp32':
+        return torch.float32
+    if requested == 'bf16':
+        return torch.bfloat16
+    if requested == 'fp16':
+        return torch.float16
+    return _default_runtime_dtype_for_arch(_detect_arch_family(model))
+
+
+def _init_cast_stats(label, target_dtype):
+    return {
+        'label': label,
+        'target_dtype': target_dtype,
+        'count': 0,
+        'pre_nonfinite': 0,
+        'post_nonfinite': 0,
+        'pre_min': None,
+        'pre_max': None,
+        'pre_max_abs': 0.0,
+        'post_min': None,
+        'post_max': None,
+        'post_max_abs': 0.0,
+        'fp16_overflow_risk': 0,
+    }
+
+
+def _finite_range(tensor):
+    """返回有限元素的 (min, max, max_abs, all_finite)。"""
+    t = tensor.detach()
+    finite = torch.isfinite(t)
+    all_finite = bool(finite.all().item())
+    if not bool(finite.any().item()):
+        return None, None, float('inf'), all_finite
+    vals = t[finite].float()
+    return vals.min().item(), vals.max().item(), vals.abs().max().item(), all_finite
+
+
+def _update_cast_stats(stats, before, after):
+    pre_min, pre_max, pre_abs, pre_finite = _finite_range(before)
+    post_min, post_max, post_abs, post_finite = _finite_range(after)
+
+    stats['count'] += 1
+    if not pre_finite:
+        stats['pre_nonfinite'] += 1
+    if not post_finite:
+        stats['post_nonfinite'] += 1
+    if stats['pre_min'] is None or (pre_min is not None and pre_min < stats['pre_min']):
+        stats['pre_min'] = pre_min
+    if stats['pre_max'] is None or (pre_max is not None and pre_max > stats['pre_max']):
+        stats['pre_max'] = pre_max
+    if stats['post_min'] is None or (post_min is not None and post_min < stats['post_min']):
+        stats['post_min'] = post_min
+    if stats['post_max'] is None or (post_max is not None and post_max > stats['post_max']):
+        stats['post_max'] = post_max
+    stats['pre_max_abs'] = max(stats['pre_max_abs'], pre_abs)
+    stats['post_max_abs'] = max(stats['post_max_abs'], post_abs)
+    if stats['target_dtype'] == torch.float16 and pre_abs > 60000:
+        stats['fp16_overflow_risk'] += 1
+    return pre_finite, post_finite
+
+
+def _cast_activation_for_cache(tensor, target_dtype, stats):
+    """写入闭环 CPU cache 前统一 cast，并记录 cast 前后数值范围。"""
+    casted = tensor.detach().to(target_dtype)
+    pre_finite, post_finite = _update_cast_stats(stats, tensor, casted)
+    return casted.cpu(), pre_finite, post_finite
+
+
+def _format_stat_value(value):
+    if value is None:
+        return 'None'
+    return f'{value:.4e}'
+
+
+def _print_cast_stats(stats, layer_idx):
+    print(
+        f"  L{layer_idx} {stats['label']} cast诊断: "
+        f"target={_dtype_name(stats['target_dtype'])}, samples={stats['count']}, "
+        f"pre_nonfinite={stats['pre_nonfinite']}, post_nonfinite={stats['post_nonfinite']}, "
+        f"pre_min={_format_stat_value(stats['pre_min'])}, "
+        f"pre_max={_format_stat_value(stats['pre_max'])}, "
+        f"pre_max_abs={_format_stat_value(stats['pre_max_abs'])}, "
+        f"post_min={_format_stat_value(stats['post_min'])}, "
+        f"post_max={_format_stat_value(stats['post_max'])}, "
+        f"post_max_abs={_format_stat_value(stats['post_max_abs'])}"
+    )
+    if stats['fp16_overflow_risk'] > 0:
+        print(
+            f"  警告: L{layer_idx} {stats['label']} fp16_overflow_risk="
+            f"{stats['fp16_overflow_risk']}/{stats['count']} "
+            f"(pre_max_abs>60000 且 cache dtype=fp16)"
+        )
+
+
 def get_model_access(model, arch_family):
     """
     统一获取 model.layers / 嵌入 / 归一化等入口。
@@ -232,6 +348,45 @@ def get_parent_and_attr(root, dotted_name):
     return parent, parts[-1]
 
 
+def _load_fast_tokenizer_from_json(model_id):
+    """
+    旧版 transformers 可能没有 Qwen2Tokenizer/Qwen2TokenizerFast 类。
+    对带 tokenizer.json 的模型，直接用 PreTrainedTokenizerFast 构造本地 fast tokenizer。
+    """
+    from transformers import PreTrainedTokenizerFast
+
+    tokenizer_file = os.path.join(model_id, 'tokenizer.json')
+    tokenizer_config_file = os.path.join(model_id, 'tokenizer_config.json')
+    if not os.path.isfile(tokenizer_file):
+        raise FileNotFoundError(f"未找到 tokenizer.json: {tokenizer_file}")
+
+    tok_cfg = {}
+    if os.path.isfile(tokenizer_config_file):
+        with open(tokenizer_config_file, 'r', encoding='utf-8') as f:
+            tok_cfg = json.load(f)
+
+    tok_kwargs = {
+        'tokenizer_file': tokenizer_file,
+        'eos_token': tok_cfg.get('eos_token'),
+        'pad_token': tok_cfg.get('pad_token') or tok_cfg.get('eos_token'),
+        'unk_token': tok_cfg.get('unk_token'),
+        'bos_token': tok_cfg.get('bos_token'),
+        'additional_special_tokens': tok_cfg.get('additional_special_tokens', []),
+        'model_max_length': tok_cfg.get('model_max_length'),
+    }
+    tok_kwargs = {k: v for k, v in tok_kwargs.items() if v is not None}
+    tokenizer = PreTrainedTokenizerFast(**tok_kwargs)
+
+    for attr in ('padding_side', 'truncation_side'):
+        value = tok_cfg.get(attr)
+        if value is not None:
+            setattr(tokenizer, attr, value)
+    if tok_cfg.get('chat_template') is not None:
+        tokenizer.chat_template = tok_cfg['chat_template']
+
+    return tokenizer
+
+
 def load_model_v15(model_id, seq_len=2048):
     """
     v1.5 的 HuggingFace 模型加载器：按模型名自动选择正确的 tokenizer。
@@ -241,7 +396,34 @@ def load_model_v15(model_id, seq_len=2048):
       文件时存在递归 bug，必须显式指定）
     """
     import os
-    from transformers import AutoModelForCausalLM, AutoTokenizer, LlamaTokenizer
+    from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer, LlamaTokenizer
+    import transformers
+
+    try:
+        cfg = AutoConfig.from_pretrained(model_id, trust_remote_code=True)
+        cfg_key = (
+            f"{getattr(cfg, 'model_type', '')}|"
+            f"{','.join(getattr(cfg, 'architectures', []) or [])}"
+        ).lower()
+        load_dtype = torch.bfloat16 if 'qwen' in cfg_key else torch.float16
+    except Exception as e:
+        local_model_type = None
+        local_config = os.path.join(model_id, 'config.json')
+        if os.path.isfile(local_config):
+            try:
+                with open(local_config, 'r', encoding='utf-8') as f:
+                    local_model_type = json.load(f).get('model_type')
+            except Exception:
+                local_model_type = None
+        if local_model_type and 'qwen' in local_model_type.lower():
+            raise RuntimeError(
+                "当前 Python/Transformers 环境不支持 Qwen 配置加载："
+                f"model_type={local_model_type!r}, transformers={transformers.__version__}, "
+                f"python={sys.executable}。请使用 "
+                "/data/zhangs/anaconda3/envs/compress_Qwen3.5/bin/python 运行。"
+            ) from e
+        print(f"  配置读取失败 ({e})，默认使用 fp16 加载")
+        load_dtype = torch.float16
 
     # 检测是否存在 tokenizer.json；没有则必须用 LlamaTokenizer 避免 transformers v5 递归 bug
     has_tok_json = os.path.isfile(os.path.join(model_id, 'tokenizer.json'))
@@ -249,21 +431,153 @@ def load_model_v15(model_id, seq_len=2048):
 
     tok_cls = LlamaTokenizer if force_llama_tok else AutoTokenizer
     print(f"  Tokenizer: {tok_cls.__name__} (tokenizer.json={'found' if has_tok_json else 'not found'})")
+    print(f"  模型加载 dtype: {_dtype_name(load_dtype)}")
     # use_fast=False：transformers v5 的 fast tokenizer 在纯 sentencepiece 模型上
     # 存在 unk_token_id 递归 bug，slow tokenizer 无此问题
     tok_kwargs = {"use_fast": False} if force_llama_tok else {}
     try:
         tokenizer = tok_cls.from_pretrained(model_id, trust_remote_code=True, **tok_kwargs)
     except Exception as e:
-        print(f"  {tok_cls.__name__} 加载失败 ({e})，回退到 AutoTokenizer use_fast=False")
-        tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True, use_fast=False)
+        print(f"  {tok_cls.__name__} 加载失败 ({e})")
+        if has_tok_json:
+            print("  回退到 PreTrainedTokenizerFast(tokenizer.json)")
+            tokenizer = _load_fast_tokenizer_from_json(model_id)
+        else:
+            print("  回退到 AutoTokenizer use_fast=False")
+            tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True, use_fast=False)
+    print(
+        f"  Tokenizer loaded: {tokenizer.__class__.__name__}, "
+        f"vocab_size={getattr(tokenizer, 'vocab_size', 'unknown')}, len={len(tokenizer)}"
+    )
 
     model = AutoModelForCausalLM.from_pretrained(
-        model_id, device_map="cpu", torch_dtype=torch.float16,
+        model_id, device_map="cpu", torch_dtype=load_dtype,
         trust_remote_code=True, cache_dir=None
     )
     model.seqlen = seq_len
     return model, tokenizer
+
+
+def _safe_cache_component(value, max_len=80):
+    """构造适合放进缓存文件名的短标识。"""
+    text = str(value)
+    safe = ''.join(ch if ch.isalnum() or ch in ('-', '_') else '_' for ch in text)
+    return safe[:max_len] if safe else 'unknown'
+
+
+def _tokenizer_vocab_size(tokenizer):
+    """优先使用 tokenizer.vocab_size，失败时回退到 len(tokenizer)。"""
+    vocab_size = getattr(tokenizer, 'vocab_size', None)
+    if vocab_size is None:
+        try:
+            vocab_size = len(tokenizer)
+        except TypeError:
+            vocab_size = 'unknown'
+    return vocab_size
+
+
+def _validate_calib_token_ids(calib_data, model_vocab_size, source):
+    """在进入 CUDA embedding 前检查校准 token id，避免 device-side assert。"""
+    if not calib_data:
+        raise ValueError(f"校准数据为空: {source}")
+
+    min_id = None
+    max_id = None
+    for batch in calib_data:
+        input_ids = batch.get('input_ids')
+        if input_ids is None:
+            raise ValueError(f"校准 batch 缺少 input_ids: {source}")
+        cur_min = int(input_ids.min().item())
+        cur_max = int(input_ids.max().item())
+        min_id = cur_min if min_id is None else min(min_id, cur_min)
+        max_id = cur_max if max_id is None else max(max_id, cur_max)
+
+    print(f"  校准 token id 范围: min={min_id}, max={max_id}, model_vocab_size={model_vocab_size}")
+    if min_id < 0 or (model_vocab_size is not None and max_id >= model_vocab_size):
+        raise ValueError(
+            "校准数据 token id 超出当前模型 embedding 范围，"
+            f"source={source}, min_id={min_id}, max_id={max_id}, "
+            f"model_vocab_size={model_vocab_size}. "
+            "这通常是不同 tokenizer 共用了旧缓存导致的。"
+        )
+    return min_id, max_id
+
+
+def get_calib_train_data_v3_safe(name, tokenizer, nsamples, seqlen=2048,
+                                 seed=3, batch_size=1, dataset_cache_dir=None,
+                                 model_id=None, model_vocab_size=None):
+    """
+    SAES-SVD v3 专用校准数据加载器。
+
+    与 utils.data_utils.get_calib_train_data 的生成逻辑保持一致，但缓存文件名
+    加入 tokenizer/model 指纹，避免 Qwen 与 LLaMA 等模型误读彼此的缓存。
+    """
+    import random
+    from datasets import load_dataset
+
+    random.seed(seed)
+    tokenizer_cls = tokenizer.__class__.__name__
+    tokenizer_vocab = _tokenizer_vocab_size(tokenizer)
+    model_hash = hashlib.sha1(str(model_id or '').encode('utf-8')).hexdigest()[:10]
+    cache_name = (
+        f"saes_svd_v3_{_safe_cache_component(name)}_{nsamples}_{seqlen}_{seed}_{batch_size}_"
+        f"{_safe_cache_component(tokenizer_cls)}_tokv{_safe_cache_component(tokenizer_vocab)}_"
+        f"modelv{_safe_cache_component(model_vocab_size)}_m{model_hash}.pt"
+    )
+    cache_dir = os.path.join(current_path, "cache")
+    cache_file = os.path.join(cache_dir, cache_name)
+    os.makedirs(cache_dir, exist_ok=True)
+
+    if os.path.exists(cache_file):
+        print(f"  读取 SAES-SVD v3 专属校准缓存: {cache_file}")
+        traindataset = torch.load(cache_file, weights_only=False)
+        _validate_calib_token_ids(traindataset, model_vocab_size, cache_file)
+        return traindataset
+
+    print(f"  生成 SAES-SVD v3 专属校准缓存: {cache_file}")
+    original_nsamples = nsamples
+    nsamples += 1
+
+    if name == "c4":
+        traindata = load_dataset("json", data_files="utils/c4-train.json")['train']
+        tot_text = "\n\n".join(traindata["text"])
+    elif name == "ptb":
+        traindata = load_dataset(
+            'ptb_text_only', 'penn_treebank', split='train',
+            cache_dir=dataset_cache_dir
+        )
+        tot_text = "\n\n".join(traindata["sentence"])
+    elif name == "wikitext2":
+        traindata = load_dataset(
+            "/data/zhangs/LLMs/Datasets/wikitext", "wikitext-2-raw-v1",
+            split="train", cache_dir=dataset_cache_dir
+        )
+        tot_text = "\n\n".join(traindata["text"])
+    else:
+        raise NotImplementedError
+
+    traindataset = []
+    for s in range(nsamples):
+        i = random.randint(0, len(tot_text) - seqlen - 1)
+        j = i + seqlen * 10
+        trainenc = tokenizer(tot_text[i:j], return_tensors="pt")
+        if trainenc.input_ids.shape[1] < seqlen:
+            s = s - 1
+            continue
+        if s % batch_size == 0:
+            if s != 0:
+                attention_mask = torch.ones_like(inp)
+                traindataset.append({"input_ids": inp, "attention_mask": attention_mask})
+            inp = trainenc.input_ids[:, :seqlen]
+        else:
+            inp = torch.cat((inp, trainenc.input_ids[:, :seqlen]), dim=0)
+
+    if len(traindataset) != original_nsamples:
+        print(f"  Warning: 期望 {original_nsamples} 个校准 batch，实际生成 {len(traindataset)} 个。")
+
+    _validate_calib_token_ids(traindataset, model_vocab_size, cache_file)
+    torch.save(traindataset, cache_file)
+    return traindataset
 
 
 def replace_linear_with_factorized(root, dotted_name, B, A, bias_data,
@@ -581,11 +895,31 @@ def saes_svd_v3_compress_layerwise(model_name, model, calib_loader, ratio, dev,
     arch_family = _detect_arch_family(model)
     is_opt = (arch_family == 'opt')
     is_moe = (arch_family == 'qwen3_moe')
+    activation_cache_dtype = _default_runtime_dtype_for_arch(arch_family)
     print(f"  检测到架构家族: {arch_family}")
+    print(f"  闭环 activation cache dtype: {_dtype_name(activation_cache_dtype)}")
     if is_moe:
         print("  Qwen3 MoE: 可通过 --skip_moe_experts 跳过 experts.<i>.*")
 
-    tsvd_guard_threshold = 0.30 if arch_family in ('qwen', 'qwen3_moe') else 0.60
+    # Qwen2.5 的日志显示：SAES 因子可以保持有限，但把层输出从几十放大到 1e4~1e6。
+    # 因此 Qwen 系列恢复 FR-SVD v1.5 的 TSVD 质量护栏；LLaMA 等仍只对极端数值崩坏回退。
+    qwen_safety_guard = arch_family in ('qwen', 'qwen3_moe')
+    tsvd_guard_margin = 0.98 if qwen_safety_guard else 0.90
+    tsvd_guard_min_weight_err = 0.10 if qwen_safety_guard else 0.60
+    extreme_blowup_threshold = 1.0e4
+    activation_guard_ratio = 10.0
+    activation_guard_abs = 1.0e4
+    output_rel_l2_guard = 0.50
+    output_rms_ratio_min = 0.50
+    output_rms_ratio_max = 2.00
+    if qwen_safety_guard:
+        print(
+            "  Qwen safety guard: "
+            f"TSVD min_W_err={tsvd_guard_min_weight_err}, margin={tsvd_guard_margin}, "
+            f"layer激活阈值=max({activation_guard_ratio}x teacher, {activation_guard_abs:.1e}), "
+            f"output_rel_l2阈值={output_rel_l2_guard}, "
+            f"output_rms_ratio范围=[{output_rms_ratio_min}, {output_rms_ratio_max}]"
+        )
 
     access = get_model_access(model, arch_family)
     layers = access['layers']
@@ -599,7 +933,7 @@ def saes_svd_v3_compress_layerwise(model_name, model, calib_loader, ratio, dev,
 
     inps_student = torch.zeros(
         (num_samples, model.seqlen, model.config.hidden_size),
-        dtype=torch.float16, device='cpu'
+        dtype=activation_cache_dtype, device='cpu'
     )
 
     cache = {'i': 0}
@@ -613,7 +947,7 @@ def saes_svd_v3_compress_layerwise(model_name, model, calib_loader, ratio, dev,
             self.module = module
 
         def forward(self, inp, **kwargs):
-            inps_student[cache['i']] = inp.detach().half().cpu()
+            inps_student[cache['i']] = inp.detach().to(activation_cache_dtype).cpu()
             attn_mask = kwargs.get('attention_mask')
             attention_masks_list.append(attn_mask.detach().cpu() if attn_mask is not None else None)
             if not is_opt:
@@ -679,6 +1013,8 @@ def saes_svd_v3_compress_layerwise(model_name, model, calib_loader, ratio, dev,
         teacher_subset = {k: v for k, v in teacher_subset.items() if k in subset}
 
         if not subset:
+            student_cast_stats = _init_cast_stats('student_precompress_no_subset', activation_cache_dtype)
+            teacher_cast_stats = _init_cast_stats('teacher_precompress_no_subset', activation_cache_dtype)
             for j in range(num_samples):
                 inp_j = inps_student[j].unsqueeze(0).to(dev).float()
                 teacher_inp = inps_teacher[j].unsqueeze(0).to(dev).float()
@@ -693,14 +1029,25 @@ def saes_svd_v3_compress_layerwise(model_name, model, calib_loader, ratio, dev,
                 if pos_embed_cached is not None:
                     fw_kwargs['position_embeddings'] = tuple(t.to(dev) for t in pos_embed_cached)
 
-                outs_student[j] = layer(inp_j, **_filter_fw_kwargs(layer, fw_kwargs))[0].half().cpu()
-                outs_teacher[j] = teacher_layer.float()(teacher_inp, **_filter_fw_kwargs(teacher_layer, fw_kwargs))[0].half().cpu()
-                teacher_layer.half()
-                del inp_j, teacher_inp
+                out_student = layer(inp_j, **_filter_fw_kwargs(layer, fw_kwargs))[0]
+                out_teacher = teacher_layer.float()(teacher_inp, **_filter_fw_kwargs(teacher_layer, fw_kwargs))[0]
+                cached_student, _, _ = _cast_activation_for_cache(
+                    out_student, activation_cache_dtype, student_cast_stats
+                )
+                cached_teacher, _, _ = _cast_activation_for_cache(
+                    out_teacher, activation_cache_dtype, teacher_cast_stats
+                )
+                outs_student[j] = cached_student
+                outs_teacher[j] = cached_teacher
+                teacher_layer.to(dtype=activation_cache_dtype)
+                del inp_j, teacher_inp, out_student, out_teacher, cached_student, cached_teacher
+
+            _print_cast_stats(student_cast_stats, layer_idx)
+            _print_cast_stats(teacher_cast_stats, layer_idx)
 
             inps_student = outs_student.clone()
             inps_teacher = outs_teacher.clone()
-            layers[layer_idx] = layer.half().cpu()
+            layers[layer_idx] = layer.to(dtype=activation_cache_dtype).cpu()
             del teacher_layer, teacher_subset
             torch.cuda.empty_cache()
             continue
@@ -734,6 +1081,8 @@ def saes_svd_v3_compress_layerwise(model_name, model, calib_loader, ratio, dev,
             handles.append(subset[name].register_forward_hook(make_hook_student(name)))
             handles.append(teacher_subset[name].register_forward_hook(make_hook_teacher(name)))
 
+        student_pre_cast_stats = _init_cast_stats('student_precompress', activation_cache_dtype)
+        teacher_pre_cast_stats = _init_cast_stats('teacher_precompress', activation_cache_dtype)
         for j in range(num_samples):
             inp_j = inps_student[j].unsqueeze(0).to(dev).float()
             teacher_inp = inps_teacher[j].unsqueeze(0).to(dev).float()
@@ -750,10 +1099,16 @@ def saes_svd_v3_compress_layerwise(model_name, model, calib_loader, ratio, dev,
 
             out_j = layer(inp_j, **_filter_fw_kwargs(layer, fw_kwargs))[0]
             teacher_out = teacher_layer.float()(teacher_inp, **_filter_fw_kwargs(teacher_layer, fw_kwargs))[0]
-            teacher_layer.half()
+            teacher_layer.to(dtype=activation_cache_dtype)
 
-            outs_student[j] = out_j.half().cpu()
-            outs_teacher[j] = teacher_out.half().cpu()
+            cached_student, _, _ = _cast_activation_for_cache(
+                out_j, activation_cache_dtype, student_pre_cast_stats
+            )
+            cached_teacher, _, _ = _cast_activation_for_cache(
+                teacher_out, activation_cache_dtype, teacher_pre_cast_stats
+            )
+            outs_student[j] = cached_student
+            outs_teacher[j] = cached_teacher
 
             for name in subset:
                 X = subset[name]._tmp_inp
@@ -765,9 +1120,12 @@ def saes_svd_v3_compress_layerwise(model_name, model, calib_loader, ratio, dev,
                 teacher_subset[name]._tmp_inp = None
                 del X, X_f, diff, Delta_batch
 
-            del inp_j, teacher_inp, out_j, teacher_out
+            del inp_j, teacher_inp, out_j, teacher_out, cached_student, cached_teacher
             if j % 32 == 0:
                 torch.cuda.empty_cache()
+
+        _print_cast_stats(student_pre_cast_stats, layer_idx)
+        _print_cast_stats(teacher_pre_cast_stats, layer_idx)
 
         for h in handles:
             h.remove()
@@ -825,18 +1183,39 @@ def saes_svd_v3_compress_layerwise(model_name, model, calib_loader, ratio, dev,
 
             tsvd_err = None
             fallback_reason = None
-            non_finite = (not torch.isfinite(B).all()) or (not torch.isfinite(A).all())
-            if non_finite or weight_err > tsvd_guard_threshold:
+            non_finite = (
+                (not torch.isfinite(B).all())
+                or (not torch.isfinite(A).all())
+                or (not math.isfinite(weight_err))
+            )
+            extreme_blowup = weight_err > extreme_blowup_threshold
+            should_compare_tsvd = qwen_safety_guard or non_finite or extreme_blowup
+
+            if should_compare_tsvd:
                 B_tsvd, A_tsvd, tsvd_err = truncated_svd_factorize(W, rank)
-                if non_finite or weight_err > 1.0 or tsvd_err < weight_err * 0.90:
-                    fallback_reason = "tsvd_guard"
-                    print(
-                        f"  警告: L{layer_idx} {name} SAES 重建较差 "
-                        f"(W_err={weight_err:.4f}, TSVD={tsvd_err:.4f})，回退到截断 SVD"
-                    )
-                    B, A = B_tsvd, A_tsvd
-                    W_recon = B.float() @ A.float()
-                    weight_err = (torch.norm(W - W_recon) / torch.norm(W)).item()
+
+                if non_finite:
+                    fallback_reason = "numerical_instability"
+                elif qwen_safety_guard and weight_err > 1.0:
+                    fallback_reason = "qwen_weight_err_gt_1"
+                elif (
+                    qwen_safety_guard
+                    and weight_err > tsvd_guard_min_weight_err
+                    and tsvd_err < weight_err * tsvd_guard_margin
+                ):
+                    fallback_reason = "qwen_tsvd_guard"
+                elif extreme_blowup:
+                    fallback_reason = "extreme_blowup"
+
+            if fallback_reason is not None:
+                print(
+                    f"  警告: L{layer_idx} {name} SAES 重建触发回退 "
+                    f"(W_err={weight_err:.4e}, TSVD={tsvd_err:.4f}, "
+                    f"non_finite={non_finite})，回退到截断 SVD [{fallback_reason}]"
+                )
+                B, A = B_tsvd, A_tsvd
+                W_recon = B.float() @ A.float()
+                weight_err = (torch.norm(W - W_recon) / torch.norm(W)).item()
 
             B = B.to(original_dtype)
             A = A.to(original_dtype)
@@ -858,11 +1237,20 @@ def saes_svd_v3_compress_layerwise(model_name, model, calib_loader, ratio, dev,
                 'aces_info': aces_info,
             }
 
-            if verbose and (layer_idx == 0 or layer_idx == len(layers) - 1 or layer_idx % 8 == 0):
+            log_sublayer = verbose and (
+                qwen_safety_guard
+                or layer_idx == 0
+                or layer_idx == len(layers) - 1
+                or layer_idx % 8 == 0
+            )
+            if log_sublayer:
+                tsvd_str = f"{tsvd_err:.4f}" if tsvd_err is not None else "not_checked"
+                fallback_str = fallback_reason if fallback_reason is not None else "no"
                 print(
                     f"  L{layer_idx} {name}: β={beta:.4f}, α*={aces_info['alpha_star']:.4f}, "
                     f"rank={rank}, G_err={G_err:.4f}, E_kept={energy_ratio:.4f}, "
-                    f"W_err={weight_err:.4f}, Δ/H={delta_norm/(h_norm+1e-10):.4f}"
+                    f"W_err={weight_err:.4f}, TSVD={tsvd_str}, fallback={fallback_str}, "
+                    f"Δ/H={delta_norm/(h_norm+1e-10):.4f}"
                 )
 
             bias_data = subset[name].bias.data if subset[name].bias is not None else None
@@ -871,6 +1259,8 @@ def saes_svd_v3_compress_layerwise(model_name, model, calib_loader, ratio, dev,
                 device=dev, dtype=original_dtype
             )
 
+            if should_compare_tsvd:
+                del B_tsvd, A_tsvd
             del W, H, Delta, L, S, D, G, U, Sigma, Vt
             del U_r, Sigma_r, Vt_r, B, A, W_recon, G_recon
             del subset[name].H_matrix, subset[name].Delta_matrix
@@ -891,33 +1281,138 @@ def saes_svd_v3_compress_layerwise(model_name, model, calib_loader, ratio, dev,
                 f"avg_Δ/H={avg_delta_ratio:.4f}"
             )
 
-        nan_count = 0
-        for j in range(num_samples):
-            inp_j = inps_student[j].unsqueeze(0).to(dev).float()
-            attn_mask_j = attention_masks[j].to(dev) if attention_masks[j] is not None else None
-            pos_ids_j = position_ids[j].to(dev) if position_ids is not None else None
+        def run_student_postcompress(post_label):
+            nan_count_local = 0
+            post_cast_stats = _init_cast_stats(post_label, activation_cache_dtype)
+            output_err_sq = 0.0
+            output_teacher_sq = 0.0
+            output_student_sq = 0.0
+            output_numel = 0
+            for j in range(num_samples):
+                inp_j = inps_student[j].unsqueeze(0).to(dev).float()
+                attn_mask_j = attention_masks[j].to(dev) if attention_masks[j] is not None else None
+                pos_ids_j = position_ids[j].to(dev) if position_ids is not None else None
 
-            fw_kwargs = {}
-            if attn_mask_j is not None:
-                fw_kwargs['attention_mask'] = attn_mask_j
-            if not is_opt and pos_ids_j is not None:
-                fw_kwargs['position_ids'] = pos_ids_j
-            if pos_embed_cached is not None:
-                fw_kwargs['position_embeddings'] = tuple(t.to(dev) for t in pos_embed_cached)
+                fw_kwargs = {}
+                if attn_mask_j is not None:
+                    fw_kwargs['attention_mask'] = attn_mask_j
+                if not is_opt and pos_ids_j is not None:
+                    fw_kwargs['position_ids'] = pos_ids_j
+                if pos_embed_cached is not None:
+                    fw_kwargs['position_embeddings'] = tuple(t.to(dev) for t in pos_embed_cached)
 
-            out_j = layer(inp_j, **_filter_fw_kwargs(layer, fw_kwargs))[0]
-            if torch.isfinite(out_j).all():
-                outs_student[j] = out_j.half().cpu()
-            else:
-                nan_count += 1
-            del inp_j, out_j
+                out_j = layer(inp_j, **_filter_fw_kwargs(layer, fw_kwargs))[0]
+                teacher_ref = outs_teacher[j].unsqueeze(0).to(dev).float()
+                out_float = out_j.float()
+                diff = out_float - teacher_ref
+                output_err_sq += torch.sum(diff * diff).item()
+                output_teacher_sq += torch.sum(teacher_ref * teacher_ref).item()
+                output_student_sq += torch.sum(out_float * out_float).item()
+                output_numel += out_float.numel()
+                cached_student, pre_finite, post_finite = _cast_activation_for_cache(
+                    out_j, activation_cache_dtype, post_cast_stats
+                )
+                if pre_finite and post_finite:
+                    outs_student[j] = cached_student
+                else:
+                    nan_count_local += 1
+                del inp_j, out_j, teacher_ref, out_float, diff, cached_student
+            _print_cast_stats(post_cast_stats, layer_idx)
+            rel_l2 = math.sqrt(output_err_sq / (output_teacher_sq + 1e-12))
+            teacher_rms = math.sqrt(output_teacher_sq / max(output_numel, 1))
+            student_rms = math.sqrt(output_student_sq / max(output_numel, 1))
+            rms_ratio = student_rms / (teacher_rms + 1e-12)
+            post_cast_stats['output_rel_l2'] = rel_l2
+            post_cast_stats['output_teacher_rms'] = teacher_rms
+            post_cast_stats['output_student_rms'] = student_rms
+            post_cast_stats['output_rms_ratio'] = rms_ratio
+            print(
+                f"  L{layer_idx} {post_label} teacher对齐诊断: "
+                f"rel_l2={rel_l2:.4f}, student_rms={student_rms:.4e}, "
+                f"teacher_rms={teacher_rms:.4e}, rms_ratio={rms_ratio:.4f}"
+            )
+            return post_cast_stats, nan_count_local
+
+        def force_layer_tsvd_fallback(reason):
+            forced = 0
+            print(f"  警告: L{layer_idx} 触发层级激活保护，强制本层 Linear 回退 TSVD [{reason}]")
+            for sub_name, sub_stats in layer_stats['sublayers'].items():
+                original_linear = subset[sub_name]
+                W_force = original_linear.weight.data.float().to(dev)
+                rank_force = sub_stats['rank']
+                B_force, A_force, tsvd_err_force = truncated_svd_factorize(W_force, rank_force)
+                bias_force = original_linear.bias.data if original_linear.bias is not None else None
+                replace_linear_with_factorized(
+                    layer, sub_name, B_force, A_force, bias_force,
+                    device=dev, dtype=original_linear.weight.data.dtype
+                )
+                sub_stats['tsvd_err'] = tsvd_err_force
+                sub_stats['weight_err'] = tsvd_err_force
+                sub_stats['layer_guard_forced_tsvd'] = True
+                if sub_stats.get('fallback_reason') is None:
+                    sub_stats['fallback_reason'] = reason
+                forced += 1
+                del W_force, B_force, A_force
+                torch.cuda.empty_cache()
+            return forced
+
+        student_post_cast_stats, nan_count = run_student_postcompress('student_postcompress')
+
+        layer_stats['student_post_max_abs'] = student_post_cast_stats['pre_max_abs']
+        layer_stats['teacher_pre_max_abs'] = teacher_pre_cast_stats['pre_max_abs']
+        if qwen_safety_guard:
+            teacher_abs = max(teacher_pre_cast_stats['pre_max_abs'], 1e-6)
+            activation_threshold = max(activation_guard_abs, activation_guard_ratio * teacher_abs)
+            activation_guard_failed = (
+                student_post_cast_stats['pre_max_abs'] > activation_threshold
+                or student_post_cast_stats['output_rel_l2'] > output_rel_l2_guard
+                or student_post_cast_stats['output_rms_ratio'] < output_rms_ratio_min
+                or student_post_cast_stats['output_rms_ratio'] > output_rms_ratio_max
+            )
+            layer_stats['activation_guard_threshold'] = activation_threshold
+            layer_stats['activation_guard_failed'] = activation_guard_failed
+            layer_stats['output_rel_l2'] = student_post_cast_stats['output_rel_l2']
+            layer_stats['output_rms_ratio'] = student_post_cast_stats['output_rms_ratio']
+
+            if activation_guard_failed:
+                forced_count = force_layer_tsvd_fallback("qwen_layer_activation_guard")
+                layer_stats['layer_guard_forced_count'] = forced_count
+                print(
+                    f"    L{layer_idx} teacher对齐保护触发: student_max_abs="
+                    f"{student_post_cast_stats['pre_max_abs']:.4e}, teacher_max_abs="
+                    f"{teacher_abs:.4e}, threshold={activation_threshold:.4e}; "
+                    f"rel_l2={student_post_cast_stats['output_rel_l2']:.4f}, "
+                    f"rms_ratio={student_post_cast_stats['output_rms_ratio']:.4f}; "
+                    f"已强制回退 {forced_count} 个 Linear，重新前向"
+                )
+                student_post_cast_stats, nan_count = run_student_postcompress(
+                    'student_postcompress_after_layer_tsvd'
+                )
+                layer_stats['student_post_max_abs_after_guard'] = student_post_cast_stats['pre_max_abs']
+                layer_stats['output_rel_l2_after_guard'] = student_post_cast_stats['output_rel_l2']
+                layer_stats['output_rms_ratio_after_guard'] = student_post_cast_stats['output_rms_ratio']
+                still_failed = (
+                    student_post_cast_stats['pre_max_abs'] > activation_threshold
+                    or student_post_cast_stats['output_rel_l2'] > output_rel_l2_guard
+                    or student_post_cast_stats['output_rms_ratio'] < output_rms_ratio_min
+                    or student_post_cast_stats['output_rms_ratio'] > output_rms_ratio_max
+                )
+                layer_stats['activation_guard_still_failed'] = still_failed
+                if still_failed:
+                    print(
+                        f"  警告: L{layer_idx} 强制 TSVD 后仍未通过 teacher 对齐保护 "
+                        f"(student_max_abs={student_post_cast_stats['pre_max_abs']:.4e}, "
+                        f"threshold={activation_threshold:.4e}, "
+                        f"rel_l2={student_post_cast_stats['output_rel_l2']:.4f}, "
+                        f"rms_ratio={student_post_cast_stats['output_rms_ratio']:.4f})"
+                    )
 
         if nan_count > 0:
             print(f"  警告: L{layer_idx} 闭环前向有 {nan_count}/{num_samples} 个样本含 NaN")
 
         inps_student = outs_student.clone()
         inps_teacher = outs_teacher.clone()
-        layers[layer_idx] = layer.half().cpu()
+        layers[layer_idx] = layer.to(dtype=activation_cache_dtype).cpu()
         torch.cuda.empty_cache()
 
     torch.cuda.empty_cache()
@@ -1019,10 +1514,13 @@ if __name__ == '__main__':
     parser.add_argument('--lora', type=str, default=None,
                         help='LoRA adapter 目录；eval_only 模式下自动 merge_and_unload 并保存 merge.pt')
     parser.add_argument('--eval_batch_size', type=int, default=4, help='PPL 评估 batch size')
-    parser.add_argument('--eval_dtype', type=str, default='fp16', choices=['fp16', 'fp32'],
-                        help='评估时模型精度，默认 fp16 以降低显存占用')
+    parser.add_argument('--eval_dtype', type=str, default='auto',
+                        choices=['auto', 'fp16', 'bf16', 'fp32'],
+                        help='评估时模型精度；auto 时 Qwen 使用 bf16，其他模型使用 fp16')
     parser.add_argument('--eval_large', action='store_true', default=False,
                         help='超大模型评估模式：模型常驻 CPU，逐层搬上 GPU（适用于 30B+ 等超过单卡显存的模型）')
+    parser.add_argument('--no_eval_after_compress', action='store_true', default=False,
+                        help='压缩并保存后立即退出，不运行压缩后的 PPL 评估')
 
     args = parser.parse_args()
 
@@ -1065,6 +1563,8 @@ if __name__ == '__main__':
     if args.eval_only and args.model_path:
         print("\n仅评估模式...")
         model, tokenizer = get_model_from_local(args.model_path)
+        eval_dtype = _resolve_eval_dtype(model, args.eval_dtype)
+        print(f"  评估 dtype: {_dtype_name(eval_dtype)} (requested={args.eval_dtype})")
 
         # v1.4：LoRA adapter 合并（对标 SVDLLM step 4 分支）
         if args.lora is not None:
@@ -1073,7 +1573,7 @@ if __name__ == '__main__':
             model = PeftModel.from_pretrained(
                 model,
                 args.lora,
-                torch_dtype=torch.float16,
+                torch_dtype=eval_dtype,
             )
             model = model.merge_and_unload()
             if not os.path.exists(args.lora):
@@ -1090,21 +1590,21 @@ if __name__ == '__main__':
                            seq_len=args.model_seq_len,
                            batch_size=args.eval_batch_size, device=args.DEV)
         else:
-            if args.eval_dtype == 'fp32':
-                model = model.float().to(args.DEV)
-            else:
-                model = model.half().to(args.DEV)
+            model = model.to(dtype=eval_dtype, device=args.DEV)
             ppl_eval(model, tokenizer, datasets=['wikitext2'],
                      model_seq_len=args.model_seq_len,
                      batch_size=args.eval_batch_size, device=args.DEV)
     else:
         print("\n加载模型...")
         model, tokenizer = load_model_v15(args.model, seq_len=args.model_seq_len)
-        model = model.eval().half()
+        compression_dtype = _default_runtime_dtype_for_arch(_detect_arch_family(model))
+        print(f"  压缩运行 dtype: {_dtype_name(compression_dtype)}")
+        model = model.eval().to(dtype=compression_dtype)
 
         print("\n加载校准数据...")
-        calib_data = get_calib_train_data(
-            args.dataset, tokenizer, args.nsamples, seqlen=args.model_seq_len
+        calib_data = get_calib_train_data_v3_safe(
+            args.dataset, tokenizer, args.nsamples, seqlen=args.model_seq_len,
+            model_id=args.model, model_vocab_size=model.config.vocab_size
         )
 
         print("\n开始 SAES-SVD v3 压缩...")
@@ -1125,12 +1625,18 @@ if __name__ == '__main__':
             f"{args.model.replace('/', '_').replace('-', '_')}_saes_svd_v3_{keep_ratio}.pt"
         )
         print(f"\n保存压缩模型到: {save_file}")
-        model = model.float()
+        save_dtype = _default_runtime_dtype_for_arch(_detect_arch_family(model))
+        print(f"  保存模型 dtype: {_dtype_name(save_dtype)}")
+        model = model.to(dtype=save_dtype)
         torch.save({'model': model, 'tokenizer': tokenizer, 'stats': stats}, save_file)
 
         del stats, calib_data
         import gc; gc.collect()
         torch.cuda.empty_cache()
+
+        if args.no_eval_after_compress:
+            print("\n跳过压缩后的困惑度评估（--no_eval_after_compress）")
+            sys.exit(0)
 
         print("\n运行困惑度评估...")
         if args.eval_large:
@@ -1138,7 +1644,9 @@ if __name__ == '__main__':
                            seq_len=args.model_seq_len,
                            batch_size=args.eval_batch_size, device=args.DEV)
         else:
-            model = model.half().to(args.DEV)
+            eval_dtype = _resolve_eval_dtype(model, args.eval_dtype)
+            print(f"  压缩后评估 dtype: {_dtype_name(eval_dtype)} (requested={args.eval_dtype})")
+            model = model.to(dtype=eval_dtype, device=args.DEV)
             ppl_eval(model, tokenizer, datasets=['wikitext2'],
                      model_seq_len=args.model_seq_len,
                      batch_size=args.eval_batch_size, device=args.DEV)

@@ -30,6 +30,10 @@ def ppl_eval(model, tokenizer, datasets=['wikitext2', 'ptb', 'c4'], model_seq_le
                 loss_fct = torch.nn.CrossEntropyLoss(reduction="none")
                 loss = loss_fct(shift_logits.reshape(-1, shift_logits.size(-1)), shift_labels.view(-1))
                 nlls.append(loss)
+        if not nlls:
+            print(f"Warning: all batches had non-finite logits for {dataset}! PPL = NaN")
+            ppls[dataset] = float('nan')
+            continue
         ppl = np.exp(torch.cat(nlls, dim=-1).mean().item())
         ppls[dataset] = ppl
     print("PPL after pruning: {}".format(ppls))

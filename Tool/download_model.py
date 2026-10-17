@@ -1,26 +1,24 @@
 import os
 # 设置环境变量
-os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com' 
-#
+os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
+# 
 # 下载模型
 
-# 26年6月最新命令格式：hf download --repo-type model/dataset model_name  --load-dir /path/to/local/dir
+os.system('hf download liuhaotian/llava-v1.5-7b --local-dir /data/zhangs/LLMs/Models/llava-v1.5-7b')
 
-os.system('hf download --repo-type model Qwen/Qwen3-4B --local-dir /mnt/data/zhangshuai/LLMs/Models/Qwen3-4B')
+# os.system('huggingface-cli download --resume-download circulus/llama-13b --local-dir /data/zhangs/LLMs/Models/llama-13b')
 
-# os.system('hf download --repo-type model Qwen/Qwen3.5-9B --local-dir /mnt/data/zhangshuai/LLMs/Models/Qwen3.5-9B')
+# os.system('huggingface-cli download --resume-download huggyllama/llama-7b --local-dir /data/zhangs/LLMs/Models/llama-7b')
 
-# os.system('hf download --repo-type model Qwen/Qwen3.6-27B-FP8 --local-dir /mnt/data/zhangshuai/LLMs/Models/Qwen3.6-27B-FP8')
-
-# os.system('huggingface-cli download --resume-download huggyllama/llama-7b --local-dir /mnt/data/zhangshuai/LLMs/Models/llama-7b')
-
-# os.system('hf download  circulus/llama-13b --local-dicr /data/zhangs/LLMs/Models/llama-13b')
-
+#
 # os.system('huggingface-cli download --resume-download huggyllama/llama-30b --local-dir /data/zhangs/LLMs/Models/llama-30b')
 
-# os.system('huggingface-cli download --resume-download Qwen/Qwen2.5-7B --local-dir /mnt/data/zhangshuai/LLMs/Models/Qwen2.5-7B')
+# os.system('hf download --resume-download Qwen/Qwen2.5-7B --local-dir /data/zhangs/LLMs/Models/Qwen/Qwen2.5-7B')
 
-# 下载需要令牌的模型：通过 HF_TOKEN 环境变量或 hf auth login 认证，勿在代码中写入令牌。
+
+
+
+# 需要认证的模型可先在本机执行 hf auth login，或通过 HF_TOKEN 环境变量认证。
 # os.system('hf download meta-llama/Llama-2-7b --local-dir /data/zhangs/LLMs/Models/Llama-2-7b')
 
 # 删除模型

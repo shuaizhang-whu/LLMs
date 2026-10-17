@@ -7,14 +7,6 @@ from torch.utils.data.dataset import Dataset
 
 current_path = os.path.dirname(os.path.abspath(__file__))
 parent_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-project_root = os.path.dirname(parent_path)
-WIKITEXT_PATH = os.environ.get(
-    "WIKITEXT_PATH",
-    os.path.join(project_root, "Datasets", "wikitext")
-)
-CACHE_DIR = os.environ.get("FR_SVD_CACHE_DIR", os.path.join(parent_path, "cache"))
-C4_TRAIN_PATH = os.path.join(current_path, "c4-train.json")
-C4_VALIDATION_PATH = os.path.join(current_path, "c4-validation.json")
 sys.path.append(current_path)
 
 def get_calib_train_data(name, tokenizer, nsamples, seqlen=2048, seed=3, batch_size=1, dataset_cache_dir=None):
@@ -36,12 +28,12 @@ def get_calib_train_data(name, tokenizer, nsamples, seqlen=2048, seed=3, batch_s
     """
     import random
     random.seed(seed)
-    cache_file = os.path.join(
-        CACHE_DIR, f"{name}_{nsamples}_{seqlen}_{seed}_{batch_size}.pt"
+    cache_file = (
+        f"cache/{name}_{nsamples}_{seqlen}_{seed}_{batch_size}.pt"
     )
     nsamples += 1 #############################
-    if not os.path.exists(CACHE_DIR):
-        os.makedirs(CACHE_DIR)
+    if not os.path.exists("cache"):
+        os.makedirs("cache")
     # 如果缓存文件存在，则直接加载并返回
     if os.path.exists(cache_file):
         traindataset = torch.load(cache_file, weights_only=False)
@@ -49,13 +41,13 @@ def get_calib_train_data(name, tokenizer, nsamples, seqlen=2048, seed=3, batch_s
 
     # 根据数据集名称加载对应的训练数据
     if name == "c4":
-        traindata = load_dataset("json", data_files=C4_TRAIN_PATH)['train']
+        traindata = load_dataset("json", data_files="utils/c4-train.json")['train']
         tot_text = "\n\n".join(traindata["text"])
     elif name == "ptb":
         traindata = load_dataset('ptb_text_only', 'penn_treebank', split='train', cache_dir=dataset_cache_dir)
         tot_text = "\n\n".join(traindata["sentence"])
     elif name == "wikitext2":
-        traindata = load_dataset(WIKITEXT_PATH, "wikitext-2-raw-v1", split="train", cache_dir=dataset_cache_dir)
+        traindata = load_dataset("/data/zhangs/LLMs/Datasets/wikitext", "wikitext-2-raw-v1", split="train", cache_dir=dataset_cache_dir)
         tot_text = "\n\n".join(traindata["text"])
     else:
         raise NotImplementedError
@@ -84,8 +76,8 @@ def get_calib_train_data(name, tokenizer, nsamples, seqlen=2048, seed=3, batch_s
     return traindataset
 
 def get_wikitext2(nsamples, seed, seqlen, tokenizer, dataset_cache_dir=None):
-    traindata = load_dataset(WIKITEXT_PATH, 'wikitext-2-raw-v1', split='train', cache_dir=dataset_cache_dir)
-    testdata = load_dataset(WIKITEXT_PATH, 'wikitext-2-raw-v1', split='test', cache_dir=dataset_cache_dir)
+    traindata = load_dataset('/data/zhangs/LLMs/Datasets/wikitext', 'wikitext-2-raw-v1', split='train', cache_dir=dataset_cache_dir)
+    testdata = load_dataset('/data/zhangs/LLMs/Datasets/wikitext', 'wikitext-2-raw-v1', split='test', cache_dir=dataset_cache_dir)
 
     trainenc = tokenizer("\n\n".join(traindata['text']), return_tensors='pt')
     testenc = tokenizer("\n\n".join(testdata['text']), return_tensors='pt')
@@ -122,8 +114,8 @@ def get_ptb(nsamples, seed, seqlen, tokenizer, dataset_cache_dir=None):
     return trainloader, testenc
 
 def get_c4(nsamples, seed, seqlen, tokenizer):
-    traindata = load_dataset("json", data_files=C4_TRAIN_PATH)['train']
-    valdata = load_dataset("json", data_files=C4_VALIDATION_PATH)['train']
+    traindata = load_dataset("json", data_files="utils/c4-train.json")['train']
+    valdata = load_dataset("json", data_files="utils/c4-validation.json")['train']
 
     import random
     random.seed(seed)
@@ -184,8 +176,8 @@ def get_ptb_new(nsamples, seed, seqlen, tokenizer, dataset_cache_dir=None):
     return trainloader, testenc
 
 def get_c4_new(nsamples, seed, seqlen, tokenizer):
-    traindata = load_dataset("json", data_files=C4_TRAIN_PATH)['train']
-    valdata = load_dataset("json", data_files=C4_VALIDATION_PATH)['train']
+    traindata = load_dataset("json", data_files="utils/c4-train.json")['train']
+    valdata = load_dataset("json", data_files="utils/c4-validation.json")['train']
 
     import random
     random.seed(seed)
@@ -249,13 +241,13 @@ def get_test_data(name, tokenizer, seq_len=2048, batch_size = 4):
         return IndexDataset(tensors=test_ids_batch)
     ####
     if 'wikitext2' in name:
-        test_data = load_dataset(WIKITEXT_PATH, 'wikitext-2-raw-v1', split='test')
+        test_data = load_dataset('/data/zhangs/LLMs/Datasets/wikitext', 'wikitext-2-raw-v1', split='test')
         test_dataset = process_data(test_data, tokenizer, seq_len, 'text')
     if 'ptb' in name:
         test_data = load_dataset('ptb_text_only', 'penn_treebank', split='test')
         test_dataset = process_data(test_data, tokenizer, seq_len, 'sentence')
     elif 'c4' in name:
-        test_data = load_dataset("json", data_files=C4_VALIDATION_PATH)['train']
+        test_data = load_dataset("json", data_files="utils/c4-validation.json")['train']
         test_dataset = process_data(test_data[0:2000], tokenizer, seq_len, 'text')
     test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
     return test_loader

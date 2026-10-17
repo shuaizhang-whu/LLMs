@@ -4,10 +4,10 @@ SAES-SVD 调试脚本
 """
 import torch
 import sys
-sys.path.append('/data/zhangs/LLMs/SAES-SVD')
+sys.path.append('/data/zhangs/LLMs/Projects/SAES-SVD')
 
 # 加载 profiling 数据
-profiling_path = '/data/zhangs/LLMs/SAES-SVD/result/SAES_SVD/llama-7b-hf/ratio_0.2/dataset_wikitext2_samples_128_seed_0/compress_output'
+profiling_path = '/data/zhangs/LLMs/Projects/SAES-SVD/result/SAES_SVD/llama-7b-hf/ratio_0.2/dataset_wikitext2_samples_128_seed_0/compress_output'
 import glob
 pt_files = glob.glob(f'{profiling_path}/*profiling*.pt')
 if pt_files:
@@ -15,7 +15,7 @@ if pt_files:
     profiling_mat = torch.load(pt_files[0], weights_only=False)
 else:
     print("未找到 profiling 文件，尝试其他路径...")
-    pt_files = glob.glob('/data/zhangs/LLMs/SAES-SVD/result/**/*profiling*.pt', recursive=True)
+    pt_files = glob.glob('/data/zhangs/LLMs/Projects/SAES-SVD/result/**/*profiling*.pt', recursive=True)
     if pt_files:
         print(f"找到 profiling 文件: {pt_files[0]}")
         profiling_mat = torch.load(pt_files[0], weights_only=False)

@@ -1,0 +1,59 @@
+#!/bin/bash
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+# GPU6: 7 个待跑实验，每批 2 个并行（2×14GB=28GB，安全余量充足）
+# 注意：用 wait $PID1 $PID2 形式代替裸 wait，避免 nohup 下 wait 早退问题
+MODEL="/data/zhangs/LLMs/Models/jeffwan/llama-7b-hf"
+PYTHON="/data/zhangs/anaconda3/envs/compress/bin/python"
+SCRIPT="${PROJECT_ROOT}/FR_SVD_v1.3.py"
+BASE="${PROJECT_ROOT}/result/phase2"
+mkdir -p ${BASE}
+
+COMMON="--model ${MODEL} --ratio 0.2 --dataset wikitext2 --nsamples 128 --seed 3 --DEV cuda:0 --model_seq_len 2048"
+
+run_exp() {
+    local TAG=$1; shift
+    echo "[$(date '+%H:%M:%S')] >>> GPU6: ${TAG}"
+    CUDA_VISIBLE_DEVICES=6 ${PYTHON} ${SCRIPT} ${COMMON} "$@" \
+        --result_dir ${BASE}/${TAG} \
+        > ${BASE}/${TAG}.log 2>&1
+    PPL=$(grep -oP "PPL after pruning: \{'wikitext2': \K[\d.]+" ${BASE}/${TAG}.log 2>/dev/null | head -1 || echo "N/A")
+    echo "[$(date '+%H:%M:%S')] <<< GPU6: ${TAG} PPL=${PPL}"
+}
+
+# 批次1：2 并行
+echo "[$(date '+%H:%M:%S')] === GPU6 批次1 ==="
+run_exp "rho0.8_a04_06"         --r1_ratio 0.9 --rho 0.8 --alpha_min 0.4 --alpha_max 0.6 &
+P1=$!
+run_exp "rho0.8_a03_07"         --r1_ratio 0.9 --rho 0.8 --alpha_min 0.3 --alpha_max 0.7 &
+P2=$!
+wait $P1 $P2
+echo "[$(date '+%H:%M:%S')] === GPU6 批次1 完成 ==="
+
+# 批次2：2 并行
+echo "[$(date '+%H:%M:%S')] === GPU6 批次2 ==="
+run_exp "rho0.65_a04_06_r1_0.9" --rho 0.65 --alpha_min 0.4 --alpha_max 0.6 --r1_ratio 0.9 &
+P1=$!
+run_exp "fisher_direct_rho0.6_a04_06" \
+    --r1_ratio 0.9 --rho 0.6 --alpha_min 0.4 --alpha_max 0.6 --fisher_mode direct &
+P2=$!
+wait $P1 $P2
+echo "[$(date '+%H:%M:%S')] === GPU6 批次2 完成 ==="
+
+# 批次3：2 并行（Fisher direct 内存略高，保守 2 个）
+echo "[$(date '+%H:%M:%S')] === GPU6 批次3（Fisher direct）==="
+run_exp "fisher_direct_rho0.6_a03_07" \
+    --r1_ratio 0.9 --rho 0.6 --alpha_min 0.3 --alpha_max 0.7 --fisher_mode direct &
+P1=$!
+run_exp "fisher_direct_rho0.5_a04_06" \
+    --r1_ratio 0.9 --rho 0.5 --alpha_min 0.4 --alpha_max 0.6 --fisher_mode direct &
+P2=$!
+wait $P1 $P2
+echo "[$(date '+%H:%M:%S')] === GPU6 批次3 完成 ==="
+
+# 批次4：1 个（Fisher direct r1=1.0 纯 Stage1 对照）
+echo "[$(date '+%H:%M:%S')] === GPU6 批次4 ==="
+run_exp "fisher_direct_rho0.6_a04_06_r1_1.0" \
+    --rho 0.6 --alpha_min 0.4 --alpha_max 0.6 --r1_ratio 1.0 --fisher_mode direct
+echo "[$(date '+%H:%M:%S')] === GPU6 全部完成 ==="
+

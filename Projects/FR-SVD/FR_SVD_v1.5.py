@@ -21,8 +21,6 @@ import os
 print(f"CUDA_VISIBLE_DEVICES: {os.environ.get('CUDA_VISIBLE_DEVICES')}")
 import sys
 import argparse
-import json
-import time
 import torch
 import torch.nn as nn
 from tqdm import tqdm
@@ -41,36 +39,6 @@ try:
 except ImportError:
     WANDB_AVAILABLE = False
     wandb = None
-
-
-def _safe_model_basename(model_path):
-    """Return a compact filesystem-safe model name for result artifacts."""
-    if not model_path:
-        return "model"
-    name = os.path.basename(os.path.normpath(model_path))
-    if not name:
-        name = model_path.replace(os.sep, "_")
-    return name.replace("/", "_").replace("-", "_")
-
-
-def _write_timing_summary(save_path, timing, args, keep_ratio):
-    os.makedirs(save_path, exist_ok=True)
-    summary = {
-        "model": args.model,
-        "model_path": args.model_path,
-        "ratio": args.ratio,
-        "keep_ratio": keep_ratio,
-        "dataset": args.dataset,
-        "nsamples": args.nsamples,
-        "model_seq_len": args.model_seq_len,
-        "device": args.DEV,
-        "timing_seconds": timing,
-        "created_at": datetime.now().isoformat(timespec="seconds"),
-    }
-    summary_path = os.path.join(save_path, "timing_summary.json")
-    with open(summary_path, "w", encoding="utf-8") as f:
-        json.dump(summary, f, ensure_ascii=False, indent=2)
-    print(f"\n计时摘要已保存到: {summary_path}")
 
 
 # ==================== 模型无关的低秩线性层 ====================
@@ -1189,6 +1157,8 @@ if __name__ == '__main__':
                         help='评估时模型精度，默认 fp16 以降低显存占用')
     parser.add_argument('--eval_large', action='store_true', default=False,
                         help='超大模型评估模式：模型常驻 CPU，逐层搬上 GPU（适用于 30B+ 等超过单卡显存的模型）')
+    parser.add_argument('--no_eval_after_compress', action='store_true', default=False,
+                        help='压缩并保存后立即退出，不运行压缩后的 PPL 评估')
     # v1.5 新增：多模型 / MoE
     parser.add_argument('--skip_moe_experts', action='store_true', default=False,
                         help='MoE 模型（如 Qwen3.5-35B-A3B）跳过所有 experts 的 gate/up/down_proj 压缩，'
@@ -1207,8 +1177,6 @@ if __name__ == '__main__':
         parser.error("非 --eval_only 模式下必须指定 --model")
 
     keep_ratio = 1 - args.ratio
-    timing = {}
-    python_start_time = time.perf_counter()
 
     print("=" * 60)
     print("FR-SVD v1.5 配置")
@@ -1249,7 +1217,6 @@ if __name__ == '__main__':
 
         model.eval()
         print("\n运行困惑度评估...")
-        eval_start_time = time.perf_counter()
         if args.eval_large:
             # 逐层评估：不整体搬 GPU，适用于超过单卡显存的大模型
             ppl_eval_large(model, tokenizer, datasets=['wikitext2'],
@@ -1263,7 +1230,6 @@ if __name__ == '__main__':
             ppl_eval(model, tokenizer, datasets=['wikitext2'],
                      model_seq_len=args.model_seq_len,
                      batch_size=args.eval_batch_size, device=args.DEV)
-        timing["eval_seconds"] = round(time.perf_counter() - eval_start_time, 3)
     else:
         print("\n加载模型...")
         model, tokenizer = load_model_v15(args.model, seq_len=args.model_seq_len)
@@ -1275,7 +1241,6 @@ if __name__ == '__main__':
         )
 
         print("\n开始 FR-SVD v1.5 压缩...")
-        compress_start_time = time.perf_counter()
         stats = fr_svd_compress_layerwise(
             args.model, model, calib_data, keep_ratio, args.DEV,
             eps=args.eps, r1_ratio=args.r1_ratio,
@@ -1286,27 +1251,27 @@ if __name__ == '__main__':
             skip_moe_experts=args.skip_moe_experts,
             verbose=True
         )
-        timing["compression_seconds"] = round(time.perf_counter() - compress_start_time, 3)
 
         if not os.path.exists(args.save_path):
             os.makedirs(args.save_path)
 
         save_file = os.path.join(
             args.save_path,
-            f"{_safe_model_basename(args.model)}_fr_svd_{keep_ratio:.2f}.pt"
+            f"{args.model.replace('/', '_').replace('-', '_')}_fr_svd_{keep_ratio}.pt"
         )
         print(f"\n保存压缩模型到: {save_file}")
-        save_start_time = time.perf_counter()
         model = model.float()
         torch.save({'model': model, 'tokenizer': tokenizer, 'stats': stats}, save_file)
-        timing["save_seconds"] = round(time.perf_counter() - save_start_time, 3)
 
         del stats, calib_data
         import gc; gc.collect()
         torch.cuda.empty_cache()
 
+        if args.no_eval_after_compress:
+            print("\n跳过压缩后的困惑度评估（--no_eval_after_compress）")
+            sys.exit(0)
+
         print("\n运行困惑度评估...")
-        eval_start_time = time.perf_counter()
         if args.eval_large:
             ppl_eval_large(model, tokenizer, datasets=['wikitext2'],
                            seq_len=args.model_seq_len,
@@ -1316,8 +1281,3 @@ if __name__ == '__main__':
             ppl_eval(model, tokenizer, datasets=['wikitext2'],
                      model_seq_len=args.model_seq_len,
                      batch_size=args.eval_batch_size, device=args.DEV)
-        timing["eval_seconds"] = round(time.perf_counter() - eval_start_time, 3)
-
-    timing["total_python_seconds"] = round(time.perf_counter() - python_start_time, 3)
-    if args.save_path:
-        _write_timing_summary(args.save_path, timing, args, keep_ratio)
