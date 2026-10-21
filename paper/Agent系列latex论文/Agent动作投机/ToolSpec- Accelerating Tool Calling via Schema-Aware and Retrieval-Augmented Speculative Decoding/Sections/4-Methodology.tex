@@ -1,0 +1,66 @@
+\section{\method}
+\label{sec:toolspec}
+In this section, we introduce \method, a plug-and-play SD approach for accelerating tool-calling generation. The method leverages the highly structured nature of tool calls and recurring historical patterns to construct high-quality drafts with negligible overhead. As shown in Figure~\ref{fig:toolspec}, \method integrates two complementary drafting strategies: \textit{schema-aware drafting} and \textit{retrieval-augmented speculation}, which we detail below.
+
+\subsection{Task Formulation}
+Given a user query and an input context containing system prompts and tool documentation, \method extracts tool specifications from the documentation and converts them into a structured schema. The schema defines (i) the set of schema tokens $\Sigma_{\text{schema}}$, (ii) a set of callable tools $\mathcal{C}_{\text{tools}}$ (e.g., \texttt{ForgotPassword}), and (iii) the parameter fields associated with each tool (e.g., \texttt{Status}, \texttt{Username}).
+
+Let $\mathcal{M}$ denote the target model, $\boldsymbol{x}$ the input context, and $\boldsymbol{y} = (y_1, y_2, \ldots, y_L)$ the tool-call sequence to be generated. At decoding step $t$, following the standard SD paradigm, \method first proposes a sequence of draft tokens $\tilde{\boldsymbol{y}}_{t:t+\gamma-1} = (\tilde{y}_{t}, \tilde{y}_{t+1}, \ldots, \tilde{y}_{t+\gamma-1})$, as predictions of the subsequent decoding steps. The target model $\mathcal{M}$ then verifies these draft candidates in parallel and accepts the longest prefix that is consistent with its probability distribution. When the drafting process incurs significantly lower latency than verification, maximizing the acceptance length of $\tilde{\boldsymbol{y}}$ directly improves the effective decoding parallelism and reduces the end-to-end latency.
+
+\begin{figure}[t]
+\centering
+\vspace{-0.5cm}
+\includegraphics[width=0.95\columnwidth]{fig/transition2.pdf}
+\caption{Illustration of state transitions in \method. Once tool calling is triggered by \texttt{<tool\_call>}, the FSM enters the tool-name state $q_t$, and then alternates between the parameter-name state $q_p$ and parameter-value state $q_v$ until the tool call is completed.}
+\label{fig:transition}
+\end{figure}
+
+\subsection{Schema-aware Drafting}
+As discussed in Section~\ref{sec:pattern_analysis}, tool invocations from advanced LLMs adhere to predefined schema formats. This structural regularity enables deterministic drafting for large portions of the output. To exploit this property, \method constructs a finite-state machine (FSM) derived from the parsed tool schema. Formally, the FSM is defined as
+\begin{equation}
+\mathcal{F} = (\mathcal{Q}, \Sigma_{\text{schema}}, \delta, q_0),
+\end{equation}
+where $\mathcal{Q}$ is the set of states, $\Sigma_{\text{schema}}$ is the schema token alphabet, $\delta: \mathcal{Q} \times \Sigma_{\text{schema}} \rightarrow \mathcal{Q}$ is the transition function, and $q_0\in \mathcal{Q}$ is the initial state.
+
+The state space $\mathcal{Q}$ decomposes the tool-calling generation process into structural components:
+\begin{itemize}
+\item $q_t$: \textbf{tool-name state}, where the model selects a tool from the predefined tool set $\mathcal{C}_{\text{tools}}$.
+\item $q_p$: \textbf{parameter-name state}, where the model selects one parameter field of the chosen tool.
+\item $q_v$: \textbf{parameter-value state}, where the model generates the value of the selected parameter.
+\item $q_o$: \textbf{``others'' state}, corresponding to general natural language generation outside tool calls.
+\end{itemize}
+
+\begin{figure*}[t]
+\centering
+\vspace{-1.0cm}
+\includegraphics[width=0.95\textwidth]{fig/ToolSpec.pdf}
+\caption{Illustration of tool-calling generation with \method. To accelerate structural tool calling, \method integrates two complementary drafting strategies: \textbf{(a) schema-aware drafting}, where a finite-state machine guides highly accurate drafting within the predefined tool schema; and \textbf{(b) retrieval-augmented speculation}, which reuses historical generation patterns as high-quality drafts to speed up recurrent tool calls.}
+\label{fig:toolspec}
+\end{figure*}
+
+As illustrated in Figure~\ref{fig:transition}, once the special token \texttt{<tool\_call>} is generated, the FSM transitions to the tool-name state $q_t$. In this state, drafting is executed via constrained decoding to generate candidate draft sequences. We formulate the proposed draft sequence $\tilde{\boldsymbol{y}}$ as the concatenation (denoted by $\oplus$) of the necessary structural elements:
+\begin{equation}\label{eq:draft}
+    \tilde{\boldsymbol{y}} = \tilde{\boldsymbol{y}}_{\text{prefix}} \oplus \tilde{\boldsymbol{y}}_{\text{tool\_name}} \oplus \tilde{\boldsymbol{y}}_{\text{suffix}}
+\end{equation}
+where $\tilde{\boldsymbol{y}}_{\text{prefix}}$ and $\tilde{\boldsymbol{y}}_{\text{suffix}}$ denote the corresponding schema prefix and suffix associated with $q_t$, and $\tilde{\boldsymbol{y}}_{\text{tool\_name}} \in \mathcal{C}_{\text{tools}}$ represents the candidate tool names. All potential drafts are subsequently verified in parallel by the target model $\mathcal{M}$.
+
+Upon successful verification, the FSM transitions to the parameter-name state $q_p$, where $\mathcal{M}$ verifies the candidate parameter names associated with the selected tool in parallel. The FSM then transitions to the parameter-value state $q_v$. Because parameter values are typically unconstrained, \method eschews schema constraints at this stage and instead relies on a general SD algorithm to predict these variable fields.
+
+Then, the FSM transitions between states according to schema-specific delimiters. For example, the delimiter \mybox{delimiter}{\texttt{'',}} terminates the parameter-value state $q_v$ and returns to $q_p$ for the next parameter; while the delimiter \mybox{delimiter}{\texttt{``\}\}''}} marks completion of the tool call. Consequently, \method seamlessly alternates between deterministic schema token filling for structural states (e.g., $q_t$ and $q_p$) and speculative generation for open-ended states (e.g., $q_v$ and $q_o$).
+
+\subsection{Retrieval-augmented Speculation}
+While the schema defines the structural skeleton of a tool call and supports local drafting for constrained fields such as tool names, variable fields, particularly parameter values, depend heavily on the input context and cannot be inferred from the schema alone. Motivated by the recurring patterns in tool invocations, \method introduces a retrieval-augmented drafting strategy to accelerate tool-calling generation at the sequence level.
+
+\input{tab/main}
+
+We maintain a datastore $\mathcal{H}=\{(\boldsymbol{h}_j, \boldsymbol{y}_j)\}_{j=1}^{|\mathcal{H}|}$ consisting of prior successful tool calls, where $\boldsymbol{h}_j \in \mathbb{R}^d$ denotes the hidden representation of the input question $\boldsymbol{x}_j$ at its final token, $d$ is the hidden dimension, and $\boldsymbol{y}_j$ is the corresponding tool-call output. Given a query $\boldsymbol{x}_i$, we retrieve the top-$k$ most similar historical tool calls:
+
+\begin{equation}
+    \mathcal{I}_k = \operatorname{Top-K}_{j \in \{1 \ldots |\mathcal{H}|\}} \text{sim}(\boldsymbol{h}_i, \boldsymbol{h}_j)
+\end{equation}
+where $\text{sim}(\cdot)$ denotes cosine similarity and $\mathcal{I}_k$ the indices of the retrieved entries. Given the partially generated output $\boldsymbol{y}_{<t}$, we align it with each retrieved tool call $\boldsymbol{y}^{\prime}$ by matching the suffix:
+\begin{equation}
+\boldsymbol{y}_{t-L:t-1}=\boldsymbol{y}^{\prime}_{m-L:m-1}
+\end{equation}
+where $L$ denotes the suffix length and $m$ indicates the corresponding match position in $\boldsymbol{y}^{\prime}$. When a suffix match is found, \method extracts the next $n$ tokens $\boldsymbol{y}^{\prime}_{m:m+n-1}$, using these continuations as drafts. As shown in Figure~\ref{fig:toolspec}, if the current suffix matches a historical invocation containing \mybox{delimiter}{...``parameters''}, the subsequent tokens (e.g., \mybox{delimiter}{:\{``status'': ``Forgot Password''...}) are proposed as draft candidates. Intuitively, once the tool name and key–value pairs are aligned, the remaining structure of the tool call often follows recurring patterns, making $\boldsymbol{y}'_{m:m+n-1}$ high-quality drafts for subsequent value spans.
+

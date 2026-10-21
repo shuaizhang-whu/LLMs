@@ -1,0 +1,38 @@
+\section{Probing Analysis: Decoding Implicit Tool Necessity}
+\label{sec:probing}
+
+\begin{table}[b!]
+\vspace{-10pt}
+\caption{AUROC and accuracy for predicting tool necessity from pre-generation hidden states. All probes achieve high AUROC, confirming that tool necessity is consistently encoded in models.}
+\label{tab:probe_results}
+\small
+\centering
+\begin{tabular}{lcccccc}
+\toprule
+& & & \multicolumn{3}{c}{AUROC by difficulty} \\
+\cmidrule(lr){4-6}
+Model & AUROC & Acc & Easy & Med & Hard \\
+\midrule
+Qwen3-1.7B            & 0.894 & 0.847 & 0.864 & 0.831 & 0.904 \\
+Qwen3-4B-Inst.        & 0.948 & 0.877 & 0.933 & 0.906 & 0.948 \\
+Llama-3.1-8B-Inst.    & 0.927 & 0.849 & 0.892 & 0.867 & 0.884 \\
+Qwen3-14B             & 0.957 & 0.892 & 0.955 & 0.907 & 0.941 \\
+Qwen3-32B             & 0.952 & 0.885 & 0.951 & 0.903 & 0.939 \\
+Llama-3.3-70B-Inst.   & 0.936 & 0.872 & 0.906 & 0.849 & 0.956 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+We now investigate whether models encode tool-necessity information internally, even when they fail to act on it during generation. Interestingly, we find that \textit{tool necessity is already encoded in hidden states} as shown in the experiments. 
+
+
+\paragraph{Setup.}
+For each task, we first collect a binary label: we force the model to answer without tool access, and label tasks where it succeeds as tool-unnecessary ($y{=}0$) and tasks where it fails as tool-necessary ($y{=}1$). We then extract hidden states by running a single forward pass and taking the hidden state at the last token position across all layers. Finally, we concatenate all-layer features and train an L2-regularized logistic regression to predict tool necessity. The probe trains on 900 training examples and is evaluated on 2,250 held-out test tasks. Training takes seconds on CPU.
+\vspace{-5pt}
+\paragraph{Tool necessity is linearly decodable.}
+The probe achieves AUROC 0.89--0.96 across all six tested models (Table~\ref{tab:probe_results}), confirming that tool necessity is consistently encoded in pre-generation hidden states regardless of model family or size. Even the smallest model carries a strong signal, while larger models reach 0.95+. The per-difficulty breakdown shows strong performance across all levels, with medium tasks being the most challenging, consistent with medium being the decision boundary where the model is uncertain.
+\vspace{-5pt}
+\paragraph{The signal exists even when generation fails.}
+The most striking evidence comes from the Llama models. As discussed in Section~\ref{sec:behavioral}, Reason-then-Act completely breaks tool calling on Llama-3.1-8B (79.5\% $\to$ 31.2\%) and Llama-3.3-70B (83.1\% $\to$ 47.9\%). Yet the linear probe still achieves AUROC above 0.9; the information about tool necessity is clearly present in the representation, even though the model is entirely unable to express it during generation. 
+
+Based on these findings, our next step is to use this signal to directly steer the model's tool-call behavior. In the next section, we show how injecting a short steering sentence into the model's output can translate this hidden knowledge into better tool-call decisions.

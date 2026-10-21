@@ -1,0 +1,59 @@
+\section{\benchmark{}: A Benchmark for Tool-Call Decisions}
+\label{sec:benchmark}
+
+
+To systematically study how LLM agents decide whether to call a tool, we build \benchmark{}, a controlled benchmark of 18 tool-use environments (15 single-hop and 3 multi-hop) spanning three categories of self-assessment. Existing benchmarks evaluate \emph{whether} models can use tools correctly~\citep{zhuang2023toolqa, li2023api}, assuming every task requires a tool. \benchmark{} instead tests \emph{whether the model knows when a tool is needed}: tasks range from those the model generally can solve directly to those that are impossible without a tool. The benchmark includes 15 single-hop environments and 3 multi-hop environments (requiring a chain of 3 dependent tool calls where each step's output is the next step's input). Table~\ref{tab:benchmark_compare} summarizes the key differences.
+
+
+\subsection{Three categories of tool necessity}
+
+In real-world agent deployments, the decision of whether to call a tool generally falls into three categories, each requiring the model to assess a different aspect of its own capability. We design 5 single-hop environments and 1 multi-hop environment for each category.
+\vspace{-5pt}
+\paragraph{Category A: ``Can I compute this?'' (Computational scale.)}
+These environments test whether the model can assess the limits of its own mental arithmetic. The model understands the operation in every case; the question is whether the numbers involved exceed what it can compute reliably. At easy difficulty, the scale is small enough that the model can compute directly (e.g., $235 \times 48$); at hard difficulty, the operands grow to a scale that guarantees failure without a tool (e.g., trillion-scale arithmetic, $5\times 5$ determinants, $C(80,40)$). A well-calibrated agent should recognize the boundary and call the tool only when scale demands it.
+\vspace{-5pt}
+\paragraph{Category B: ``Do I know this?'' (Knowledge boundary.)}
+These environments test whether the model can assess what information exists in its own parameters. The model must judge whether it possesses the factual knowledge needed to answer, a fundamentally different self-assessment from computational feasibility. At easy difficulty, tasks query widely known facts (e.g., the capital of France); at hard difficulty, we use fictional entities, invented events, and custom algorithms that cannot exist in any training data, guaranteeing that the model must consult the tool to get the answer. A well-calibrated agent should recognize the boundary between what it knows and what it does not.
+\vspace{-5pt}
+\paragraph{Category C: ``Can I execute this reliably?'' (Execution tracking.)}
+These environments test whether the model can assess its own reliability when tracing sequential procedures. Unlike Category A or B, the model knows the rules of execution, and has all the information needed to produce the answer. The question is whether it can execute the steps faithfully without accumulating errors. At easy difficulty, the procedure is short enough to trace mentally (e.g., predicting the output of \texttt{print(2+3)}, checking two meetings for overlap); at hard difficulty, the procedure involves enough steps that mental execution becomes error-prone (e.g., tracing a 20-iteration dynamic programming algorithm, finding free slots across 10+ meetings). A well-calibrated agent should recognize when the execution trace exceeds its reliable tracking capacity.
+
+\subsection{Difficulty as the decision boundary}
+
+Each environment has three difficulty levels that control where the tool-call decision boundary falls:
+\vspace{-5pt}
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Easy}: The model can mostly solve without tools. These tasks test whether the model \emph{overcalls}, invoking tools when it does not need them.
+    \item \textbf{Medium}: The decision boundary where most models sometimes succeed and sometimes fail without tools. This is where calibrated decision-making matters most.
+    \item \textbf{Hard}: The model almost cannot succeed without tools. These tasks test whether the model can recognize the limits of its own capability and call the tool when it genuinely needs one.
+\end{itemize}
+\vspace{-5pt}
+We validate these difficulty assignments empirically by running all tasks in a no-tool setting where the model is forced to answer directly (Table~\ref{tab:difficulty_validation}, Appendix~\ref{app:envs}). 
+
+
+In total, \benchmark{} contains 1{,}080 training tasks and 2{,}700 test tasks: 900 train / 2{,}250 test for the 15 single-hop environments, plus 180 train / 450 test for the 3 multi-hop environments (each with 3 difficulties $\times$ 20 or 50 tasks per split). Full environment details, tool descriptions, and example tasks at each difficulty level are provided in Appendix~\ref{app:envs}.
+
+\begin{table}[h!]
+\vspace{-5pt}
+\caption{Comparison with existing tool-use benchmarks. \benchmark{} is the first to evaluate the tool-call decision with controlled difficulty, multi-hop tasks, and zero API cost.}
+\label{tab:benchmark_compare}
+\centering
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lccccc}
+\toprule
+Benchmark & \makecell{Tool-call\\decision} & \makecell{Difficulty\\levels} & \makecell{Multi-hop\\tasks} & \makecell{Realistic\\tool I/O} & \makecell{Zero\\API cost} \\
+\midrule
+Toolformer~\citep{schick2023toolformer}  & \ding{55} & \ding{55} & \ding{55} & \ding{55} & \ding{51} \\
+ToolLLM~\citep{qin2023toolllm}          & \ding{55} & \ding{55} & \ding{51} & \ding{51} & \ding{55} \\
+Gorilla~\citep{patil2024gorilla}         & \ding{55} & \ding{55} & \ding{55} & \ding{51} & \ding{55} \\
+API-Bank~\citep{li2023api}               & \ding{55} & \ding{55} & \ding{51} & \ding{51} & \ding{55} \\
+ToolQA~\citep{zhuang2023toolqa}          & \ding{55} & \ding{55} & \ding{51} & \ding{51} & \ding{55} \\
+BFCL~\citep{patil2025berkeley}           & \ding{55} & \ding{55} & \ding{51} & \ding{51} & \ding{55} \\
+\citet{xu2025alignment}                  & \ding{51} & \ding{55} & \ding{55} & \ding{55} & \ding{51} \\
+\midrule
+\benchmark{} (ours)                      & \ding{51} & \ding{51} & \ding{51} & \ding{51} & \ding{51} \\
+\bottomrule
+\end{tabular}
+\vspace{-5pt}
+\end{table}

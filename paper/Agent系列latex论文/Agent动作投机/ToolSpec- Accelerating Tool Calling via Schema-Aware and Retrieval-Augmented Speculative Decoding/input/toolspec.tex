@@ -1,0 +1,35 @@
+\begin{algorithm}[tb]
+\caption{Tool-calling with \method}
+\label{alg:toolspec}
+\small
+\begin{algorithmic}[1]
+\Require target model $\mathcal{M}$; input query $\boldsymbol{x}$; tool documentation $\mathcal{D}$; historical datastore $\mathcal{H}=\{(\boldsymbol{h}_j,\boldsymbol{y}_j)\}_{j=1}^{|\mathcal{H}|}$; parameter $k$.
+\Ensure Generated tool-call sequence $\boldsymbol{y}$.
+
+\State Parse documentation $\mathcal{D}$ into schema $\mathcal{S}$ %
+\State Construct the FSM $\mathcal{F}=(\mathcal{Q}, \Sigma_{\text{schema}}, \delta, q_0)$ from $\mathcal{S}$
+\State $\boldsymbol{y} \gets \emptyset$, $q \gets q_0$
+\State Compute query representation $\boldsymbol{h}_x$
+\State Retrieve historical calls $\mathcal{I}_k \gets \operatorname{Top-K}_{j} \text{sim}(\boldsymbol{h}_x,\boldsymbol{h}_j)$
+\While{\textsc{NotFinished}$(q,\boldsymbol{y})$}
+    \mydarkcolor{\LineComment{Retrieval-augmented speculation}}
+    \State $\mathcal{B}_{\text{retrieval}} \gets \textsc{SuffixMatch}(\boldsymbol{y}, \{{\boldsymbol{y}}_{j}\}_{j \in \mathcal{I}_k})$
+    \If{$\mathcal{B}_{\text{retrieval}} \neq \emptyset$}
+        \State $\mathcal{B} \gets \mathcal{B}_{\text{retrieval}}$
+    \Else
+        \mydarkcolor{\DoubleLineComment{Schema-aware drafting}}
+        \State $\mathcal{B} \gets 
+        \textsc{SchemaAwareDraft}(q,\mathcal{S},\boldsymbol{y})$
+    \EndIf
+    \mydarkcolor{\LineComment{Packed sequence with tree attention}}
+    \State $(\boldsymbol{z},\mathbf{A}) \gets \textsc{PackDraftsAsTree}(\mathcal{B})$
+    \State $\hat{\mathcal{B}} \gets \textsc{Verification}(\mathcal{M}, \boldsymbol{x}, \boldsymbol{y}, \boldsymbol{z}, \mathbf{A})$
+    \State $(\tilde{\boldsymbol{y}}^\star,\ell) \gets \textsc{SelectLongestAcceptedPrefix}(\hat{\mathcal{B}})$
+    \State $\boldsymbol{y} \gets \boldsymbol{y} \oplus \tilde{\boldsymbol{y}}^\star_{1:\ell}$
+    \mydarkcolor{\LineComment{Update FSM state}}
+    \State $q \gets \delta(q, \tilde{\boldsymbol{y}}^\star_{1:\ell})$
+\EndWhile
+
+\State \Return $\boldsymbol{y}$
+\end{algorithmic}
+\end{algorithm}

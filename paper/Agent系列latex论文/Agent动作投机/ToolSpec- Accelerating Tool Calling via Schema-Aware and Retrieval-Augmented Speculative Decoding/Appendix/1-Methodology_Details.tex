@@ -1,0 +1,11 @@
+\section{Details of \method}
+\label{appendix:method_details}
+In this section, we provide details of our proposed \method, including the implementation of parallel verification and the detailed algorithm.
+
+\subsection{Parallel Verification}
+Following prior work~\citep{eagle, medusa}, \method adopts a tree-based attention mechanism to verify multiple candidate draft sequences in parallel. Specifically, the candidate drafts are compacted into a single flattened sequence and fed into the target model $\mathcal{M}$. The model then performs a \textit{single forward pass} to verify all draft sequences simultaneously using a tree-structured attention mask, as illustrated in Figure~\ref{fig:intro}. 
+
+To support different drafting strategies, \method employs two types of draft-tree architectures: (1) \textbf{Static trees.} For open-ended states (e.g., $q_v$ and $q_o$), \method adopts a general SD strategy (e.g., TR) for text generation, where a pre-defined static tree architecture is used for drafting; (2) \textbf{Dynamic trees.} For structural states (e.g., $q_t$ and $q_p$) and retrieval-augmented speculation, \method constructs dynamic tree masks that adapt to the length of each draft sequence, thereby reducing unnecessary verification computation.
+
+\subsection{Algorithm}
+We present the pseudo code of \method in Algorithm~\ref{alg:toolspec}. Concretely, at each decoding step, \method checks whether the current suffix matches any sequence in historical calls. If a match is found, it extracts the continuations as high-quality drafts. Otherwise, \method employs a finite-state machine (FSM) to guide schema-aware drafting, thereby accelerating tool-calling generation.

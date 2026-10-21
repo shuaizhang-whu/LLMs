@@ -1,0 +1,90 @@
+\documentclass{article}
+\usepackage[preprint]{neurips_2026}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{booktabs}
+\usepackage{amsfonts}
+\usepackage{amsmath}
+\usepackage{nicefrac}
+\usepackage{microtype}
+\usepackage{xcolor}
+\usepackage{graphicx}
+\usepackage{subcaption}
+\usepackage{multirow}
+\usepackage{float}
+\usepackage{enumitem}
+\usepackage{pifont}
+\usepackage{makecell}
+\usepackage[toc,page,header]{appendix}
+\usepackage{minitoc}
+\renewcommand \thepart{}
+\renewcommand \partname{}
+
+% Restore addcontentsline (NeurIPS style may disable it, but minitoc needs it for parttoc)
+\makeatletter
+\def\addcontentsline#1#2#3{%
+  \addtocontents{#1}{%
+    \protect\contentsline{#2}{#3}{\thepage}{\@currentHref}%
+  }%
+}
+\makeatother
+
+\newcommand{\method}{\textsc{Probe\&Prefill}}
+\newcommand{\benchmark}{\textsc{When2Tool}}
+
+\title{LLM Agents Already Know When to Call Tools - \\ Even Without Reasoning}
+
+\author{%
+  Chung-En Sun \quad
+  Linbo Liu \quad
+  Ge Yan \quad
+  Zimo Wang \quad
+  Tsui-Wei Weng \\
+  University of California, San Diego \\
+  \texttt{\{cesun, linbol, geyan, zimowang, lweng\}@ucsd.edu}
+}
+
+\begin{document}
+
+\maketitle
+
+\doparttoc
+\faketableofcontents
+
+\begin{abstract}
+Tool-augmented LLM agents tend to call tools indiscriminately, even when the model can answer directly. Each unnecessary call wastes API fees and latency, yet no existing benchmark systematically studies \emph{when} a tool call is actually needed. We propose \benchmark{}, a benchmark of 18 environments (15 single-hop, 3 multi-hop) spanning three categories of tool necessity --- computational scale, knowledge boundaries, and execution reliability --- each with controlled difficulty levels that create a clear decision boundary between tool-necessary and tool-unnecessary tasks. We evaluate two families of training-free baselines: Prompt-only (varying the prompt to discourage unnecessary calls) and Reason-then-Act (requiring the model to reason about tool necessity before acting). Both provide limited control: Prompt-only suppresses necessary calls alongside unnecessary ones, and Reason-then-Act still incurs a disproportionate accuracy cost on hard tasks. To understand \emph{why} these baselines fail, we probe the models' hidden states and find that tool necessity is linearly decodable from the pre-generation representation with AUROC 0.89--0.96 across six models, substantially exceeding the model's own verbalized reasoning. This reveals that \textit{models already know when tools are needed, but fail to act on this knowledge during generation}. Building on this finding, we propose \method{}, which uses a lightweight linear probe to read the hidden-state signal and prefills the model's response with a steering sentence. Across all models tested, \method{} reduces tool calls by 48\% with only 1.7\% accuracy loss, while the best baseline at comparable accuracy only reduces 6\% \% of tool calls, or achieves a similar tool call reduction but incurs a 5$\times$ higher accuracy loss. On the real-world Search-o1 agentic benchmark, \method{} reduces API calls by 20--56\% without accuracy degradation. Our code is available at: \textsf{{\small \href{https://github.com/Trustworthy-ML-Lab/when2tool}{https://github.com/Trustworthy-ML-Lab/when2tool}}}
+\end{abstract}
+
+% Section 1: Introduction
+\input{sections/introduction}
+% Section 2: Benchmark design
+\input{sections/benchmark}
+% Section 3: Behavioral analysis of prompt engineering
+\input{sections/behavioral}
+% Section 4: Probing hidden states for tool necessity
+\input{sections/probing}
+% Section 5: Probe-guided prefilling
+\input{sections/method}
+% Section 6: Related work
+\input{sections/related_work}
+% Section 7: Conclusion
+\input{sections/conclusion}
+
+%=============================================================================
+% REFERENCES
+%=============================================================================
+\bibliographystyle{plainnat}
+\bibliography{references}
+
+\newpage
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\input{sections/appendix}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% \newpage
+% \input{checklist.tex}
+
+\end{document}

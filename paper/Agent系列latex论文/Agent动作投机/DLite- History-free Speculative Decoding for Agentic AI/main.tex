@@ -1,0 +1,299 @@
+
+\documentclass{article} % For LaTeX2e
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{array}
+\usepackage{iclr2027_conference,times}
+
+% Optional math commands from https://github.com/goodfeli/dlbook_notation.
+\input{math_commands.tex}
+
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{xspace}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\title{DLite: History-Free Speculative Decoding for Agentic AI}
+
+% Authors must not appear in the submitted version. They should be hidden
+% as long as the \iclrfinalcopy macro remains commented out below.
+% Non-anonymous submissions will be rejected without review.
+
+% \author{Antiquus S.~Hippocampus, Natalia Cerebro \& Amelie P. Amygdale \thanks{ Use footnote for providing further information
+% about author (webpage, alternative address)---\emph{not} for acknowledging
+% funding agencies.  Funding acknowledgements go at the end of the paper.} \\
+% Department of Computer Science\\
+% Cranberry-Lemon University\\
+% Pittsburgh, PA 15213, USA \\
+% \texttt{\{hippo,brain,jen\}@cs.cranberry-lemon.edu} \\
+% \And
+% Ji Q. Ren \& Yevgeny LeNet \\
+% Department of Computational Neuroscience \\
+% University of the Witwatersrand \\
+% Joburg, South Africa \\
+% \texttt{\{robot,net\}@wits.ac.za} \\
+% \AND
+% Coauthor \\
+% Affiliation \\
+% Address \\
+% \texttt{email}
+% }
+
+% \author{
+% Jiaming Xu, Hanzhen Wang, Tianlang Zhao, Jiewen Xiao, Chengze Yuan, Jiayi Pan, Yongkang Zhou, Jiancai Ye, Guohao Dai \\
+% Shanghai Jiao Tong University
+% }
+
+\author{
+\normalfont
+\textbf{Jiaming Xu}\textsuperscript{1,2,*}\quad
+\textbf{Hanzhen Wang}\textsuperscript{1,}\thanks{The first two authors contributed equally to this work}\quad
+\textbf{Tianlang Zhao}\textsuperscript{1}\quad
+\textbf{Jiewen Xiao}\textsuperscript{1}\quad
+\textbf{Chengze Yuan}\textsuperscript{1} \\
+\normalfont
+\textbf{Jiayi Pan}\textsuperscript{1}\quad
+\textbf{Yongkang Zhou}\textsuperscript{1,2}\quad
+\textbf{Jiancai Ye}\textsuperscript{1}\quad
+\textbf{Yu Wang}\textsuperscript{3}\quad
+\textbf{Guohao Dai}\textsuperscript{1,2,4,}
+\thanks{Correspondence to Guohao Dai (Email Address: daiguohao@sjtu.edu.cn)}
+\\[0.5em]
+\normalfont\textsuperscript{1}Shanghai Jiao Tong University \\
+\normalfont\textsuperscript{2}Shanghai Innovation Institute \\
+\normalfont\textsuperscript{3}Tsinghua University \\
+\normalfont\textsuperscript{4}Infinigence-AI
+}
+
+% The \author macro works with any number of authors. There are two commands
+% used to separate the names and addresses of multiple authors: \And and \AND.
+%
+% Using \And between authors leaves it to \LaTeX{} to determine where to break
+% the lines. Using \AND forces a linebreak at that point. So, if \LaTeX{}
+% puts 3 of 4 authors names on the first line, and the last on the second
+% line, try using \AND instead of \And before the third author name.
+
+\newcommand{\fix}{\marginpar{FIX}}
+\newcommand{\new}{\marginpar{NEW}}
+
+\newcommand{\we}{\emph{DLite}\xspace}
+
+\iclrfinalcopy % Uncomment for camera-ready version, but NOT for submission.
+
+\begin{document}
+
+\begingroup
+\iclrfinalcopy
+\maketitle
+\endgroup
+\fancyhead{}
+
+\begin{abstract}
+
+% Speculative decoding has emerged as a mainstream inference acceleration technique for large language models (LLMs) inference. By employing a paired draft model to generate candidate tokens that are subsequently verified by the target model, it achieves significant speedups while maintaining lossless accuracy. However, the rapid advancement of agentic AI introduces novel computational workload characteristics to inference systems. Compared to traditional requests, agentic requests exhibit strong heterogeneity and runtime uncertainty in context composition, sequence length, and execution paths. Under such dynamic workloads, we observe that parameter-constrained draft models struggle to fully comprehend the extensive context, leading to a drastic degradation in acceptance length by up to 80\%. In this paper, we point out that full historical context is a major cause of low acceptance length and incurs substantial system maintenance overhead. Therefore, we introduce \we, a speculative decoding framework designed specifically for agentic AI that prioritizes both model performance and system efficiency from the outset. The backbone architecture of \we adopts a history-free design, fully leveraging the hidden states and local token groups from target model to perform parallel generation. This effectively enhances the acceptance length in agentic scenarios while eliminating the overhead for maintaining historical states. Furthermore, \we incorporates a lightweight sequential head, substantially reducing computational latency in multi-request serving scenarios. Facilitated by a tailored two-stage training methodology, \we achieves $2\times \sim  6\times$ speedups on both general and agent-specific datasets, outperforming the state-of-the-art speculative decoding method, DSpark, by $20\% \sim 40\%$.
+
+Speculative decoding has become a mainstream technique for accelerating large language model (LLM) inference by using a lightweight draft model to generate candidate tokens that are subsequently verified by the target model. However, agentic workloads introduce long and continuously evolving contexts and frequent multi-turn interactions. Under such workloads, we observe that existing draft models suffer from up to an 80\% degradation in acceptance length, while maintaining their historical KV cache introduces substantial system overhead. In this paper, we identify the growing historical context as a common source of both problems and introduce \we, a history-free speculative decoding framework for agentic AI. \we directly reuses contextual hidden states from the target model and performs local speculative prediction without explicitly maintaining the historical context, transforming an increasingly complex modeling problem into local simple prediction problem. A lightweight sequential head further restores intra-block causal dependencies with low overhead. To effectively train this heterogeneous history-free architecture, we introduce a tailored two-stage training strategy. Experiments on general-purpose, long-context and agentic workloads show that \we achieves $2 \sim 6$ acceptance length and outperforms the state-of-the-art speculative decoding method, DSpark, up to $70\%$.
+
+
+\end{abstract}
+
+
+\begin{center}
+\urlstyle{same}
+\vspace{-10pt}
+\begin{tabular}{@{}c@{\hspace{0.8em}}l@{}}
+\raisebox{-0.25em}{\includegraphics[height=1.5em]{fig/github-logo.png}} &
+\url{https://github.com/SJTU-DAI-Sys/DLite} \\[0.3em]
+\raisebox{-0.25em}{\includegraphics[height=1.5em]{fig/huggingface-logo.png}} &
+\url{https://huggingface.co/collections/SJTU-DAI-Sys/dlite}
+\end{tabular}
+\end{center}
+
+\input{tex/1-intro}
+
+\input{tex/2-background}
+
+\input{tex/3-DLite}
+
+\input{tex/4-exp}
+
+\input{tex/5-conclusion}
+
+% \subsection*{AI use statement}
+
+% (This section is \textbf{required} and does not count toward the page limit.)
+
+% In this work, we used generative AI tools to 
+% generate synthetic datasets,
+% design or provide feedback on research methodology or experiments,
+% assist with translation, 
+% implement methods and interpret results.
+% We have not used generative AI tools to 
+% clean and reformat dataset. 
+% And  
+% help develop theoretical models or conceptual frameworks, 
+% formulate mathematical claims, 
+% provide critical ingredients for proving mathematical claims, 
+% assist in the writing of proofs, 
+% propose or refine hypotheses,  
+% support qualitative and thematic data analysis 
+% are not applicable to this work.
+% Additionally, we used generative AI tools for create or modify scientific figures or images, suggest experimental parameters, create or edit software code, creation of artifacts, draft parts of a research paper, brainstorming, sourcing/searching for information, edit a research paper to improve readability, identify relevant literature, and suggest a structure for a research paper. We have reviewed all AI-assisted work. We take responsibility for the final content of this work,
+% including text, claims or artifacts produced with the aid of generative AI.
+
+% In this work, we used generative AI tools for generating synthetic training data, designing and providing feedback on research methodology and experiments, implementing methods, assisting with translation, and interpreting experimental results. We have not used generative AI tools for cleaning or reformatting datasets, and developing theoretical models or conceptual frameworks, formulating mathematical claims, providing critical ingredients for proving mathematical claims, assisting in the writing of proofs, proposing or refining hypotheses, and supporting qualitative or thematic data analysis are not applicable to this work. Additionally, we used generative AI tools for creating or modifying scientific figures, suggesting experimental parameters, creating or editing software code, creating research artifacts, drafting and editing parts of the manuscript, brainstorming, sourcing and searching for information, identifying relevant literature, improving readability, and suggesting the structure of the paper. We have reviewed all AI-assisted work. AI-assisted code and methodological suggestions were manually reviewed and validated by the authors, experimental interpretations were checked against the original results, and literature-related information was verified against the corresponding sources. We take responsibility for the final content of this work, including text, claims, or artifacts produced with the aid of generative AI.
+
+% See the ICLR 2027 AI Policy for Authors for more details. This statement should
+% not be more than 1 page.
+
+% \subsection*{Ethics statement}
+
+% (This section is \textbf{recommended} and does not count toward the page limit.)
+
+% If authors feel that their paper submission raises questions regarding the Code
+% of Ethics, they are encouraged to include a paragraph of Ethics Statement (at
+% the end of the main text before references) to address potential concerns where
+% appropriate. Topics include, but are not limited to, studies that involve human
+% subjects, practices to data set releases, potentially harmful insights,
+% methodologies and applications, potential conflicts of interest and sponsorship,
+% discrimination/bias/fairness concerns, privacy and security issues, legal
+% compliance, and research integrity issues (e.g., IRB, documentation, research
+% ethics). This statement should not be more than 1 page.
+
+% \subsection*{Reproducibility statement}
+
+% (This section is \textbf{recommended} and does not count toward the page limit.)
+
+% It is important that the work published in ICLR is reproducible. Authors are
+% strongly encouraged to include a paragraph-long Reproducibility Statement at the
+% end of the main text (before references) to discuss the efforts that have been
+% made to ensure reproducibility. This paragraph should not itself describe
+% details needed for reproducing the results, but rather reference the parts of
+% the main paper, appendix, and supplemental materials that will help with
+% reproducibility. For example, for novel models or algorithms, a link to an
+% anonymous downloadable source code can be submitted as supplementary materials;
+% for theoretical results, clear explanations of any assumptions and a complete
+% proof of the claims can be included in the appendix; for any datasets used in
+% the experiments, a complete description of the data processing steps can be
+% provided in the supplementary materials. Each of the above are examples of
+% things that can be referenced in the reproducibility statement.
+
+% \subsubsection*{Author Contributions}
+% If you'd like to, you may include  a section for author contributions as is done
+% in many journals. This is optional and at the discretion of the authors.
+
+\subsubsection*{Acknowledgments}
+This work was sponsored by the National Natural Science Foundation of China (No. 62622406, 62674144, 62561160156) and Shanghai Rising-Star Program (No. 24QB2706200).
+
+\bibliography{iclr2027_conference}
+\bibliographystyle{iclr2027_conference}
+
+\appendix
+\section{Appendix}
+\subsection{Training Details}
+
+We train \we on the datasets described in Section~\ref{sec:exp:setup}. For all training data, we only use the original prompts and regenerate responses using the corresponding target model, ensuring that the supervision is consistent with the target distribution.
+
+\textbf{Model configuration.} For Qwen3-4B and Qwen3-8B, the \we backbone contains 5 Transformer layers with hidden dimension \(2560/4096\). We extract 12/14 hidden states from the target model using sequence-wise composition. Specifically, we always retain the hidden states from the first and last layers, while uniformly sampling the remaining hidden states from the intermediate layers. The rank of lightweight sequential head is \(R=320/512\) for Qwen3-4B/8B, respectively. The speculative block length is set to \(K=7\).
+
+\textbf{Training data.} Our training corpus contains approximately 1.9M samples in total, including 1.3M samples from Open-PerfectBlend and 600K samples from NVIDIA Nemotron Post-Training Dataset V2. We use only the prompts from these datasets and generate responses with the target model. The maximum sequence length is 4096, and each training sample contains 512 speculative blocks / anchors on average.
+
+\textbf{Optimization.} We train \we using AdamW with a learning rate of $4 \times 10^{-4}$ and gradient clipping threshold 1.0. The global batch size is 32, with gradient accumulation of 1 step. We use cosine learning-rate decay with 0.04 warm-up ratio. Training is performed on 32 NVIDIA H800 GPUs.
+
+\textbf{Two-stage training.} The positional weight decay $\gamma$ is set to 4. Training consists of a warm-up stage followed by a stable stage. In the warm-up stage, we first train the isomorphic history-aware teacher with the same data mentioned above using token-level cross-entropy for 8 epochs. We then train \we against this teacher using forward KL divergence for 2 epochs. In the stable stage, the history-aware teacher is removed and \we is directly optimized against the target model using
+\[
+\mathcal{L}_{\mathrm{stable}}
+=
+\lambda_{\mathrm{CE}}\mathcal{L}_{\mathrm{CE}}
++
+\lambda_{\mathrm{TV}}\mathcal{L}_{\mathrm{TV}},
+\]
+where \(\lambda_{\mathrm{CE}}=0.1\) and \(\lambda_{\mathrm{TV}}=1\). The stable stage lasts for 6 epochs.
+
+
+
+\subsection{Design Space exploration} \label{app:dse}
+We conduct a design space exploration on Qwen3-8B to study three key architectural choices of \we: (1) the number of target hidden states used as contextual features, (2) the composition strategy for multiple target hidden states, and (3) the rank of the lightweight sequential head. To reduce the cost of design exploration, all variants in this section are trained on the same 80K-sample subset, while keeping the remaining training configurations unchanged. We evaluate the average acceptance length on Alpaca, GSM8K, MBPP, and Multi-Document QA, covering conversational, mathematical, coding, and long-context workloads.
+
+\begin{table*}[h]
+\centering
+\caption{
+Design space exploration of \we on Qwen3-8B.
+All variants are trained on the same 80K-sample subset, and we report average acceptance length ($\tau$).
+For the target hidden-state exploration, the first and last target layers are always included in addition to the sampled intermediate layers.
+Unless otherwise specified, we use 14 target hidden states, sequence-wise hidden-state composition, and a sequential-head rank of 512.
+Bold indicates the configuration adopted in the final model.
+}
+\label{tab:dse}
+\resizebox{\textwidth}{!}{
+\begin{tabular}{llccccc}
+\toprule
+\textbf{Dimension} &
+\textbf{Configuration} &
+\textbf{Alpaca} &
+\textbf{GSM8K} &
+\textbf{MBPP} &
+\textbf{Multi-Doc QA} &
+\textbf{Avg. $\tau$} \\
+\midrule
+
+\multirow{5}{*}{\textbf{Target Hidden States}}
+& 7
+& 2.34 & 4.36 & 3.63 & 2.22 & 3.14 \\
+
+& 9
+& 2.42 & 4.40 & 3.75 & 2.24 & 3.20 \\
+
+& \textbf{14}
+& \textbf{2.63} & \textbf{4.53} & \textbf{3.76} & \textbf{2.28} & \textbf{3.30} \\
+
+& 20
+& 2.62 & 4.55 & 3.74 & 2.26 & 3.29 \\
+
+& 36
+& 2.58 & 4.51 & 3.71 & 2.26 & 3.27 \\
+
+\midrule
+
+\multirow{2}{*}{\textbf{Hidden Composition}}
+& Feature-wise
+& 2.20 & 4.28 & 3.50 & 2.16 & 3.04 \\
+
+& \textbf{Sequence-wise}
+& \textbf{2.63} & \textbf{4.53} & \textbf{3.76} & \textbf{2.28} & \textbf{3.30} \\
+
+\midrule
+
+\multirow{5}{*}{\textbf{Sequential-Head Rank}}
+& 256 ($1/16D$)
+& 2.48 & 4.40 & 3.61 & 2.16 & 3.16 \\
+
+& \textbf{512 ($1/8D$)}
+& \textbf{2.63} & \textbf{4.53} & \textbf{3.76} & \textbf{2.28} & \textbf{3.30} \\
+
+& 1024 ($1/4D$)
+& 2.64 & 4.55 & 3.80 & 2.28 & 3.32 \\
+
+& 2048 ($1/2D$)
+& 2.64 & 4.53 & 3.82 & 2.28 & 3.32 \\
+
+& 4096 ($D$)
+& 2.64 & 4.56 & 3.82 & 2.30 & 3.33 \\
+
+\bottomrule
+\end{tabular}
+}
+\end{table*}
+
+
+\textbf{Number of target hidden states.} Table~\ref{tab:dse} shows that increasing the number of target hidden states initially leads to clear improvements in acceptance length. The gains, however, quickly saturate: increasing the number from 7 to 14 improves performance consistently across all four workloads, while using 20 or 36 hidden states provides little or no additional benefit. This suggests that a moderate number of intermediate target representations is sufficient to capture complementary contextual information, while further increasing the number of features introduces redundant representations and additional computation.
+
+\textbf{Hidden-state composition.} We further compare two ways of combining hidden states extracted from different target layers. Sequence-wise concatenation treats representations from different layers as separate input elements, while feature-wise concatenation concatenates them along the hidden dimension. Sequence-wise concatenation consistently outperforms feature-wise concatenation across all evaluated workloads, increasing the average acceptance length from 3.04 to 3.30. We therefore adopt sequence-wise composition in \we. This result also supports the use of depth embeddings in Section~\ref{sec:DLite:arch}, which explicitly identify the source layers of hidden states when they are presented as separate inputs.
+
+\textbf{Sequential-head rank.} Finally, we vary the rank of the lightweight sequential head from 1/16 of the hidden dimension (256) to the full hidden dimension (4096). Increasing the rank from 256 to 512 yields a noticeable improvement in drafting quality while increasing the end-to-end latency by only 0.3\%, whereas larger ranks provide only marginal gains while introducing substantial computational overhead. This suggests that the information required by the draft model can be sufficiently resolved in a low-rank space. For example, the average acceptance length increases from 3.16 at rank 256 to 3.30 at rank 512, but only reaches 3.33 with the full 4096-dimensional head. Considering the additional sequential computation introduced by a larger rank and the diminishing performance gains, we choose a relatively small rank to balance drafting quality and execution efficiency.
+
+\paragraph{Implementation details.}
+We evaluate \we on four agent-oriented benchmarks using Qwen3-4B and Qwen3-8B targets. For SWE-Bench, we use 50 prompts from 64K settings (40K--64K input tokens). For AgentLongBench, we use 50 prompts from the 64K setting (55.5K--74.1K input tokens). For MemoryAgentBench, we select 100 FactConsolidation, 50 EventQA, and 30 free-form DetectiveQA questions (66K--118K input tokens), constructing one independent long-context prompt per question. For BFCL, we use 41 sessions from the \texttt{multi\_turn\_long\_context} category, run its multi-turn tool-execution harness through a local OpenAI-compatible inference adapter, and aggregate model calls whose input exceeds 32K tokens. BFCL tool-execution time is excluded. 
+
+
+\end{document}

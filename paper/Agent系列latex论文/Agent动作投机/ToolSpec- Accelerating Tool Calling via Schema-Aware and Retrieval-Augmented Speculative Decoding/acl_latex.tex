@@ -1,0 +1,158 @@
+\documentclass[11pt]{article}
+
+% Change "review" to "final" to generate the final (sometimes called camera-ready) version.
+% Change to "preprint" to generate a non-anonymous version with page numbers.
+\usepackage[preprint]{acl}
+
+% Standard package includes
+\usepackage{times}
+\usepackage{latexsym}
+
+% For proper rendering and hyphenation of words containing Latin characters (including in bib files)
+\usepackage[T1]{fontenc}
+% For Vietnamese characters
+% \usepackage[T5]{fontenc}
+% See https://www.latex-project.org/help/documentation/encguide.pdf for other character sets
+
+% This assumes your files are encoded as UTF8
+\usepackage[utf8]{inputenc}
+
+% This is not strictly necessary, and may be commented out,
+% but it will improve the layout of the manuscript,
+% and will typically save some space.
+\usepackage{microtype}
+
+% This is also not strictly necessary, and may be commented out.
+% However, it will improve the aesthetics of text in
+% the typewriter font.
+\usepackage{inconsolata}
+
+\usepackage{hyperref}
+\usepackage{url}
+\newcommand{\explain}[2]{\underbrace{#1}_{{\footnotesize\raggedright #2}}}
+
+% for figures
+\usepackage{graphicx}
+\usepackage{subfigure}
+\usepackage{wrapfig}
+
+% for equation
+\usepackage{amsmath}
+\usepackage{amstext}
+\usepackage{amsfonts}
+\usepackage{bm}
+
+\usepackage{bbm}
+% for table
+\usepackage{multirow}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{caption}
+\usepackage{multirow}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{caption}
+\usepackage{color}
+\usepackage{colortbl}
+\usepackage[dvipsnames]{xcolor}
+\usepackage{tablefootnote}
+\usepackage{adjustbox}
+\newcommand{\cred}[1]{\textcolor{red}{$_{#1}$}}
+\definecolor{mygray}{gray}{.9}
+\definecolor{c0}{cmyk}{1,0.3968,0,0.2588} 
+
+% for algorithm
+\usepackage{caption}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\newcommand{\mycolor}[1]{\textcolor[RGB]{64,101,149}{#1}}
+\newcommand{\mydarkcolor}[1]{\textcolor[RGB]{64,101,149}{#1}}
+\newcommand{\gray}[1]{\textcolor{gray}{#1}}
+\algnewcommand{\LineComment}[1]{\Statex ~~~~~~\textsc{//}~\textit{#1}}
+\algnewcommand{\DoubleLineComment}[1]{\Statex ~~~~~~~~~~~~\textsc{//}~\textit{#1}}
+
+%for itemize
+\usepackage{enumitem}
+\setenumerate[1]{itemsep=0pt,partopsep=0pt,parsep=\parskip,topsep=5pt}
+\setitemize[1]{itemsep=0pt,partopsep=0pt,parsep=\parskip,topsep=5pt}
+\setdescription{itemsep=0pt,partopsep=0pt,parsep=\parskip,topsep=5pt}
+\definecolor{myblue}{HTML}{4285f4}
+
+% for cards
+\usepackage{tcolorbox}
+\tcbuselibrary{skins}
+\definecolor{lightgreen}{RGB}{225, 239, 217} 
+\usepackage{etoolbox}
+\AtBeginEnvironment{tcolorbox}{\small}
+
+% for notation
+\usepackage[mathscr]{euscript}
+\newcommand{\M}{\mathcal{M}}
+
+% for highlight
+\usepackage{tikz}
+\definecolor{myred}{RGB}{240, 119, 115} 
+\definecolor{myblue}{RGB}{78, 149, 217} 
+\definecolor{mygreen}{RGB}{78, 167, 46} 
+\definecolor{delimiter}{RGB}{242, 242, 242} 
+\newcommand{\blue}{\cellcolor{c0!5}} % LightCyan
+\newcommand{\green}{\cellcolor{mygreen!15}} % LightCyan
+\newcommand{\mybox}[2]{\tikz[baseline=(MeNode.base)]{\node[rounded corners=2pt, inner sep=2pt, fill=#1](MeNode){#2};}}
+
+%for itemize
+\usepackage{amssymb}  
+\usepackage{pifont}
+
+% for title
+\usepackage{xspace}
+\usepackage{fontawesome}
+\newcommand{\method}{\textsc{ToolSpec}\xspace}
+
+% for author list 
+\usepackage{twemojis}
+
+%% === commands for comments ===
+\usepackage{ulem}
+
+% If the title and author information does not fit in the area allocated, uncomment the following
+%
+%\setlength\titlebox{<dim>}
+%
+% and set <dim> to something 5cm or larger.
+\title{
+\texorpdfstring{\includegraphics[width=18pt]{fig/logo.png}}{}
+\method: Accelerating Tool Calling via Schema-Aware and Retrieval-Augmented Speculative Decoding}
+\author{{Heming Xia}\textsuperscript{\rm 1}, {Yongqi Li}\textsuperscript{\rm 1}\thanks{\ Corresponding author.}, {Cunxiao Du}\textsuperscript{\rm 1}, {Mingbo Song}\textsuperscript{\rm 2}, {Wenjie Li}\textsuperscript{\rm 1}\\
+  \textsuperscript{\rm 1} Department of Computing, The Hong Kong Polytechnic University 
+  \textsuperscript{\rm 2} Peking University \\
+  {\tt \{he-ming.xia\}@connect.polyu.hk; \{harukioj\}@outlook.com}
+}
+
+
+\begin{document}
+\maketitle
+\begin{abstract}
+Tool calling has greatly expanded the practical utility of large language models (LLMs) by enabling them to interact with external applications. As LLM capabilities advance, effective tool use increasingly involves multi-step, multi-turn interactions to solve complex tasks. However, the resulting growth in tool interactions incurs substantial latency, posing a key challenge for real-time LLM serving. Through empirical analysis, we find that tool-calling traces are highly structured, conform to constrained schemas, and often exhibit recurring invocation patterns. Motivated by these observations, we propose \method, a schema-aware, retrieval-augmented speculative decoding method for accelerating tool calling. \method exploits predefined tool schemas to generate accurate drafts, using a finite-state machine to alternate between deterministic schema token filling and speculative generation for variable fields. In addition, \method retrieves similar historical tool invocations and reuses them as drafts to further improve efficiency. \method presents a training-free, plug-and-play solution that can be seamlessly integrated into existing LLM workflows. Experimental results across multiple tool-calling benchmarks demonstrate that \method achieves up to a $4.2\times$ speedup, substantially outperforming existing training-free speculative decoding methods. We release our code at \url{https://github.com/hemingkx/ToolSpec}.
+\end{abstract}
+
+\input{Sections/1-Introduction}
+\input{Sections/2-RelatedWork}
+\input{Sections/3-Preliminaries}
+\input{Sections/4-Methodology}
+\input{Sections/5-Experiment}
+\input{Sections/6-Analysis}
+\input{Sections/7-Conclusion}
+\input{Sections/8-Limitations}
+
+% Bibliography entries for the entire Anthology, followed by custom entries
+%\bibliography{anthology,custom}
+% Custom bibliography entries only
+\bibliography{custom}
+
+%\clearpage
+
+\appendix
+\input{Appendix/1-Methodology_Details}
+\input{Appendix/2-Experimental_Details}
+
+\end{document}
