@@ -26,7 +26,7 @@ from .turn_runner import _append_tool_messages, _fork_point
 
 @dataclass(frozen=True)
 class ExitConfig:
-    method: str = "reuse"  # eta, decision (ablation), reuse
+    method: str = "reuse"  # eta, decision (ablation), reuse, reuse_gated
     stable_checks: int = 3
     check_interval: int = 50
     max_checks: int = 8
@@ -35,7 +35,7 @@ class ExitConfig:
     enable_exit: bool = True
 
     def validate(self):
-        if self.method not in {"eta", "decision", "reuse"}:
+        if self.method not in {"eta", "decision", "reuse", "reuse_gated"}:
             raise ValueError(self.method)
         if not (2 <= self.stable_checks <= self.max_checks <= 20
                 and self.check_interval > 0 and self.continuation_max_tokens > 0
@@ -115,8 +115,24 @@ async def run_early_exit_turn(session, client, adapter, messages, executor, turn
                 break
             ids, text = list(state.token_ids), state.text
             last_count = len(ids)
+            free = None
+            if exit_cfg.method == "reuse_gated":
+                # Use ETA's unforced signal before paying for a complete
+                # prediction (CTES-style pre-draft admission, without training).
+                # It concerns this shortened context, not final tool necessity.
+                free = await _free(session, http, adapter.tokenizer, prompt_ids, ids, text, cfg)
+                if free["tool_probability"] < exit_cfg.tool_probability_threshold:
+                    proposals.append({"call": None, "confidence": None,
+                        "tokens_at_dispatch": last_count, "end_ms": elapsed(),
+                        "dispatch_free_probe": free, "dispatch_deferred": True,
+                        "prediction_skipped": True})
+                    continue
+                if main.done() or "</think>" in state.text or formal_action_started(state.text):
+                    break
             proposal = await _forced(session, http, adapter, prompt_ids, ids, text, cfg)
             proposal.update(tokens_at_dispatch=last_count, end_ms=elapsed())
+            if free is not None:
+                proposal["dispatch_free_probe"] = free
             proposals.append(proposal)
             call, conf = proposal["call"], proposal["confidence"]
             if main.done():
@@ -140,7 +156,8 @@ async def run_early_exit_turn(session, client, adapter, messages, executor, turn
                     spec_end_ms = elapsed()
 
             spec_task = resources.start_worker("speculative_tool", execute)
-            free = await _free(session, http, adapter.tokenizer, prompt_ids, ids, text, cfg)
+            if free is None:
+                free = await _free(session, http, adapter.tokenizer, prompt_ids, ids, text, cfg)
             cut["stable_count"] = int(free["tool_probability"] >= exit_cfg.tool_probability_threshold)
             checks.append({"kind": "initial_forced_and_free", "tokens_at_dispatch": last_count,
                            "call": call, "free": free, "end_ms": elapsed(),
@@ -165,7 +182,7 @@ async def run_early_exit_turn(session, client, adapter, messages, executor, turn
                 prefix = decision_prefix(adapter.tokenizer, prompt_ids, ids, text)
                 prediction = await decision_probe(
                     session, http, adapter.tokenizer, prefix, candidate=spec_call,
-                    use_d3=exit_cfg.method == "reuse", threshold=exit_cfg.tool_probability_threshold,
+                    use_d3=exit_cfg.method in {"reuse", "reuse_gated"}, threshold=exit_cfg.tool_probability_threshold,
                     max_tokens=cfg.probe_max_tokens, seed=cfg.seed)
                 call = adapter.parse_main_tool_call(prediction["call_text"] or "")
                 if prediction.get("finish_reason") != "stop":

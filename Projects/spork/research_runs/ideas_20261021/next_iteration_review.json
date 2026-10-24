@@ -1,0 +1,65 @@
+{
+  "time": "2026-10-21T19:23:28.719909+08:00",
+  "source_run": "/mnt/data/zhangshuai/LLMs/Projects/spork_v2/results/early_exit_smoke_20261021_e",
+  "status": "in_progress; do not edit running experiment",
+  "verified_observation": {
+    "group": "airline:2",
+    "spork_wall_s": 184.75406859256327,
+    "eta_wall_s": 187.17241714708507,
+    "initial_call": "search_direct_flight",
+    "initial_name_confidence": 0.9780354381915907,
+    "initial_tool_probability": 0.08787814147369513,
+    "final_call": "get_user_details",
+    "confirmation_positions": [
+      81,
+      161,
+      241
+    ],
+    "eta_exit": false
+  },
+  "interpretation": "The existing fixed-dispatch guard blocks exit even after the next-call prediction changes and remains correct. This is a design limitation acknowledged by ETA, not a reproduction defect.",
+  "next_change": {
+    "name": "reuse_gated",
+    "effect": "Use the one-token free probe before generating a full candidate or executing a speculative tool. If p(tool)<0.9, skip the full prediction and continue the same D2 token cadence. Reuse D3 in later confirmations.",
+    "new_training": false,
+    "threshold_source": "ETA operating point 0.9, unchanged",
+    "quality_guarantee": "No guarantee of full-Actor action equivalence; early-exit quality still requires evaluation.",
+    "cpu_checks": 8,
+    "gpu_tested": false,
+    "sources": [
+      "ETA free-probe signal",
+      "CTES pre-draft admission",
+      "SPORK D3 verified draft reuse"
+    ],
+    "preserves_claude_redo": true
+  },
+  "patch": "/mnt/data/zhangshuai/LLMs/Projects/spork/research_runs/ideas_20261021/reuse_gated_for_spork_v2.patch",
+  "suggested_next_smoke": {
+    "methods": [
+      "spork",
+      "reuse_gated"
+    ],
+    "per_domain": 1,
+    "max_turns": 1,
+    "repetitions": 1,
+    "retain_all_cases": true,
+    "purpose": "Verify whether the gate unlocks this missed opportunity without changing emitted action/state; then expand to unseen training tasks and multiple turns."
+  },
+  "review_limitations": [
+    "Current capped fixed-user harness cannot establish full interactive task success.",
+    "Probe preflight candidates were generated at the same prefix, so measured token equivalence is not a claim of agreement with the original complete reasoning.",
+    "Include decision mode in a later ablation to isolate D3 from the free-first checking policy."
+  ],
+  "patch_expected_source_sha256": {
+    "spork_core/early_exit.py": "2e7687f3fc2d6aa56ee83b5fa89b6369dd381add4aef6a602181410f4a28d2a5",
+    "scripts/run_early_exit_smoke.py": "7895fd99c38363655b9de000f3b5c798bb4bc95edbb247402c80f1585cd4139a",
+    "tests/test_early_exit.py": null
+  },
+  "patch_check": {
+    "passed": true,
+    "tests": 10,
+    "checked_at": "2026-10-21T19:36:17.913250+08:00",
+    "status": "git apply --check passed against the current spork_v2 source; combined gated/redo CPU tests passed",
+    "gpu_tested": false
+  }
+}

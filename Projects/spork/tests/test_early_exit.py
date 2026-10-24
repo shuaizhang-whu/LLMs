@@ -2,8 +2,10 @@
 import asyncio
 import json
 import math
+import sys
 import time
 import unittest
+from unittest.mock import patch
 
 from test_launch_timing import Adapter, CALL, Client
 from spork_core.early_exit import ExitConfig, run_early_exit_turn
@@ -93,7 +95,7 @@ class HTTP:
 
 
 class ExitTests(unittest.IsolatedAsyncioTestCase):
-    async def measure(self, http, *, enable=True):
+    async def measure(self, http, *, enable=True, method="eta"):
         executor = Executor()
         messages = [{"role": "user", "content": "lookup a"}]
         clears = []
@@ -105,7 +107,7 @@ class ExitTests(unittest.IsolatedAsyncioTestCase):
         cfg = RetryTurnConfig(max_retries=2, d3_clear=clear, enable_thinking=True,
                               baseline_max_tokens=8192, context_window_tokens=40960)
         result = await run_early_exit_turn(None, Client(), CheckedAdapter(), messages, executor, 1,
-            cfg, ExitConfig(method="eta", stable_checks=2, check_interval=10, max_checks=4,
+            cfg, ExitConfig(method=method, stable_checks=2, check_interval=10, max_checks=4,
                             enable_exit=enable), http=http)
         return result, executor, messages, clears
 
@@ -151,6 +153,36 @@ class ExitTests(unittest.IsolatedAsyncioTestCase):
     async def test_truncated_actor_fails_instead_of_committing_speculation(self):
         with self.assertRaisesRegex(RuntimeError, "Incomplete Actor"):
             await self.measure(HTTP(actor_truncated=True), enable=False)
+
+    async def test_free_dispatch_gate_does_not_lock_to_confident_premature_call(self):
+        class InitiallyWrong(HTTP):
+            forced_count = 0
+            free_count = 0
+
+            async def complete(self, session, ids, **kwargs):
+                result = await super().complete(session, ids, **kwargs)
+                if bytes(ids).decode().endswith('{"name": "'):
+                    self.forced_count += 1
+                    if self.free_count <= 1:
+                        result["text"] = json.dumps({"name": "premature", "arguments": {}})
+                if kwargs["max_tokens"] == 1:
+                    self.free_count += 1
+                    result["logprobs"] = {"top_logprobs": [{"<tool_call>": math.log(.1 if self.free_count == 1 else .99)}]}
+                return result
+
+        async def check(*args, **kwargs):
+            return {"call_text": "<tool_call>" + json.dumps(CALL), "finish_reason": "stop",
+                    "tool_probability": .99, "d3_registered": True}
+
+        http = InitiallyWrong()
+        with patch.object(sys.modules[run_early_exit_turn.__module__], "decision_probe", new=check):
+            result, executor, _, _ = await self.measure(http, method="reuse_gated")
+        self.assertTrue(result["probes"][0]["dispatch_deferred"])
+        self.assertTrue(result["probes"][0]["prediction_skipped"])
+        self.assertEqual(http.forced_count, 1)
+        self.assertTrue(result["exit"]["fired"])
+        self.assertTrue(result["spec_used"])
+        self.assertFalse(any(c["name"] == "premature" for c in executor.canonical_calls))
 
 
 if __name__ == "__main__":

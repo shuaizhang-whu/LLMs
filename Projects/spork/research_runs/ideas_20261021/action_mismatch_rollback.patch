@@ -1,0 +1,55 @@
+--- a/spork_core/stable_refresh_exit.py
++++ b/spork_core/stable_refresh_exit.py
+@@ -38,6 +38,7 @@
+     tool_probability_threshold: float = .9
+     continuation_max_tokens: int = 512
+     enable_exit: bool = True
++    rollback_on_action_mismatch: bool = False
+ 
+     def validate(self):
+         if self.method not in {"eta", "refresh"}:
+@@ -244,10 +245,19 @@
+                 seed=cfg.seed, stop=adapter.main_stop)
+             output_text = frozen_text + "\n</think>\n\n" + continuation["text"]
+             call = adapter.parse_main_tool_call(output_text)
+-            if call is None or continuation["finish_reason"] != "stop":
++            cut["trial_call"] = copy.deepcopy(call)
++            rollback_reason = None
++            if continuation["finish_reason"] != "stop":
++                rollback_reason = "incomplete_trial"
++            elif call is None:
++                rollback_reason = "no_tool_trial"
++            elif exit_cfg.rollback_on_action_mismatch and not same_call(call, spec_call):
++                rollback_reason = "candidate_disagreement"
++            if rollback_reason is not None:
+                 # Resume the original, unclosed reasoning prefix. The trial
+                 # continuation never reaches messages or tool execution.
+                 cut["rolled_back"] = True
++                cut["rollback_reason"] = rollback_reason
+                 rollback = await http.complete(session, prompt_ids + frozen_ids,
+                     max_tokens=min(budget - len(frozen_ids),
+                                    cfg.context_window_tokens - len(prompt_ids) - len(frozen_ids)),
+--- a/scripts/run_stable_refresh_smoke.py
++++ b/scripts/run_stable_refresh_smoke.py
+@@ -188,8 +188,10 @@
+                                 enable_exit=False))
+                     else:
+                         entry = await run_early_exit_turn(session, client, adapter, messages, executor, turn, cfg,
+-                            ExitConfig(method=item["method"], stable_checks=args.stable_checks,
+-                                max_checks=args.max_checks, max_refreshes=args.max_refreshes))
++                            ExitConfig(method="refresh" if item["method"].startswith("refresh") else "eta",
++                                stable_checks=args.stable_checks, max_checks=args.max_checks,
++                                max_refreshes=args.max_refreshes,
++                                rollback_on_action_mismatch=item["method"].endswith("_guarded")))
+                     record["turns"].append(entry)
+                     dump(args.output / "in_progress.json", record)
+                     if not entry["baseline_has_tool_call"]:
+@@ -246,7 +248,7 @@
+     p.add_argument("--stable-checks", type=int, default=3)
+     p.add_argument("--max-checks", type=int, default=15)
+     p.add_argument("--max-refreshes", type=int, default=1)
+-    p.add_argument("--modes", nargs="+", choices=("spork", "eta", "refresh", "off"), default=["spork", "eta", "refresh"])
++    p.add_argument("--modes", nargs="+", choices=("spork", "eta", "refresh", "off", "eta_guarded", "refresh_guarded"), default=["spork", "eta", "refresh"])
+     args = p.parse_args()
+     ExitConfig(stable_checks=args.stable_checks, max_checks=args.max_checks,
+                max_refreshes=args.max_refreshes).validate()

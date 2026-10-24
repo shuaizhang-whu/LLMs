@@ -112,6 +112,16 @@ async def run(args):
                 "exit_config": asdict(ExitConfig(stable_checks=args.stable_checks)),
                 "code_sha256": {str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest() for p in sources}}
     dump(args.output / "manifest.json", manifest)
+    # Preserve the actual implementation, not just hashes that become
+    # unrecoverable after the next experimental edit.
+    for source in sources:
+        relative = source.relative_to(ROOT)
+        destination = args.output / "code" / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        content = source.read_bytes()
+        if hashlib.sha256(content).hexdigest() != manifest["code_sha256"][str(relative)]:
+            raise RuntimeError(f"Source changed while preparing the experiment: {relative}")
+        destination.write_bytes(content)
     tok = AutoTokenizer.from_pretrained(args.model, local_files_only=True)
     adapters = {d: QwenToolCallAdapter(tok, load_tools(d)) for d in ("airline", "retail")}
     tasks = {f"{d}:{t['id']}": t for d in adapters for t in load_tasks(d)}
@@ -211,7 +221,7 @@ def main():
     p.add_argument("--repetitions", type=int, default=1)
     p.add_argument("--tool-floor", type=float, default=2.0)
     p.add_argument("--stable-checks", type=int, default=3)
-    p.add_argument("--modes", nargs="+", choices=("spork", "eta", "decision", "reuse"), default=["spork", "eta", "reuse"])
+    p.add_argument("--modes", nargs="+", choices=("spork", "eta", "decision", "reuse", "reuse_gated"), default=["spork", "eta", "reuse"])
     args = p.parse_args()
     if not 1 <= args.per_domain <= 4 or not 1 <= args.repetitions <= 3 or not 1 <= args.max_turns <= 8:
         p.error("Small smoke limits: <=4 tasks/domain, <=3 repeats, <=8 turns")

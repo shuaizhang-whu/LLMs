@@ -59,6 +59,8 @@ def analyze(records, modes):
                 continue
             valid = not reference["errors"] and not other["errors"]
             comparisons[mode].append({"group_id": group[0], "repeat": group[1], "valid": valid,
+                "initial_match": bool(reference["turns"] and reference["turns"][0].get("spec_used")),
+                "redispatch_count": sum(t.get("redispatch_count", 0) for t in other["turns"]),
                 "same_action_results_state": valid and signature(reference) == signature(other),
                 "same_final_answer": ([t.get("final_answer") for t in reference["turns"]]
                                       == [t.get("final_answer") for t in other["turns"]]),
@@ -162,6 +164,9 @@ async def run(args):
                         d3_set=register, d3_clear=clear, main_request_id=request_id, launch_mode="original")
                     if item["method"] == "spork":
                         entry = await run_timed_retry_turn(session, client, adapter, messages, executor, turn, cfg)
+                    elif item["method"] == "off":
+                        entry = await run_early_exit_turn(session, client, adapter, messages, executor, turn, cfg,
+                            ExitConfig(method="eta", stable_checks=args.stable_checks, enable_exit=False))
                     else:
                         entry = await run_early_exit_turn(session, client, adapter, messages, executor, turn, cfg,
                             ExitConfig(method=item["method"], stable_checks=args.stable_checks))
@@ -213,7 +218,7 @@ def main():
     p.add_argument("--repetitions", type=int, default=1)
     p.add_argument("--tool-floor", type=float, default=2.0)
     p.add_argument("--stable-checks", type=int, default=3)
-    p.add_argument("--modes", nargs="+", choices=("spork", "eta", "decision", "reuse"), default=["spork", "eta", "reuse"])
+    p.add_argument("--modes", nargs="+", choices=("spork", "eta", "decision", "reuse", "redo", "off"), default=["spork", "eta", "reuse"])
     args = p.parse_args()
     if not 1 <= args.per_domain <= 4 or not 1 <= args.repetitions <= 3 or not 1 <= args.max_turns <= 8:
         p.error("Small smoke limits: <=4 tasks/domain, <=3 repeats, <=8 turns")

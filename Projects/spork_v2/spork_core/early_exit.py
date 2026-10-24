@@ -26,7 +26,7 @@ from .turn_runner import _append_tool_messages, _fork_point
 
 @dataclass(frozen=True)
 class ExitConfig:
-    method: str = "reuse"  # eta, decision (ablation), reuse
+    method: str = "reuse"  # eta, decision (ablation), reuse, redo
     stable_checks: int = 3
     check_interval: int = 50
     max_checks: int = 8
@@ -35,7 +35,7 @@ class ExitConfig:
     enable_exit: bool = True
 
     def validate(self):
-        if self.method not in {"eta", "decision", "reuse"}:
+        if self.method not in {"eta", "decision", "reuse", "redo"}:
             raise ValueError(self.method)
         if not (2 <= self.stable_checks <= self.max_checks <= 20
                 and self.check_interval > 0 and self.continuation_max_tokens > 0
@@ -98,6 +98,10 @@ async def run_early_exit_turn(session, client, adapter, messages, executor, turn
     spec_task = spec_call = None
     spec_dispatch_ms = spec_end_ms = None
     d3_count = 0
+    dispatch_generation = 0
+    redispatch_count = 0
+    redispatch_log = []
+    call_history: list[dict | None] = []
     cut = {"fired": False, "rolled_back": False, "stable_count": 0}
     output_ids, output_text, finish_reason = [], "", None
     continuation = rollback = None
@@ -105,6 +109,31 @@ async def run_early_exit_turn(session, client, adapter, messages, executor, turn
         main = resources.main_task = asyncio.create_task(http.stream(
             session, prompt_ids, state, max_tokens=budget, seed=cfg.seed,
             stop=adapter.main_stop, request_id=cfg.main_request_id))
+
+        def start_speculative(target_call):
+            """Dispatch, or supersede with, a speculative tool execution.
+
+            A worker thread cannot be stopped once started. A superseded
+            execution is therefore never awaited or committed, and
+            _TurnResources drains it at cleanup. Only the current generation
+            may update spec_end_ms.
+            """
+            nonlocal spec_task, spec_dispatch_ms, dispatch_generation
+            dispatch_generation += 1
+            generation = dispatch_generation
+
+            def execute():
+                nonlocal spec_end_ms
+                try:
+                    return execute_speculative(executor, target_call)
+                finally:
+                    if generation == dispatch_generation:
+                        spec_end_ms = elapsed()
+
+            spec_dispatch_ms = elapsed()
+            spec_task = resources.start_worker("speculative_tool", execute)
+            return spec_task
+
         last_count = 0
         # Original first-token launch and name-confidence D2 dispatch.
         for index in range(cfg.max_retries):
@@ -130,16 +159,9 @@ async def run_early_exit_turn(session, client, adapter, messages, executor, turn
                     raise RuntimeError(f"Main D3 registration failed: {info}")
             if call is None or conf is None or conf < cfg.confidence_threshold:
                 continue
-            spec_call, spec_dispatch_ms = call, elapsed()
-
-            def execute(call=call):
-                nonlocal spec_end_ms
-                try:
-                    return execute_speculative(executor, call)
-                finally:
-                    spec_end_ms = elapsed()
-
-            spec_task = resources.start_worker("speculative_tool", execute)
+            spec_call = call
+            start_speculative(call)
+            call_history.append(call)
             free = await _free(session, http, adapter.tokenizer, prompt_ids, ids, text, cfg)
             cut["stable_count"] = int(free["tool_probability"] >= exit_cfg.tool_probability_threshold)
             checks.append({"kind": "initial_forced_and_free", "tokens_at_dispatch": last_count,
@@ -165,15 +187,43 @@ async def run_early_exit_turn(session, client, adapter, messages, executor, turn
                 prefix = decision_prefix(adapter.tokenizer, prompt_ids, ids, text)
                 prediction = await decision_probe(
                     session, http, adapter.tokenizer, prefix, candidate=spec_call,
-                    use_d3=exit_cfg.method == "reuse", threshold=exit_cfg.tool_probability_threshold,
+                    use_d3=exit_cfg.method in {"reuse", "redo"},
+                    threshold=exit_cfg.tool_probability_threshold,
                     max_tokens=cfg.probe_max_tokens, seed=cfg.seed)
                 call = adapter.parse_main_tool_call(prediction["call_text"] or "")
                 if prediction.get("finish_reason") != "stop":
                     call = None
                 probability = prediction["tool_probability"]
                 check["prediction"] = prediction
-            agrees = same_call(call, spec_call) and probability >= exit_cfg.tool_probability_threshold
-            cut["stable_count"] = cut["stable_count"] + 1 if agrees else 0
+
+            if exit_cfg.method == "redo":
+                # ETA's stability is defined over consecutive probe predictions.
+                # When the stable call differs from the one already dispatched,
+                # supersede the stale execution instead of forfeiting the exit.
+                call_history.append(call)
+                window = call_history[-exit_cfg.stable_checks:]
+                stable_k = (len(window) == exit_cfg.stable_checks
+                            and window[0] is not None
+                            and all(same_call(c, window[0]) for c in window[1:]))
+                redispatched = stable_k and not same_call(call, spec_call)
+                if redispatched:
+                    previous_call = spec_call
+                    spec_call = call
+                    start_speculative(call)
+                    redispatch_count += 1
+                    redispatch_log.append({"index": index, "tokens": last_count,
+                                           "previous_call": previous_call, "call": call,
+                                           "end_ms": elapsed()})
+                    check["redispatch"] = True
+                    check["previous_call"] = previous_call
+                agrees = (same_call(call, spec_call)
+                          and probability >= exit_cfg.tool_probability_threshold)
+                cut["stable_count"] = (exit_cfg.stable_checks if redispatched else
+                                       (cut["stable_count"] + 1 if agrees else 0))
+            else:
+                agrees = (same_call(call, spec_call)
+                          and probability >= exit_cfg.tool_probability_threshold)
+                cut["stable_count"] = cut["stable_count"] + 1 if agrees else 0
             check.update(call=call, tool_probability=probability, agrees=agrees,
                          stable_count=cut["stable_count"], end_ms=elapsed())
             checks.append(check)
@@ -227,6 +277,7 @@ async def run_early_exit_turn(session, client, adapter, messages, executor, turn
             _append_tool_messages(messages, output_text, result_text)
         record = {"turn": turn, "fork_point": _fork_point(turn), "mode": "early_exit_" + exit_cfg.method,
                   "exit_config": asdict(exit_cfg), "exit": cut, "checks": checks, "probes": proposals,
+                  "redispatch_count": redispatch_count, "redispatch_log": redispatch_log,
                   "baseline_has_tool_call": call is not None,
                   "baseline_tool_name": call["name"] if call else None,
                   "baseline_tool_args": call.get("arguments") if call else None,
