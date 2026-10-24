@@ -1,0 +1,186 @@
+{
+  "date": "2026-10-21",
+  "workspace": "/data/zhangs/LLMs",
+  "git_head": "bc539a6b29f1b41e47080e38d182b07acd6f3f7d",
+  "git_dirty": true,
+  "status": "CPU experiments complete; no new model inference. GPU validation deferred by user.",
+  "papers": [
+    {
+      "title": "ETA",
+      "local_path": "paper/Agent系列latex论文/Agent动作投机/ETA- Exit on Tool Arrival in Speculative Agent Loops/102_ETA_Exit_on_Tool_Arrival_i.pdf",
+      "sha256": "22367db1fbc41b2870cb090f8c3426ec981dcc3f1f775108bfd61c6f91c83ed7",
+      "public_url": "https://openreview.net/forum?id=v5pExWASxV",
+      "mechanism": "SPORK + stable full-call agreement + unconstrained tool probability + tool-ready early reasoning exit.",
+      "decision": "Direct baseline for reducing reasoning; changes the Actor policy, with empirical quality validation rather than exact original-output equivalence."
+    },
+    {
+      "title": "ToolSpec",
+      "local_path": "paper/Agent系列latex论文/Agent动作投机/ToolSpec- Accelerating Tool Calling via Schema-Aware and Retrieval-Augmented Speculative Decoding/Sections/4-Methodology.tex",
+      "sha256": "6fd902456fb034418729c792aa02d645b76421e73004379c98bfe482c0bc21c0",
+      "public_url": "https://arxiv.org/abs/2604.13519",
+      "mechanism": "Schema-aware and retrieval-based token drafting, with target verification.",
+      "decision": "Source for implemented probe reuse; not a reproduction of its full schema/retrieval method."
+    },
+    {
+      "title": "SpecAgent",
+      "local_path": "paper/Agent系列latex论文/Agent动作投机/Trajectory-Level Speculation with Semantic Verification for Tool-Using Agents/main.tex",
+      "sha256": "49bdaf8e3c419f28ef802be73e9c2cfcfc658514db1178562f49f6f4e7492154",
+      "public_url": "https://arxiv.org/abs/2610.21463",
+      "mechanism": "Weak-model read-only trajectories; strong semantic prefix review and fused repair before state-changing boundaries.",
+      "decision": "Alternative baseline for reducing strong-model generation; semantic acceptance changes policy. All-read chunks at the depth cap need not receive strong review."
+    },
+    {
+      "title": "ObsSpec",
+      "local_path": "paper/Agent系列latex论文/Agent动作投机/ObsSpec- Accelerating Agentic Reinforcement Learning with Observation Speculation/main.tex",
+      "sha256": "24a45f6c8f2e7b8332b26ef616e9bff9b5d67e0d3386f28c945be2f1062f13f1",
+      "public_url": "https://arxiv.org/abs/2610.15246",
+      "mechanism": "Predict observations, overlap subsequent Actor computation, validate observations before commit; learn world model during RL.",
+      "decision": "Defer on current short hidden tools; reconsider for long real tool waits and RL throughput."
+    },
+    {
+      "title": "DLite",
+      "local_path": "paper/Agent系列latex论文/Agent动作投机/DLite- History-free Speculative Decoding for Agentic AI/tex/3-DLite.tex",
+      "sha256": "a9a800fb72fbbc767b9cbac7270dfc425e1768fca424f8f86348e032cd7dd5a3",
+      "public_url": "https://arxiv.org/abs/2610.23787",
+      "mechanism": "History-free hidden-state-conditioned token drafter, with a parallel backbone and sequential lightweight head.",
+      "decision": "Potentially accelerates reasoning tokens but requires a trained compatible drafter and serving integration."
+    },
+    {
+      "title": "Controlled Token-Efficient Speculation",
+      "local_path": "paper/Agent系列latex论文/Agent动作投机/Controlled Token-Efficient Speculation for Large Language Model Agents/2120_Controlled_Token_Efficien.pdf",
+      "sha256": "7f27e13d6ba7ade0361c35b0bd2a85b6b62bf265cb522f739ec6166fa446ea3d",
+      "public_url": "https://openreview.net/forum?id=6pO57Qa2FC",
+      "mechanism": "Pre-draft budget and post-draft branch selection with isolated speculative branches.",
+      "decision": "Useful budgeting principle after measuring available benefit; not justification to resume BERT training now."
+    },
+    {
+      "title": "ProSpect",
+      "local_path": "paper/Agent系列latex论文/Agent动作投机/ProSpect- Proactive Speculation for Lossless Acceleration of Multi-Agent Systems/44352_ProSpect_Proactive_Specu.pdf",
+      "sha256": "800a3d1750740c4e93d84640d218fdb5ad5ce0ead80aae17ed58bd203dbebf93",
+      "public_url": "https://openreview.net/forum?id=43QYHpZo5A",
+      "mechanism": "Factor next-component selection from message generation; adaptive width and exact dependency/input validation.",
+      "decision": "Borrow factorization for tool identity vs arguments; fresh validation under the new prefix is still required."
+    }
+  ],
+  "implemented": {
+    "name": "SPORK request-local probe draft reuse",
+    "modes": [
+      "single",
+      "prefix",
+      "suffix"
+    ],
+    "default": "single",
+    "first_launch": "Original SPORK first-token timing in the prepared comparison; no BERT",
+    "verification": "All proposed tokens go through the existing target rejection sampler; tool commit retains exact name/argument checks.",
+    "scope": "Main Actor tool-call body only. Does not implement ETA early exit or accelerate repeated forced probes."
+  },
+  "evidence": {
+    "cases": 207,
+    "selection": "all valid train prefixes; first now repeat only; confirmed D3 registration at body start",
+    "metrics": {
+      "ngram": {
+        "decode_steps": 3416,
+        "accepted_draft_tokens": 3564,
+        "proposed_tokens": 44874,
+        "wins_vs_single": 0,
+        "losses_vs_single": 207
+      },
+      "single": {
+        "decode_steps": 1974,
+        "accepted_draft_tokens": 5006,
+        "proposed_tokens": 23609,
+        "wins_vs_single": 0,
+        "losses_vs_single": 0
+      },
+      "prefix": {
+        "decode_steps": 1242,
+        "accepted_draft_tokens": 5738,
+        "proposed_tokens": 14184,
+        "wins_vs_single": 58,
+        "losses_vs_single": 0
+      },
+      "suffix": {
+        "decode_steps": 1214,
+        "accepted_draft_tokens": 5766,
+        "proposed_tokens": 13721,
+        "wins_vs_single": 65,
+        "losses_vs_single": 0
+      }
+    },
+    "actor_tokens": 130059,
+    "saved_decode_steps": 760,
+    "saved_steps_over_actor_tokens": 0.005843501795339039,
+    "live_cases": 22,
+    "live_prompt_length_and_observation_hashes_checked": 22,
+    "tests_passed": 41,
+    "test_wall_s": 1.187,
+    "syntax_checked": [
+      "spork_core/draft_reuse.py",
+      "spork_core/vllm029_d3.py",
+      "spork_unified_eval.py",
+      "launch_vllm_spork_http.py",
+      "scripts/check_probe_reuse_online.py",
+      "scripts/replay_probe_reuse.py",
+      "tests/test_draft_reuse.py"
+    ],
+    "diff_whitespace_check_passed": true,
+    "code_sha256": {
+      "spork_core/draft_reuse.py": "fda4d998e37e2b23c9615983d364f6dda86d997ed7758a4e9047826f33ea1f4f",
+      "spork_core/vllm029_d3.py": "10c1d36de8f66ecac33654cf0e7b1431d05231f784391a3736b93d65eeb2ad49",
+      "spork_unified_eval.py": "f48720b978acc8298a585bbaf48f25b3d2d53315f0382e5b0e6dc865112bc204",
+      "launch_vllm_spork_http.py": "4b577bce66110b2ccc149c9543f171b7fd2b04ec790b2e431f1a1733999dcf59",
+      "scripts/check_probe_reuse_online.py": "b2a268d434333e98d64593c48dba4e091891f74bb6cc5a5534f6a098e383c92c",
+      "scripts/replay_probe_reuse.py": "26f6c852e7db9557d1a6fa557c11c421a8109093a227cdb60c94ebde9cd735df",
+      "tests/test_draft_reuse.py": "68d47d67389c6a23706114984795dfde642284e35f70125314627e83ac50e432"
+    }
+  },
+  "iteration": [
+    "v1: single vs repeated prefix vs suffix rejoin on recorded greedy tool-call traces",
+    "v2: indexed suffix alignment; same decode-step counts on 207 train prefixes",
+    "Added request isolation, pending verification, partial rejection, and explicit online mechanism-coverage checks"
+  ],
+  "limitations": [
+    "Recorded greedy continuation is the verifier oracle; output equality is by construction.",
+    "Decode-step counts omit variable GPU verification cost, contention and scheduling.",
+    "Only tool-call bodies are replayed; no end-to-end speedup or task-quality claim.",
+    "Tokenizer is validated against recorded body IDs, draft lengths and first-block acceptance; no model weights loaded.",
+    "760 saved decode steps / 130059 Actor tokens is a scale comparison, not an end-to-end speedup estimate.",
+    "Dominant improvement comes from repeated blocks beyond the prototype single-injection cap. Suffix rejoin adds only 28 saved steps beyond prefix mode.",
+    "The simulator uses recorded target tokens as the oracle; matching output is by construction, not independent evidence of live equivalence."
+  ],
+  "recommended_next": {
+    "hypothesis": "ETA + ToolSpec: replace repeated autoregressive full-call probes with freshly target-verified cached candidates; regenerate after mismatch.",
+    "optional_factorization": "ProSpect-style separate tool identity from variable arguments.",
+    "requirements": [
+      "Retain the unconstrained one-token tool/no-tool probe; cached call agreement is not fresh model evidence.",
+      "Compare SPORK, ETA, ETA + repeated prefix reuse, and ETA + suffix/argument repair with the same model and probe cadence.",
+      "Measure probe generation/verification cost, reasoning tokens, task wall time, rollback rate, truncations and task quality.",
+      "Current traces stop D2 probing at dispatch and cannot validate ETA post-dispatch stability.",
+      "Validate quality with the official interactive task harness; do not call current ACTION reward official tau2 success."
+    ],
+    "status": "Proposed, not implemented or proven"
+  },
+  "alternative": {
+    "hypothesis": "SpecAgent + SPORK: weak-model read-only trajectories with real observations; strong review/repair, with SPORK applied to remaining strong turns and tool waiting.",
+    "status": "Proposed; use SpecAgent itself as a direct comparison and evaluate changed-policy quality."
+  },
+  "readiness": {
+    "preflight": "online_preflight/preflight.json",
+    "prepared_manifest": "online_ready/manifest.json",
+    "inference_started": false,
+    "blockers": [
+      "No dedicated idle GPU observed",
+      "Qwen3-32B model/tokenizer unavailable locally",
+      "vLLM unavailable in the inspected Python environment",
+      "127.0.0.1:8016 refused connection"
+    ]
+  },
+  "commands": {
+    "working_directory": "Projects/spork",
+    "cpu_replay": "CUDA_VISIBLE_DEVICES='' python scripts/replay_probe_reuse.py --trace-source collected --tokenizer ../../Models/Qwen/Qwen2.5-7B/tokenizer.json --output results/probe_reuse_replay_new.json",
+    "online_preflight": "python scripts/check_probe_reuse_online.py",
+    "online_smoke_after_dedicated_service_ready": "python scripts/check_probe_reuse_online.py --execute",
+    "server_script": "scripts/serve_qwen32_prefix_invariant.sh",
+    "server_note": "User starts the configured Qwen3-32B / vLLM 0.29 batch-invariant service in tmux after resources are assigned; no service started or stopped in this work."
+  }
+}
