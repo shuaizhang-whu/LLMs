@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# User launches in tmux. Local encoder only; vLLM is not needed.
+set -euo pipefail
+source "$(dirname -- "${BASH_SOURCE[0]}")/spork_env.sh"
+SPORK_COMPARE_PYTHON=${SPORK_COMPARE_PYTHON:-$SPORK_PYTHON}
+SPORK_COMPARE_ENCODER=${SPORK_COMPARE_ENCODER:-$SPORK_ENCODER}
+if (( $# != 1 )) || [[ ! -f "$1/training_data_gate.json" ]]; then
+  printf 'Usage: bash %s completed-stage3-dataset-directory\n' "$0" >&2
+  exit 1
+fi
+SPORK_COMPARE_DATA=$1
+SPORK_COMPARE_DEVICE=${CONTROLLER_DEVICE:-cpu}
+SPORK_COMPARE_EPOCHS=${CONTROLLER_EPOCHS:-20}
+if [[ ! "$SPORK_COMPARE_EPOCHS" =~ ^[1-9][0-9]*$ ]]; then
+  printf 'CONTROLLER_EPOCHS must be a positive integer.\n' >&2
+  exit 1
+fi
+if [[ "$SPORK_COMPARE_DEVICE" != cpu && "$SPORK_COMPARE_DEVICE" != cuda ]]; then
+  printf 'CONTROLLER_DEVICE must be cpu or cuda.\n' >&2
+  exit 1
+fi
+if [[ "$SPORK_COMPARE_DEVICE" == cpu ]]; then
+  export CUDA_VISIBLE_DEVICES=''
+elif [[ -z "${CUDA_VISIBLE_DEVICES:-}" ]]; then
+  printf 'For GPU training, specify CUDA_VISIBLE_DEVICES with your available GPU.\n' >&2
+  exit 1
+fi
+export HF_HUB_OFFLINE=1
+export TOKENIZERS_PARALLELISM=false
+export PYTHONUNBUFFERED=1
+export OMP_NUM_THREADS=4
+export MKL_NUM_THREADS=4
+mkdir -p "$SPORK_REPO_ROOT/controller_runs"
+SPORK_COMPARE_LOG=$(mktemp "$SPORK_REPO_ROOT/controller_runs/training_compare_e${SPORK_COMPARE_EPOCHS}_$(date +%Y%m%d_%H%M%S)_XXXXXX.log")
+SPORK_COMPARE_OUTPUT=${SPORK_COMPARE_LOG%.log}
+exec > >(tee -a "$SPORK_COMPARE_LOG") 2>&1
+printf '结果目录：%s\n日志：%s\n' "$SPORK_COMPARE_OUTPUT" "$SPORK_COMPARE_LOG"
+printf '每组训练轮数：%s；设备：%s\n' "$SPORK_COMPARE_EPOCHS" "$SPORK_COMPARE_DEVICE"
+"$SPORK_COMPARE_PYTHON" "$SPORK_REPO_ROOT/scripts/run_controller_training_experiments.py" \
+  --dataset "$SPORK_COMPARE_DATA" --encoder "$SPORK_COMPARE_ENCODER" \
+  --output "$SPORK_COMPARE_OUTPUT" --device "$SPORK_COMPARE_DEVICE" \
+  --cpu-threads 4 --epochs "$SPORK_COMPARE_EPOCHS" --batch-size 8 --seeds 42 43 44
+printf '完成。请查看：%s/summary.md\n' "$SPORK_COMPARE_OUTPUT"

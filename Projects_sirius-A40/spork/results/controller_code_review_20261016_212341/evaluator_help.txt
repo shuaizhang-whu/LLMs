@@ -1,0 +1,156 @@
+usage: spork_unified_eval.py [-h] [--model-url MODEL_URL]
+                             [--model-name MODEL_NAME]
+                             [--probe-model-url PROBE_MODEL_URL]
+                             [--probe-model-name PROBE_MODEL_NAME]
+                             [--probe-tokenizer-path PROBE_TOKENIZER_PATH]
+                             [--benchmark {tau2,gaia,hotpotqa}]
+                             [--configs CONFIGS]
+                             [--controller-checkpoint CONTROLLER_CHECKPOINT]
+                             [--controller-masked-checkpoint CONTROLLER_MASKED_CHECKPOINT]
+                             [--controller-cpu-threads CONTROLLER_CPU_THREADS]
+                             [--task-manifest TASK_MANIFEST] [--n N]
+                             [--seed SEED] [--max-tokens MAX_TOKENS]
+                             [--completion-max-tokens COMPLETION_MAX_TOKENS]
+                             [--enable-thinking] [--no-thinking]
+                             [--results-root RESULTS_ROOT]
+                             [--tau2-floor TAU2_FLOOR]
+                             [--gaia-dataset-path GAIA_DATASET_PATH]
+                             [--hotpotqa-dataset-path HOTPOTQA_DATASET_PATH]
+                             [--gaia-search-top-k GAIA_SEARCH_TOP_K]
+                             [--start START] [--end END]
+                             [--max-turns MAX_TURNS]
+                             [--task-timeout-s TASK_TIMEOUT_S]
+                             [--warmup-requests WARMUP_REQUESTS]
+                             [--warmup-max-tokens WARMUP_MAX_TOKENS]
+                             [--server-tag SERVER_TAG] [--server-tp SERVER_TP]
+                             [--server-max-model-len SERVER_MAX_MODEL_LEN]
+                             [--server-max-num-batched-tokens SERVER_MAX_NUM_BATCHED_TOKENS]
+                             [--server-speculative-config SERVER_SPECULATIVE_CONFIG]
+                             [--server-parser-mode SERVER_PARSER_MODE]
+                             [--no-forced-conclusion]
+                             [--tokenizer-path TOKENIZER_PATH]
+                             [--d2-max-retries D2_MAX_RETRIES]
+                             [--d2-retry-token-step D2_RETRY_TOKEN_STEP]
+                             [--d2-min-tokens-first-probe D2_MIN_TOKENS_FIRST_PROBE]
+                             [--d2-confidence-threshold D2_CONFIDENCE_THRESHOLD]
+                             [--d2-theta-decay-per-retry D2_THETA_DECAY_PER_RETRY]
+                             [--d2-probe-max-tokens D2_PROBE_MAX_TOKENS]
+                             [--d2-probe-timeout-s D2_PROBE_TIMEOUT_S]
+                             [--d2-snap-to-sentence | --no-d2-snap-to-sentence]
+                             [--d2-continue-after-dispatch]
+                             [--tool-cache-path TOOL_CACHE_PATH]
+                             [--tool-cache-mode {record,replay}]
+                             [--simulated-tool-latency-s SIMULATED_TOOL_LATENCY_S]
+                             [--tool-cache-allow-miss]
+                             [--tool-cache-per-config]
+
+Unified SPORK multi-benchmark eval
+
+options:
+  -h, --help            show this help message and exit
+  --model-url MODEL_URL
+  --model-name MODEL_NAME
+  --probe-model-url PROBE_MODEL_URL
+                        Optional separate vLLM endpoint for the cross-model
+                        probe (spork_cross config)
+  --probe-model-name PROBE_MODEL_NAME
+                        Served model name for the probe endpoint
+  --probe-tokenizer-path PROBE_TOKENIZER_PATH
+                        Tokenizer path for the probe model (defaults to
+                        --tokenizer-path)
+  --benchmark {tau2,gaia,hotpotqa}
+  --configs CONFIGS
+  --controller-checkpoint CONTROLLER_CHECKPOINT
+                        Local full-input BERT checkpoint for timing_bert
+  --controller-masked-checkpoint CONTROLLER_MASKED_CHECKPOINT
+                        Local masked-reasoning BERT checkpoint for
+                        timing_masked
+  --controller-cpu-threads CONTROLLER_CPU_THREADS
+  --task-manifest TASK_MANIFEST
+                        Exact ordered JSON list of tau2 domain/task_id pairs
+  --n N                 Number of tasks (0=auto: all tau2, 165 gaia, 200
+                        hotpotqa).
+  --seed SEED
+  --max-tokens MAX_TOKENS
+  --completion-max-tokens COMPLETION_MAX_TOKENS
+                        Max main completion tokens per turn.
+  --enable-thinking
+  --no-thinking
+  --results-root RESULTS_ROOT
+  --tau2-floor TAU2_FLOOR
+  --gaia-dataset-path GAIA_DATASET_PATH
+                        Path to the GAIA validation JSONL (question field
+                        'Question', gold field 'Final answer'). Env:
+                        SPORK_GAIA_DATASET.
+  --hotpotqa-dataset-path HOTPOTQA_DATASET_PATH
+                        Path to the HotpotQA validation JSONL
+                        ('question'/'answer' fields). Env:
+                        SPORK_HOTPOTQA_DATASET.
+  --gaia-search-top-k GAIA_SEARCH_TOP_K
+                        Number of GAIA web-search results exposed to the
+                        model.
+  --start START         Start index for sharding
+  --end END             End index for sharding (0=all)
+  --max-turns MAX_TURNS
+                        Max turns per task (0=auto: 8).
+  --task-timeout-s TASK_TIMEOUT_S
+                        Wall-clock timeout per task; 0 disables.
+  --warmup-requests WARMUP_REQUESTS
+                        Discarded warmup rounds before timed tasks.
+  --warmup-max-tokens WARMUP_MAX_TOKENS
+                        Max tokens for the longer discarded warmup request.
+  --server-tag SERVER_TAG
+                        Free-form server provenance tag stamped into
+                        summary.json.
+  --server-tp SERVER_TP
+                        Tensor parallel size of the served model.
+  --server-max-model-len SERVER_MAX_MODEL_LEN
+                        Served --max-model-len stamped into summary.json.
+  --server-max-num-batched-tokens SERVER_MAX_NUM_BATCHED_TOKENS
+                        Served --max-num-batched-tokens stamped into
+                        summary.json.
+  --server-speculative-config SERVER_SPECULATIVE_CONFIG
+                        Active vLLM speculative config stamped into
+                        summary.json.
+  --server-parser-mode SERVER_PARSER_MODE
+                        Tool parser mode stamped into summary.json.
+  --no-forced-conclusion
+                        Skip final no-tool answer turn after max_turns.
+  --tokenizer-path TOKENIZER_PATH
+                        Path to tokenizer (defaults to a Qwen3-4B HF id)
+  --d2-max-retries D2_MAX_RETRIES
+                        Maximum D2 probe attempts per turn for d1_d2.
+  --d2-retry-token-step D2_RETRY_TOKEN_STEP
+                        Main decoded-token cadence between D2 retry probes.
+  --d2-min-tokens-first-probe D2_MIN_TOKENS_FIRST_PROBE
+                        Delay first D2 probe until main has decoded at least
+                        this many tokens.
+  --d2-confidence-threshold D2_CONFIDENCE_THRESHOLD
+                        Probe logprob confidence threshold for D2 commit.
+  --d2-theta-decay-per-retry D2_THETA_DECAY_PER_RETRY
+                        Subtract this threshold amount after each D2 retry.
+  --d2-probe-max-tokens D2_PROBE_MAX_TOKENS
+                        Max tokens for each D2 probe completion.
+  --d2-probe-timeout-s D2_PROBE_TIMEOUT_S
+                        Optional wall-clock timeout for each D2 probe request;
+                        0 disables.
+  --d2-snap-to-sentence, --no-d2-snap-to-sentence
+                        Wait for sentence/newline boundary before retries
+                        after retry 0.
+  --d2-continue-after-dispatch
+                        Keep probing after an early confident dispatch and
+                        replace it with later confident probes.
+  --tool-cache-path TOOL_CACHE_PATH
+                        JSON cache path for deterministic tool record/replay.
+  --tool-cache-mode {record,replay}
+                        record executes real tools and writes cache; replay
+                        serves cached outputs.
+  --simulated-tool-latency-s SIMULATED_TOOL_LATENCY_S
+                        Replay-mode fixed latency per tool call; default
+                        replays recorded wall time.
+  --tool-cache-allow-miss
+                        In replay mode, fall back to the real executor on
+                        cache miss.
+  --tool-cache-per-config
+                        Write/read separate cache files per config instead of
+                        sharing one cache.
