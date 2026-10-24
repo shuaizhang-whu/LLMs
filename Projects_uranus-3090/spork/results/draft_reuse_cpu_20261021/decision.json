@@ -1,0 +1,167 @@
+{
+  "date": "2026-10-21",
+  "status": "CPU verification complete; GPU experiments deferred at user request",
+  "implemented": "Opt-in request-local D3 draft bank with original single-shot, rolling-latest, retained-prefix and suffix-realignment modes",
+  "cpu_tests": {
+    "passed": 8,
+    "syntax_check": "passed"
+  },
+  "experiments": {
+    "train_v1": "train_v1.json",
+    "train_v2": "train_v2.json",
+    "validation_v2": "validation_v2.json",
+    "successor_necessary_condition": "successor_train.json"
+  },
+  "revision": {
+    "min_suffix_tokens": [
+      5,
+      7
+    ],
+    "default_worker_mode": "rolling",
+    "reason": "Suffix reuse had small incremental token coverage and many zero-accept proposals"
+  },
+  "decisions": [
+    {
+      "candidate": "SPORK + ToolSpec-style suffix reuse",
+      "status": "engineering ablation, not a supported main contribution",
+      "validation_extra_tokens_over_rolling": 30,
+      "validation_actor_tokens": 51002
+    },
+    {
+      "candidate": "SPORK early real tool results + ProSpect exact-input successor execution",
+      "status": "priority hypothesis; next-Actor runtime NOT implemented or benchmarked",
+      "necessary_condition": {
+        "traces": 428,
+        "unmatched_or_incomplete": 80,
+        "matched_tool": 348,
+        "identical_history": 320,
+        "different_history": 28
+      },
+      "approx_lead_median_s": 47.00424781080801,
+      "caveat": "Recorded availability only; shared-GPU contention, cancellation and extra tokens remain unmeasured"
+    },
+    {
+      "candidate": "ETA free-probe admission for expensive successor work",
+      "status": "secondary untested hypothesis; no BERT training planned"
+    }
+  ],
+  "literature": [
+    {
+      "paper": "ToolSpec",
+      "source": "https://arxiv.org/abs/2604.13519",
+      "relevance": "Schema/retrieval token proposals and suffix realignment"
+    },
+    {
+      "paper": "DLite",
+      "source": "https://arxiv.org/abs/2610.23787",
+      "relevance": "Trained history-free token drafter; not directly a Qwen3-32B action predictor"
+    },
+    {
+      "paper": "SpecAgent",
+      "source": "https://arxiv.org/abs/2610.21463",
+      "relevance": "Weak-model trajectories with semantic verification; changes the exact Actor-trajectory objective"
+    },
+    {
+      "paper": "ObsSpec",
+      "source": "https://arxiv.org/abs/2610.15246",
+      "relevance": "World-model observation predictions overlap subsequent policy generation"
+    },
+    {
+      "paper": "Controlled Token-Efficient Speculation",
+      "source": "../../paper/Agent系列latex论文/Agent动作投机/Controlled Token-Efficient Speculation for Large Language Model Agents/2120_Controlled_Token_Efficien.pdf",
+      "relevance": "Pre-draft budget gating and post-draft branch selection within persistent verified trees"
+    },
+    {
+      "paper": "ETA",
+      "source": "../../paper/Agent系列latex论文/Agent动作投机/ETA- Exit on Tool Arrival in Speculative Agent Loops/102_ETA_Exit_on_Tool_Arrival_i.pdf",
+      "relevance": "Readiness + stability + free tool/no-tool probe enable reasoning truncation; not original full-CoT equivalence"
+    },
+    {
+      "paper": "ProSpect",
+      "source": "../../paper/Agent系列latex论文/Agent动作投机/ProSpect- Proactive Speculation for Lossless Acceleration of Multi-Agent Systems/44352_ProSpect_Proactive_Specu.pdf",
+      "relevance": "One-hop future Actor calls, exact component/input adoption, separate routing and message prediction; experiments use recorded Actor traces with live Speculator"
+    }
+  ],
+  "full_controller_snapshot": {
+    "sealed_records": 930,
+    "seal_hash_failures": 0,
+    "failed_runs": 67,
+    "length_failures": 66,
+    "other_failures": 1,
+    "paired_test_tasks": 22,
+    "test_mean_seconds": {
+      "timing_spork": 303.13,
+      "timing_wait": 302.076,
+      "timing_bert": 302.744,
+      "timing_masked": 302.408
+    }
+  },
+  "frozen_source_checks": [
+    {
+      "path": "launch_vllm_spork_http.py",
+      "unchanged": true
+    },
+    {
+      "path": "spork_unified_eval.py",
+      "unchanged": true
+    },
+    {
+      "path": "scripts/check_controller_online.py",
+      "unchanged": true
+    },
+    {
+      "path": "scripts/run_controller_full_eval.sh",
+      "unchanged": true
+    },
+    {
+      "path": "scripts/run_controller_full_eval.py",
+      "unchanged": true
+    },
+    {
+      "path": "spork_core/controller_data.py",
+      "unchanged": true
+    },
+    {
+      "path": "spork_core/qwen.py",
+      "unchanged": true
+    },
+    {
+      "path": "spork_core/executors.py",
+      "unchanged": true
+    },
+    {
+      "path": "spork_core/turn_runner.py",
+      "unchanged": true
+    },
+    {
+      "path": "spork_core/prefix_replay.py",
+      "unchanged": true
+    },
+    {
+      "path": "spork_core/launch_timing.py",
+      "unchanged": true
+    },
+    {
+      "path": "spork_core/timing_controller.py",
+      "unchanged": true
+    },
+    {
+      "path": "spork_core/timed_retry.py",
+      "unchanged": true
+    },
+    {
+      "path": "spork_core/vllm029_d3.py",
+      "unchanged": true
+    },
+    {
+      "path": "spork_core/benchmarks/tau2.py",
+      "unchanged": true
+    }
+  ],
+  "replay_dependencies": {
+    "python": "3.13.9",
+    "tokenizers": "0.22.2 in temporary isolated directory",
+    "tokenizer_sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4"
+  },
+  "scope": "New screening used train/validation only. No services or GPU experiments started. Existing formal artifacts unchanged."
+}
