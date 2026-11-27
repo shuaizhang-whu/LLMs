@@ -1,0 +1,45 @@
+from pathlib import Path
+import json,shutil,hashlib
+P=Path(__file__).resolve().parent
+A=P/'archive-10page-outline';A.mkdir(exist_ok=True)
+for n in ['slides-content.json','TurnAhead-PPT文字大纲.md']:
+ if (P/n).exists() and not (A/n).exists():shutil.copyfile(P/n,A/n)
+slides=[
+ dict(title='TurnAhead｜从工具重叠走向跨轮重叠',claim='真实候选观测就绪后，提前计算完整下一轮。',kind='motivation',source='§2；§4；Figure 1（PDF 第3页）',items=[('串行执行','推理结束 → 工具执行 → 下一轮'),('SPORK','在当前轮推理中隐藏工具等待'),('TurnAhead','保留父轮完整推理，重叠下一轮计算')],bottom='时间线仅为机制示意，不是实测时长。',notes='主要机会是工具返回后父轮仍在推理的时间。SPORK 提供候选工具与真实观测，TurnAhead 从该点向下一轮推进，正式采用仍需验证。图1为原论文时间线，不表示任何实测收益。',layout='原图时间线占中间主区域；底部三列对照。',time='75 秒'),
+ dict(title='Anchored Lookahead｜真实观测触发双沙箱执行',claim='Anchor 就绪且父轮仍在推理时，启动同一目标模型的下一轮。',kind='launch',source='§4.1 定义2；§4.2',items=[('Anchor 四字段','候选动作 / 真实观测 / 执行后状态 / 就绪时间'),('因果、隔离、可验证','只读已知前缀；候选在私有副本执行；各字段可比较'),('沙箱 A','保留候选动作后的状态，供父轮正式采用'),('沙箱 B','从 A 再复制；后继工具只修改 B')],bottom='当前 Anchor 来自 SPORK 自投机派发；无需额外模型或训练。',notes='保留 A 是为了父轮采用其动作后状态。后继轮在 B 上运行，避免污染 A。sandboxed 策略允许在 B 内提前执行工具；无法复制的真实外部副作用需采用 deferred 策略。后继仍是同一目标模型的完整一轮。',layout='顶部四字段条；中间主状态→沙箱A→沙箱B流程；底部两项隔离说明。',time='100 秒'),
+ dict(title='Exact-Input Commit｜完整输入相同才采用',claim='已完成思考不入历史，但可见前缀仍可能改变下一轮输入。',kind='commit',source='§2.1 式(2)；§4.1 命题1；§4.3 式(4)',items=[('动作','工具名与全部参数相同'),('观测','工具输出 SHA-256 相同'),('起始状态','Agent / User 数据库指纹相同'),('完整输入','下一轮输入 token 序列逐项相同'),('生成配置','模型、seed、预算、思考、停止与采样设置相同')],bottom='候选输入按空可见文本构造；动作相同不足以保证完整输入相同。',notes='候选输入为 F(H_t⊕⟨空,候选动作,真实观测⟩)。若父轮保留额外可见说明，输入可能失配，因此五项契约同时检查。状态比较的是后继起始状态；它执行后的新状态会在最终采用时提交。等待后继完成后再检查一次。',layout='五行可编辑表格；右下或下方强调候选输入与完整token验证。',time='100 秒'),
+ dict(title='Drain-and-Resume｜验证通过才提交，失配先排空',claim='隔离分支只通过采用影响正式状态；失败分支退出后再恢复。',kind='recover',source='§4.3 Algorithm 1；§4.4 命题2；附录A.1–A.2',items=[('契约通过','等待后继完成 → 再次验证 → 单次采用输出与状态'),('失配或失败','取消请求 → 等待在途工具结束 → 从正式输入与状态继续'),('父轮直接回复','丢弃后继，交回用户控制权'),('保证有前提','目标与环境确定性；私有隔离且单次提交；原子采用；局部渲染 R')],bottom='保证对象：可见输出、动作、观测序列与最终状态；不能由 greedy 与 seed 相同直接推出。',notes='取消异步请求不意味着工具线程已停止，需要排空，避免旧分支继续竞争资源。理论按窗口归纳：通过时在相同输入配置状态下得到参考后继，拒绝时未留下正式影响。目标确定性、环境指纹、隔离、原子提交与局部渲染都是条件。正式路径自身失败时不无限重试。',layout='上方通过与恢复两条流程；下方回复出口及正确性前提条。',time='100 秒'),
+ dict(title='延迟收益｜重叠窗口与系统成本共同决定',claim='理想节省量取决于观测就绪后的剩余推理窗口。',kind='latency',source='§4.4 命题3、式(5)；§4.2；附录A.3–A.5',items=[('就绪与窗口','τₜ = dₜ + Lₜ；σₜ = max(Rₜ − τₜ, 0)'),('完成时间','SPORK：max(Rₜ, τₜ) + Bₜ₊₁；TurnAhead：max(Rₜ, τₜ + Bₜ₊₁)'),('实际代价','有效重叠需覆盖父子轮拖慢、验证与排空成本'),('执行边界','深度一窗口；不跨用户消息；外部副作用不可复制时延后工具')],bottom='理想式假设 Anchor 正确并忽略竞争与管理开销；R：父轮，L：工具，B：后继轮时长。',notes='两种完成时间相减得到 min(B,sigma)。正确性条件通过不意味着必然加速。真实收益需要从父轮拖慢、子轮变化以及拒绝排空成本中扣除。稿中采用有限深度窗口，不宣称连续滚动已实现。',layout='上方大公式；中间两条完成时间；下方实际成本与执行边界。',time='100 秒'),
+ dict(title='任务耗时｜简化评测收益尚未稳定延伸至完整交互',claim='两种协议分别报告；当前完整交互中 raw 仅快 1.12%。',kind='results',source='32B：full_eval_review_20261026；9B：expanded v7',items=[('Qwen3-32B｜固定用户消息','148 个有效配对；最多8轮；每组1次'),('Qwen3.5-9B｜完整用户交互','20 个严格配对；首次重复；已运行98/384次')],bottom='9B Agent pipeline 扣除用户生成；raw 降幅95%区间 −2.88%～+5.09%。两种模型/协议不混算。',notes='左图为32B固定用户消息、两组各155次中148有效配对，19.41%收益不是完整业务成功率。右图为9B原生用户交互20个严格配对，所有都是首次重复；384次计划尚未完成。raw_no_probe关闭子分支额外预测，raw_one_probe最多一次。完整交互各组正常20任务reward均0.60，另外4任务各组生成失败；本页展示时间，不把reward当官方成功率。不同模型运行时和评测协议都改变，不能归因于单一因素。',layout='左右两张独立实测横条图，标明不同协议与计时口径；不使用同一归一化统计。',time='100 秒'),
+ dict(title='机制回放｜有效重叠省时间，错误分支有成本',claim='27 次双轮回放输出与状态一致；净收益随前缀明显变化。',kind='mechanism',source='qwen35_9b_mechanism_20261102_v2：39/39',items=[('获益前缀','airline:2，第1–2轮'),('采用后再测','retail:28，第20–21轮'),('候选未命中','retail:28，第22–23轮')],bottom='误差线：3次重复最小–最大值；前缀为事后选取，不能代表整体加速。',notes='每个前缀运行SPORK、raw、raw_no_probe各3次，共27次。额外12次检查停止边界：D3开关关联的末尾im_end差异复现，但有效停止边界内token、文本和调用相同。第一例raw父轮增加2.50秒，后续等待减少18.37秒，净省15.87秒。未命中例父轮多花1.88秒，丢弃约194个token，净损失2.34秒。此前整任务中采用后变慢的那一对，这次固定前缀三次均获益，说明局部回放与在线环境不同。',layout='主区域三组节省时间横条图；下方两条机制注释；全部图表来自已保存记录。',time='100 秒')
+]
+for i,s in enumerate(slides,1):s.update(n=i,footer=f'TurnAhead · 方法与实验   |   {i:02d} / 07')
+(P/'slides-content.json').write_text(json.dumps(slides,ensure_ascii=False,indent=2)+'\n')
+parts=[]
+for s in slides:
+ text='\n'.join(a+'：'+b for a,b in s['items'])
+ parts.append(f'''第{s['n']}页｜{s['title']}
+【本页作用】{s['claim']}
+【本页核心结论】{s['claim']}
+【页面实际展示的全部文字】
+标题：{s['title']}
+核心结论条：{s['claim']}
+{text}
+图注/说明：{s['bottom']}
+页脚：{s['footer']}；来源：{s['source']}
+【方法流程、公式或表格】见本页文字、原稿Figure 1及独立公式/实测图表；第5页式(5)，第6–7页具体数值见experiment-data.json。
+【排版布局】{s['layout']}；原始校徽左上。
+【配图及来源】{s['source']}。第1页使用main.pdf第3页原图；第2–5页为讲解图；第6–7页为记录数据绘图。
+【预计讲解时间】{s['time']}
+【口播备注草稿】{s['notes']}
+【与前后内容的过渡语】按动机→启动→验证→恢复→收益→实测→机制顺序讲解。
+''')
+(P/'TurnAhead-PPT文字大纲.md').write_text('\n'.join(parts))
+root=Path('/mnt/data/zhangshuai/LLMs/Projects/spork-codex')
+files=['research_runs/full_eval_review_20261026/audit.json','results/qwen35_9b_expanded_20261101_v7/expanded/summary.json','results/qwen35_9b_mechanism_20261102_v2/summary.json']
+data={f:json.loads((root/f).read_text()) for f in files}
+(P/'experiment-data.json').write_text(json.dumps(data,ensure_ascii=False,indent=2)+'\n')
+with (P/'source-notes.txt').open('a') as f:
+ f.write('\n用户调整：7页，5页方法动机 + 2页现有实验。以下结果由原记录读取：\n')
+ for name in files:f.write(str(root/name)+' sha256='+hashlib.sha256((root/name).read_bytes()).hexdigest()+'\n')
+print('Prepared compact 7-slide content.')

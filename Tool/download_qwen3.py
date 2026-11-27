@@ -3,6 +3,8 @@ import os
 # ============================================================
 # Qwen3 模型下载脚本
 # 推荐使用 ModelScope 下载，国内速度更快
+# 命令行：modelscope download --model google/gemma-4-31B-it --local_dir /mnt/data/zhangshuai/LLMs/Models/gemma-4-31B-it
+
 # ============================================================
 
 # 模型保存基础目录

@@ -1,0 +1,43 @@
+% !TEX root = ../main.tex
+\section{Implementation Details}
+\label{app:impl}
+
+\paragraph{Serving and decoding.}
+All methods use the same vLLM~0.29 server~\citep{kwon2023vllm} and the same request settings.
+Qwen3-32B is served in 16-bit precision with tensor parallelism over four RTX~3090 GPUs (24\,GB each), with prompt-lookup speculative decoding of up to 20 tokens.
+Decoding is greedy with a fixed seed, at most 8{,}192 new tokens per turn, and a context window of 40{,}960 tokens.
+Deterministic serving switches the server to batch-invariant mode, in which the output of a request does not depend on the requests decoded with it.
+All configurations of an experiment use one server instance, and we do not rely on outputs being reproducible across server restarts.
+A request that runs alone decodes at \SpdDetMsSolo\,ms per token under deterministic serving and at \SpdStdMsSolo\,ms under standard serving.
+
+\paragraph{Cost of concurrent requests.}
+We decode the first turn of four retail tasks alone and then two, three, and four of them at the same time, 320 tokens each, three times over.
+For every request we compare the time it needs for the same token positions, alone and while all requests are active.
+The median slowdown for two, three, and four concurrent requests is \ConDetTwo, \ConDetThree, and \ConDetFour{} under deterministic serving and \ConStdTwo, \ConStdThree, and \ConStdFour{} under standard serving.
+The main runs agree with this: a parent whose successor runs during part of its turn decodes \SpdDetBusyRatio$\times$ and \SpdStdBusyRatio$\times$ slower than a turn without speculation in the two modes.
+
+\paragraph{Speculative tool dispatch.}
+The first probe is issued when the first token of a turn arrives, and further probes follow about every 50 generated tokens, at sentence boundaries, up to five per turn.
+A probe may generate up to 160 tokens.
+A call is dispatched when the minimum token probability over positions two through sixteen of the probe continuation is at least 0.9, and at most one call is dispatched per turn.
+These settings are the same for the baseline, for the parent, and for the successor.
+
+\paragraph{Tools and environment copies.}
+The tools of \taubench run against the benchmark's local database and return within milliseconds.
+All methods use the same tool latency floor within each comparison (\ToolLowFloor, \ToolMidFloor, or \ToolHighFloor\,s).
+An environment copy is a deep copy of the benchmark environment.
+Creating it adds a median of \MotCopyMedian\,s between the dispatch decision and the start of the tool.
+The fingerprint of an environment is the pair of hashes of its agent-side and user-side databases.
+
+\paragraph{The check.}
+Observations are compared by SHA-256.
+The configuration compared by condition~(v) consists of the model, the endpoint, the seed, the token budget, the context window, the thinking flag, the stop strings, the temperature, and the presence penalty.
+
+\paragraph{Successor.}
+The successor uses the settings of a regular turn with one exception.
+It does not reuse probe tokens as drafts, because our server keeps a single draft state that is shared by all requests.
+The parent keeps this optimization.
+The drafts that the successors forgo would save at most \MotDraftForgonePct\% of the time.
+
+\paragraph{History.}
+For all methods, the assistant message stored in the history is the output of the turn with its reasoning block removed.

@@ -1,0 +1,88 @@
+{
+  "papers": [
+    {
+      "paper": "DLite- History-free Speculative Decoding for Agentic AI",
+      "path": "/mnt/data/zhangshuai/LLMs/paper/Agent系列latex论文/Agent动作投机/DLite- History-free Speculative Decoding for Agentic AI",
+      "level": "token speculative decoding",
+      "mechanism": "从目标隐藏状态生成局部 token 草稿，不维护草稿历史 KV；需要专门训练和引擎接入。",
+      "decision": "后续候选；当前不启动大规模训练。",
+      "primary_url": "https://arxiv.org/abs/2610.23787"
+    },
+    {
+      "paper": "Trajectory-Level Speculation with Semantic Verification for Tool-Using Agents",
+      "path": "/mnt/data/zhangshuai/LLMs/paper/Agent系列latex论文/Agent动作投机/Trajectory-Level Speculation with Semantic Verification for Tool-Using Agents",
+      "level": "semantic trajectory verification",
+      "mechanism": "弱模型执行只读步骤，强模型在状态修改边界审阅和修复；改变 Actor 策略。",
+      "decision": "可借鉴验证替代重复生成；不直接移植整个双模型系统。",
+      "primary_url": "https://arxiv.org/abs/2610.21463"
+    },
+    {
+      "paper": "ToolSpec- Accelerating Tool Calling via Schema-Aware and Retrieval-Augmented Speculative Decoding",
+      "path": "/mnt/data/zhangshuai/LLMs/paper/Agent系列latex论文/Agent动作投机/ToolSpec- Accelerating Tool Calling via Schema-Aware and Retrieval-Augmented Speculative Decoding",
+      "level": "token speculative decoding",
+      "mechanism": "schema 状态机和历史调用检索提供草稿，目标模型仍验证。",
+      "decision": "候选复用的来源；当前训练记录中工具调用 token 约占 5.18%，单独优化此段的空间有限。",
+      "primary_url": "https://arxiv.org/abs/2604.13519"
+    },
+    {
+      "paper": "ObsSpec- Accelerating Agentic Reinforcement Learning with Observation Speculation",
+      "path": "/mnt/data/zhangshuai/LLMs/paper/Agent系列latex论文/Agent动作投机/ObsSpec- Accelerating Agentic Reinforcement Learning with Observation Speculation",
+      "level": "observation speculation for RL",
+      "mechanism": "世界模型预测工具观测，严格匹配后复用后续生成；限制深度宽度控制资源竞争。",
+      "decision": "不启动 RL 或世界模型训练；借鉴小预算和严格状态隔离。",
+      "primary_url": "https://arxiv.org/abs/2610.15246"
+    },
+    {
+      "paper": "Controlled Token-Efficient Speculation for Large Language Model Agents",
+      "path": "/mnt/data/zhangshuai/LLMs/paper/Agent系列latex论文/Agent动作投机/Controlled Token-Efficient Speculation for Large Language Model Agents",
+      "level": "speculative tree admission",
+      "mechanism": "MLP 在生成前分配候选预算，或生成后筛掉昂贵子树。",
+      "decision": "针对树分支和 token 成本；当前不新增预测器。",
+      "primary_url": null
+    },
+    {
+      "paper": "ETA- Exit on Tool Arrival in Speculative Agent Loops",
+      "path": "/mnt/data/zhangshuai/LLMs/paper/Agent系列latex论文/Agent动作投机/ETA- Exit on Tool Arrival in Speculative Agent Loops",
+      "level": "reasoning early exit",
+      "mechanism": "连续候选稳定、工具调用概率高、匹配已派发调用且结果就绪后结束 CoT。",
+      "decision": "当前最贴合主模型思考占主耗时的强比较方法；不具备相对完整思考 Actor 的分布保持。",
+      "primary_url": null
+    },
+    {
+      "paper": "ProSpect- Proactive Speculation for Lossless Acceleration of Multi-Agent Systems",
+      "path": "/mnt/data/zhangshuai/LLMs/paper/Agent系列latex论文/Agent动作投机/ProSpect- Proactive Speculation for Lossless Acceleration of Multi-Agent Systems",
+      "level": "multi-agent speculation",
+      "mechanism": "将下一 agent 的图链接预测与消息生成分开，并用历史示例和预算控制。",
+      "decision": "任务分解思路可借用；完整多 agent 系统超出本次最小修改范围。",
+      "primary_url": null
+    }
+  ],
+  "selected_hypothesis": "首次已执行候选错误会阻止 ETA 退出；在同一已提交环境状态上替换为反复确认的候选，可能恢复可用工具结果并提前结束思考。",
+  "attribution": "SPORK 的隔离执行和候选替换 + ETA 的退出条件。仅为组合原型，尚未证明论文级新颖性或泛化。",
+  "baseline": "现有 SPORK，另加 ETA 式退出作为必要近邻对照",
+  "original_training_audit": {
+    "tasks": 100,
+    "turns": 525,
+    "tool_turns": 436,
+    "strict_hits": 337,
+    "post_tool_ready_slack_s": 18952.904180137673,
+    "total_wall_s": 36775.2610826341,
+    "scope": "potential window only, not realizable saving"
+  },
+  "timing_pair_audit": {
+    "train_tool_turns": 431,
+    "only_later_reused": 23,
+    "only_early_reused": 16
+  },
+  "new_files": [
+    "spork_core/stable_refresh_exit.py",
+    "scripts/run_stable_refresh_smoke.py",
+    "tests/test_stable_refresh_exit.py"
+  ],
+  "constraints": [
+    "No BERT training",
+    "Smoke development uses training task IDs only",
+    "Retain every failure and action mismatch",
+    "Full experiment is user-launched in tmux"
+  ]
+}

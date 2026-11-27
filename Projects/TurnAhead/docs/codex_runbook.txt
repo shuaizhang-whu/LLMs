@@ -1,0 +1,56 @@
+Codex 独立项目，2026-10-25
+
+项目：/mnt/data/zhangshuai/LLMs/Projects/spork-codex
+模型：/mnt/data/zhangshuai/LLMs/Models/Qwen3-32B
+环境：/mnt/data/zhangshuai/anaconda3/envs/spork
+
+1. 用户停止旧服务
+当前旧服务在 tmux 的 vllm:codex-research 窗口，工作目录是原 spork。
+可以在该窗口按 Ctrl+C，也可以在另一个终端执行：
+
+tmux send-keys -t vllm:codex-research C-c
+
+等待旧服务进程退出、GPU 释放后，创建新服务窗口：
+
+tmux new-window -t vllm -n spork-codex -c /mnt/data/zhangshuai/LLMs/Projects/spork-codex 'bash scripts/serve_qwen32_candidate_checks.sh'
+
+服务在 localhost:8017，四卡 TP=4。启动脚本检查端口和显存占用，拒绝与其他服务争用。
+日志写入本项目 results/server_candidate_checks_*.log。
+等待服务启动完成，再执行下一步。
+
+2. 用户在 tmux train 中运行全量评测
+
+cd /mnt/data/zhangshuai/LLMs/Projects/spork-codex
+bash scripts/run_codex_full_eval.sh --run
+
+范围：155 个任务，spork/raw 两组，每组一次，最多 8 轮，共 310 次运行。
+raw 为下一轮完整 Actor 预计算，保留动作、观测、状态和下一轮输入匹配条件。
+结果：results/successor_full_20261025_codex/
+总日志：results/successor_full_20261025_codex.launch.log
+中断后使用同一条 --run 命令续跑；已封存的成功和失败记录均保留。
+该流程采用固定用户消息，ACTION 分数不等同官方交互式 tau2 成功率。
+
+3. 轻量检查与准备（不会请求生成）
+
+bash scripts/run_codex_full_eval.sh --prepare
+source scripts/codex_env.sh
+CUDA_VISIBLE_DEVICES='' "$SPORK_CODEX_ENV/bin/python" scripts/check_codex_runtime.py
+
+加 --server 可只读检查模型服务的项目目录、启动源码指纹和 D3 状态。
+评测脚本在 --run 时自动执行此检查，拒绝连接从旧项目启动的服务。
+
+4. 迁入内容与历史边界
+
+活动实现：spork_core/successor_prefetch.py、successor_task.py、interactive_tau2.py，
+以及相应 runner、测试、原 SPORK 基础代码和 D3 服务代码。
+本地依赖：tau2-bench/src、airline/retail 数据、用户模拟配置、固定任务划分。
+实验结果：successor_*、interactive_*、user_fidelity_*、actor_overlap_*，包括失败尝试。
+早期预实验和服务日志：results/earlier_spork_runs/。
+研究分析：research_runs/ideas_20261021/、research_runs/review_20261025/。
+早期原 spork 开发代码：research_runs/migration_20261025/original_spork_sources/。
+迁移清单、代码差异和检查记录：research_runs/migration_20261025/。
+
+历史 manifest、源码快照、记录 seal 和旧命令保持原样；其中的旧路径说明当时的来源。
+旧的 successor_full_20261025_ready/prepared 仅保留为历史计划。
+当前有效启动入口是本说明第 1、2 步，新的结果目录以 _codex 结尾。
+原位置的实验记录和公共代码保留，后续 Codex 开发只在本项目内进行。

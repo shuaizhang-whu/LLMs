@@ -1,0 +1,75 @@
+Qwen3.5-9B 机制实验，2026-10-31
+
+项目：/mnt/data/zhangshuai/LLMs/Projects/spork-codex
+模型：/mnt/data/zhangshuai/LLMs/Models/Qwen3.5-9B
+环境：/mnt/data/zhangshuai/anaconda3/envs/spork
+默认 GPU：2,3；TP=2；端口：8027；bfloat16；上下文 40960。
+所有 GPU 实验由用户在 tmux 中启动。
+
+四个配置：
+spork：原完整推理 SPORK，父轮与正式下一轮保留 D1/D2/D3。
+serial：提前构造同样的候选输入与状态，但父轮验证通过后才运行子轮。
+        候选通过时子轮关闭 D3；拒绝时按正式 SPORK 执行下一轮，与 raw 的处理对应。
+actor_only：提前子轮模型推理，所有子轮工具执行等待父轮验证；拒绝时工具不执行。
+raw：当前完整方法，提前子轮模型和独立副本中的工具执行。
+这两项新控制用于解释重叠和工具执行的贡献，不代表 ETA 或 AOSpec 的实现。
+
+模型适配：
+- 使用 Qwen3.5 原生 XML 工具调用、按 schema 解析参数，保留字符串 ID 的前导零。
+- 所有组使用相同历史策略：移除已完成思考，保留可见说明，使用原生结构化工具模板。
+  此策略不等于另一种保留全部历史思考的原生 harness；结果只相对本文明确定义的基线。
+- D3 工具起始 token 为 248058；不能继续使用 Qwen3 的 151657。
+- 本地缺少 generation_config.json，因此显式使用 vLLM 默认生成配置。
+- 客户端明确设置 greedy、seed=42、最大生成 8192 token、工具延迟下限 2 秒。
+- 请求 batch-invariant；实际并发下的确定性必须由预检验证，CPU 检查不能证明。
+
+阶段一：接入预检
+任务 airline:2、retail:0；4 配置各一次；最多 2 轮；共 8 次。
+检查工具解析、D3 注入、提前启动及复用确实发生、正式 Actor token/动作/状态一致。
+预检失败或机制没有被充分触发时，不能跳过检查直接开始消融。
+
+阶段二：机制消融
+任务 airline:2,3,4,6；retail:0,1,3,4，均来自原训练划分。
+4 配置 × 8 任务 × 2 次重复 = 64 次，最多 2 轮；配置顺序轮换。
+每次任务运行前重置前缀缓存并执行相同的一 token 预热。
+每次完成记录均封存，包含失败；中断后续跑不覆盖已封存结果。
+发现正式 token、动作/结果/状态或可见回答分叉时，保留记录并停止后续运行。
+这一阶段是机制实验，不是 155 任务全量结论，也不是官方完整交互式 tau2 成功率。
+
+用户在 tmux 的 vllm 会话执行：
+
+cd /mnt/data/zhangshuai/LLMs/Projects/spork-codex
+bash scripts/serve_qwen35_9b.sh
+
+若会话不存在，先在终端执行 tmux new -s vllm。
+启动脚本只检查选中的 GPU 是否空闲，不会停止其他 GPU 上的程序。
+
+等待模型服务启动成功后，在 tmux 的 train 会话执行：
+
+cd /mnt/data/zhangshuai/LLMs/Projects/spork-codex
+bash scripts/run_qwen35_experiments.sh preflight
+
+若会话不存在，先在另一个终端执行 tmux new -s train。
+预检成功会写入 stage_check.json，显示 passed: true。
+随后在同一 train 会话执行：
+
+bash scripts/run_qwen35_experiments.sh ablation
+
+消融入口会重新检查预检结果、冻结源码、输入和服务配置。
+预检失败、记录被修改或模型服务不匹配时，入口会拒绝运行。
+发生分叉后请保留日志，不通过删除记录或绕过检查来继续。
+
+结果目录：
+results/qwen35_9b_20261031_preflight/
+results/qwen35_9b_20261031_ablation/
+各目录包含 manifest.json、code/、records/、attempts/、summary.json 和完成后的 stage_check.json。
+总日志位于相应目录名加 .launch.log。
+
+准备命令（不启动 GPU）：
+bash scripts/run_qwen35_experiments.sh prepare
+
+对照定位：
+ETA 与 AOSpec 的正式对比尚未接入本组。本组先验证新模型兼容性并隔离当前机制的收益。
+后续比较需要统一真实工具、历史策略、模型资源和计时，不能用简化开关冒充论文方法。
+原 Qwen3-32B 的 310 条记录及冻结代码保留原样；新计划使用独立结果目录。
+旧实验的活动源码已经演进，不应向旧冻结目录追加新版本运行。

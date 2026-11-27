@@ -1,0 +1,41 @@
+% Styles and macros for Figure 1 (input once in the preamble).
+% palette Q2 (muted slate blue / tan for target / draft; green / red are reserved for the saved / extra bands)
+\definecolor{genfill}{RGB}{203,213,228}\definecolor{genline}{RGB}{78,98,132}
+\definecolor{draftfill}{RGB}{240,226,200}\definecolor{draftline}{RGB}{168,128,70}
+\definecolor{toolline}{RGB}{127,127,127}\definecolor{userfill}{RGB}{234,234,234}
+\definecolor{cancelline}{RGB}{110,110,110}\definecolor{panelbg}{RGB}{245,245,245}
+\definecolor{savedfill}{RGB}{214,238,218}\definecolor{savedline}{RGB}{35,120,70}
+\definecolor{extrafill}{RGB}{249,216,211}\definecolor{extraline}{RGB}{180,45,35}
+\tikzset{
+  gen/.style={draw=genline, fill=genfill, line width=0.3pt},
+  draftbar/.style={draw=draftline, fill=draftfill, line width=0.3pt},
+  toolbar/.style={draw=genline, pattern=north east lines, pattern color=toolline, line width=0.3pt},
+  cancelbar/.style={draw=cancelline, dashed, fill=none, line width=0.4pt},
+  userbar/.style={draw=genline, fill=userfill, line width=0.3pt},
+  tlab/.style={font=\scriptsize, inner sep=0.5pt},
+  rowlab/.style={font=\footnotesize, anchor=east, inner sep=2pt},
+  note/.style={font=\scriptsize, text=black!75, inner sep=1pt},
+  ptag/.style={font=\scriptsize\bfseries, anchor=north west, inner sep=1pt},
+  savedband/.style={fill=savedfill, fill opacity=0.75, draw=none},
+  extraband/.style={fill=extrafill, fill opacity=0.75, draw=none},
+  % flow-chart boxes of panels (a) and (b)
+  fbox/.style={draw, rounded corners=2pt, align=left, inner sep=3.5pt, font=\footnotesize, line width=0.4pt},
+  draftbox/.style={fbox, draw=draftline, fill=draftfill},
+  targetbox/.style={fbox, draw=genline, fill=genfill},
+  plainbox/.style={fbox, draw=black!60, fill=black!4},
+  flow/.style={->, >=stealth, line width=0.5pt, draw=black!70},
+  flowlab/.style={font=\scriptsize, text=black!75, inner sep=1.5pt, fill=panelbg},
+}
+% \loopband{x0}{x1}{band style}{line color}{label}: highlighted interval behind both rows, with its boundaries and a bold label
+\newcommand{\loopband}[5]{\fill[#3] ({#1},-0.02) rectangle ({#2},2.41);
+  \draw[#4, line width=0.5pt] ({#1},-0.02) -- ({#1},2.41); \draw[#4, line width=0.5pt] ({#2},-0.02) -- ({#2},2.41);
+  \node[font=\footnotesize\bfseries, text=#4, anchor=south] at ({(#1+#2)/2},2.44) {#5};}
+% \loopbar{x0}{x1}{y}{style}{height}{label}
+\newcommand{\loopbar}[6]{\draw[#4] ({#1},{#3}) rectangle ({#2},{#3+#5});\ifx&#6&\else\node[tlab] at ({(#1+#2)/2},{#3+#5/2}) {#6};\fi}
+% common frame of the timeline panels: identical bounding box, time axis, optional panel tag
+\newcommand{\loopframe}[1]{%
+  \useasboundingbox (-1.75,-0.3) rectangle (11.4,2.8);
+  \draw[black!35, line width=0.3pt, ->] (0,-0.05) -- (11.2,-0.05); \node[note, anchor=north east] at (11.3,-0.08) {time};
+  \looptagnode{#1}}
+\newcommand{\looptagnode}[1]{\node[ptag] at (-1.75,2.95) {#1};}
+\newcommand{\looptagA}[1]{\node[font=\bfseries\scriptsize, anchor=south west] at ([yshift=2pt]s.north west) {#1};}

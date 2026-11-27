@@ -1,0 +1,56 @@
+{
+  "status": "Hardware gate queued; successor Agent implementation not yet validated",
+  "hypothesis": "Use a completed speculative tool result to start the next full Actor while the current full Actor is still running; adopt only when the next serialized input and environment match exactly.",
+  "baseline": "Original full-reasoning SPORK, with the same model, sampling settings, tool environment and D1/D2/D3 settings.",
+  "inherited_ideas": {
+    "Speculative Actions": "Multi-step speculation and rejecting invalid descendants",
+    "Controlled Token-Efficient Speculation": "Retain compatible descendant work and account for wrong-branch cost",
+    "ObsSpec": "Overlap policy inference with an anticipated observation, but this prototype would use an actual isolated speculative tool result instead of predicting the observation",
+    "SPORK": "Early tool prediction/execution and shared-prefix serving"
+  },
+  "online_inputs": [
+    "Committed conversation and current visible Actor prefix",
+    "The already predicted parent call and its actual isolated tool result",
+    "Tool environment fingerprints and exact next-prompt token IDs",
+    "Frozen model and generation parameters"
+  ],
+  "output": "A future containing the next full Actor decision and optionally its isolated tool execution; it is never committed before the parent is validated.",
+  "training_labels": "None. Full Actor trajectories are evaluated only after the run; they are not admission inputs.",
+  "proposed_contract": [
+    "Keep the parent Actor reasoning until its normal completion.",
+    "Every child starts from a separate copy of the environment AFTER the speculative parent tool. Never let child mutations enter the parent environment.",
+    "Require exact parent name/arguments, observation, post-parent state, generation settings, and full rendered next-prompt token IDs before reuse.",
+    "Cancel and drain rejected child work, including actual tool threads, before moving on; include this cost.",
+    "Initially use fixed disjoint pairs (turns 1/2, 3/4), one child at most, and no recursive descendants.",
+    "Disable D3 registration/clear inside an uncommitted child because the current sidecar clear is server-wide; retain ordinary target generation and tool speculation.",
+    "Record wasted tokens and resources, not just accepted branches."
+  ],
+  "admission_controls": [
+    "No-prefetch SPORK",
+    "Prefetch as soon as the predicted tool result is available",
+    "Optional causal admission using one unforced confirmation from the then-visible parent prefix, to avoid spending a full successor on an already stale candidate"
+  ],
+  "known_implementation_points": [
+    "Tau2ToolExecutor.execute_speculative can expose a result-ready callback without changing Actor decisions.",
+    "The callback must copy the post-parent environment before starting any child tool execution.",
+    "The candidate assistant serialization used in the retrospective bound was <tool_call> plus canonical JSON plus newline; actual whole-prompt token comparison remains mandatory.",
+    "D3 status active_requests counts registered draft states, not all running inference requests. Use process ownership and shared port locks to prevent experiment overlap.",
+    "Batch-invariant requested is not proof of token equivalence. Check empirical full Actor outputs under concurrency before any preservation claim."
+  ],
+  "hardware_preflight": {
+    "output": "/mnt/data/zhangshuai/LLMs/Projects/spork/results/actor_overlap_20261025_a",
+    "cpu_checks_passed": 4,
+    "groups": "smallest eligible training ID per airline/retail domain",
+    "repetitions": 2,
+    "decode_budget_each": 128,
+    "second_request_delay_s": 5,
+    "inputs": "saved complete prompts without saved thinking prefixes",
+    "limitations": "Second prompt includes a recorded later observation; this only tests hardware concurrency and greedy token equivalence, not causal online speedup."
+  },
+  "next_gate": "If parallel pair makespan does not improve or tokens differ, inspect that evidence before building a full successor runner. If useful, implement the contract and test both a correct-candidate case and a stale-candidate rejection case with all failures retained.",
+  "not_claimed": [
+    "A new paper contribution has been established",
+    "The hardware preflight measures real online Agent acceleration",
+    "Exact-input matching alone proves universal losslessness under arbitrary nondeterministic serving"
+  ]
+}

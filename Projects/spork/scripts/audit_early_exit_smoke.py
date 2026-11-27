@@ -32,7 +32,8 @@ def audit(directory):
     findings, rows = [], []
     grouped = defaultdict(dict)
     for path, record in records:
-        grouped[(record["group_id"], record["repeat"])][record["method"]] = record
+        method = record.get("method", record.get("config"))
+        grouped[(record["group_id"], record["repeat"])][method] = record
         for turn in record.get("turns", []):
             identity = f"{path.name}/turn_{turn['turn']}"
             cut = turn.get("exit", {})
@@ -87,7 +88,7 @@ def audit(directory):
                                       "stable_count": c.get("stable_count"),
                                       "duration_ms": c.get("end_ms", 0) - c.get("dispatch_ms", c.get("end_ms", 0)),
                                       "d3_registered": prediction.get("d3_registered", False)})
-            rows.append({"where": identity, "method": record["method"],
+            rows.append({"where": identity, "method": method,
                          "task_wall_s": record["wall_s"], "turn_s": turn.get("turn_end_ms", 0)/1000,
                          "call": emitted, "initial_candidate": initial,
                          "current_candidate": current, "redispatches": redispatches,
@@ -121,7 +122,7 @@ def audit(directory):
     return {"source": str(directory.resolve()), "expected_runs": len(manifest["schedule"]),
             "recorded_runs": len(records), "complete": len(records) == len(manifest["schedule"]),
             "source_sha256": {str(p.relative_to(directory)): hashlib.sha256(p.read_bytes()).hexdigest() for p, _ in records},
-            "source_failures": [{"group_id": r["group_id"], "method": r["method"], "errors": r["errors"]}
+            "source_failures": [{"group_id": r["group_id"], "method": r.get("method", r.get("config")), "errors": r["errors"]}
                                 for _, r in records if r.get("errors")],
             "integrity_findings": findings, "turns": rows, "comparisons": comparisons,
             "limitations": ["Partial/capped fixed-user trajectories cannot establish official tau2 success.",

@@ -1,0 +1,160 @@
+
+\subsection{A latency framework for the loop}
+\label{app:detail:model}
+
+We give a latency framework for the rounds of Sec.~\ref{sec:loop}. It
+separates the quantities that decide the speedup (acceptance, depth, task
+structure, round cost, draft cost), and it predicts the end-to-end speedup of
+a configuration from its hit rates, its draft cost and a sequential trace
+(Sec.~\ref{sec:validation}), which also tests predictions using offline hit rates.
+
+The framework covers exact-match action verification on one shared GPU. Proposing finishes
+before verification begins. It does not model asynchronous draft run-ahead, semantic verification,
+or mechanisms that overlap tool execution with model generation.
+
+\paragraph{Quantities.}
+For a benchmark and a target we measure the mean wall-clock of one sequential
+target step $t_{\mathrm{gen}}$ (generation only), of one tool execution
+$t_{\mathrm{tool}}$, and of one draft proposal $t_{\mathrm{draft}}$, and write
+$d = t_{\mathrm{draft}}/t_{\mathrm{gen}}$. The \emph{hit rates}
+$q_j = \Pr[A \ge j]$, $j = 1,\dots,k$, are the probabilities that the first $j$
+proposals of a round all match; $q_1$ is the first-position acceptance. The
+\emph{round-wait inflation} $\beta$ accounts for the round waiting for the
+slowest of the $A{+}1$ verifications it uses: its generation cost is the
+expected maximum of those requests rather than one mean step, written
+$\beta\, t_{\mathrm{gen}}$. If the awaited step times were
+independent draws from the sequential step-time distribution,
+$\beta = \sum_{a} \Pr[A{=}a]\; \mathbb{E}[\max_{a+1}] / t_{\mathrm{gen}} \ge 1$, a
+closed form in the empirical distribution; consecutive steps are correlated,
+so we also replay the actual trace (Sec.~\ref{sec:validation}). We compare both estimates with the measured value (Fig.~\ref{fig:components}(b)).
+
+\paragraph{Commits per round.}
+A round commits $A{+}1$ steps unless the segment ends inside the accepted
+prefix, in which case the bonus step is lost. Writing $e$ for the expected loss
+per round,
+\begin{equation}
+  c \;=\; 1 + \sum_{j=1}^{k} q_j \;-\; e,
+  \qquad e \;=\; \Pr[\text{segment ends within the accepted prefix}].
+  \label{eq:c}
+\end{equation}
+If hits were independent with rate $p$ and segments were long ($e \to 0$),
+Eq.~\ref{eq:c} would be the token-level expected acceptance length of
+\citet{leviathan2023}, $c = 1 + p + \dots + p^{k}$. Measured hit rates decay
+faster than $q_1^{\,j}$ (Fig.~\ref{fig:components}(a)), partly because rounds
+reach task or user-turn boundaries. Acceptance conditional on an existing proposal and an accepted
+prefix need not decline (Table~\ref{tab:agree}). On OpenAGI the second and third positions exist in
+81\% and 62\% of the rounds. For the same reason $e$ is not small on short
+tasks (0.38 on OpenAGI, whose tasks average 4.2 steps). In all cases
+$c \le \min(k{+}1, L)$: short segments cap the achievable depth regardless of
+acceptance.
+
+\paragraph{Round time and speedup.}
+Let $D$ be the mean proposing time per round, including proposal-tool execution, divided by
+$t_{\mathrm{gen}}$. Let $f$ be the fraction of sequential steps that execute a tool and $g$ the
+mean number of target-executed tool actions per round. Write $\tau=t_{\mathrm{tool}}/t_{\mathrm{gen}}$.
+A sequential step costs $t_{\mathrm{gen}}(1+f\tau)$. A speculative round costs approximately
+$t_{\mathrm{gen}}(D+\beta+g\tau)$. Accepted proposal states are adopted, so their tool costs are
+included in $D$ only once. For comparable work in the two arms, the speedup is
+\begin{equation}
+ S\simeq\frac{c(1+f\tau)}{\beta+D+g\tau}
+ \quad\xrightarrow{\;\tau\to0\;}\quad\frac{c}{\beta+D}.
+ \label{eq:S}
+\end{equation}
+This is the same model as Eq.~\ref{eq:main:S}. If every round makes exactly $k$ proposals and
+tool time is negligible, then $D=kd$. More generally, if each proposal executes a tool and
+$f=g=1$, then $D=k(d+\tau)$ and the denominator is $\beta+k(d+\tau)+\tau$.
+
+The framework separates four effects. Acceptance controls $c$ and the number of awaited
+verifications. Depth can increase $c$, proposing cost and verification wait. Segment boundaries
+limit both the number of proposals and the bonus action. The draft's relative cost enters through
+$D$, which explains why a smaller draft can be faster at comparable acceptance
+(Sec.~\ref{sec:selfspec}). With negligible tool time, two bounds follow:
+$S\le c/\beta\le(k+1)/\beta$. For long segments with independent hits, the acceptance ceiling
+approaches $1/((1-p)\beta)$ as $k$ grows. When all $k$ proposals are made, their cost $kd$ keeps
+growing, so deeper speculation eventually stops paying off.
+
+Verification issues up to $k+1$ target requests per round. The number of requests per committed
+step is therefore at most $(k+1)/c$. Discarded requests are cancelled early; the measured completion-token
+ratio is 1.16 on $\tau^2$-bench. These costs apply to our synchronous propose--verify schedule.
+Speculative Actions~\citep{specactions} overlaps draft and target execution, so its latency analysis
+uses a different execution schedule.
+
+\paragraph{Interpreting acceptance.}
+For long segments, independent hits of probability $p$, negligible tool time and exactly $k$
+proposals per round, the model becomes
+\begin{equation}
+ S(p)\simeq\frac{1+p+\cdots+p^k}{\beta(p)+kd}.
+ \label{eq:main:acceptance}
+\end{equation}
+The numerator is nonlinear for $k\ge2$, and verification wait can vary with $p$. Boundaries add
+another dependence: a one-action segment commits only one action even with perfect agreement.
+Thus equal acceptance need not imply equal speedup.
+
+The measured controls in Fig.~\ref{fig:curve} have different accepted-prefix distributions,
+segment truncation and proposing costs. Pooled acceptance alone does not identify those quantities,
+so Eq.~\ref{eq:S} does not imply a universal speedup curve in that acceptance rate.
+For example, the untrained TaskBench draft produces no usable proposal in 38\% of rounds. Those
+rounds consume proposing time and commit a target action, although no proposal enters the
+accepted/compared ratio. The framework therefore uses per-position rates, boundary loss and
+round costs explicitly. Tables~\ref{tab:model} and~\ref{tab:four} retain the measured inputs;
+the size and online studies are shown separately in Figs.~\ref{fig:size} and~\ref{fig:online}.
+
+\paragraph{Choosing $k$.}
+For negligible tool time, write $\pi_k$ for the fraction of rounds that make a $k$-th proposal.
+The proposing cost is $D_k\simeq d\sum_{j\le k}\pi_j$; proposals can stop at segment boundaries.
+Write $\Delta\beta_k$ for the growth of
+$\beta$ from awaiting one more request. With $B_k = \beta_k + d \sum_{j \le k} \pi_j$ the round cost at
+depth $k$, so that $S_k = c_k / B_k$, a $k$-th proposal pays off if and only if
+\begin{equation}
+ c_k-c_{k-1}>S_{k-1}(B_k-B_{k-1}).
+ \label{eq:main:depth}
+\end{equation}
+By Eq.~\ref{eq:c}, the gain $c_k - c_{k-1}$ is $q_k$ minus the
+growth of $e$, plus any change in the earlier hit rates, which move because depth changes where rounds
+start. If end effects are negligible and increasing depth leaves the earlier hit rates and proposal probabilities unchanged, the condition simplifies to
+\begin{equation}
+  q_k \;>\; S_{k-1}\,\bigl(\pi_k\, d + \Delta\beta_k\bigr),
+  \qquad\text{or, with } \pi_k = 1 \text{ and } \Delta\beta_k = 0,\qquad
+  q_k \;>\; S_{k-1}\, d .
+  \label{eq:k}
+\end{equation}
+\begin{corollary}[depth with stable earlier-position rates]
+\label{cor:k}
+Assume negligible end effects and unchanged earlier-position hit rates and proposal probabilities when increasing depth. Adding a $k$-th proposal pays off when its hit probability exceeds the
+current speedup times the marginal cost of the proposal: the draft's relative
+cost, paid only in the rounds that reach the position, plus the extra round-wait
+inflation. Near the end of a segment an accepted extra proposal can replace the bonus step instead of
+adding one, so on short tasks the rule overstates the value of depth. No proposal is made past the segment
+end ($\pi_k = 0$ for $k > L$); when $\Delta\beta_k=0$, setting $\pi_k=1$ upper-bounds the marginal drafting cost; this need not be conservative if verification wait also increases.
+\end{corollary}
+Using this approximation as a depth heuristic requires offline hit rates, draft latency, and an estimate of the change in verification wait. The following examples illustrate the heuristic rather than establish reliable configuration ranking. The planning hit rates are from the $k=5$ runs; the speedups compare separate depth runs. On OpenAGI
+($d = 0.06$) the simplified threshold is about $0.09$ and selects $k = 4$
+($q_3 = 0.31$, $q_4 = 0.14$, $q_5 = 0.08$); with $\pi_4 = 0.41$, $\pi_5 = 0.15$
+and $\Delta\beta \approx 0.015$ per position the thresholds fall to $0.06$ and
+$0.04$, and the rule predicts gains of a few hundredths up to $k = 5$; the measured speedup rises from
+1.34\xx{} at $k{=}1$ to 1.51\xx{} at $k{=}3$ and 1.57\xx{} at $k{=}5$ (Table~\ref{tab:model}), the last
+step within the bootstrap interval. On TaskBench ($d = 0.07$, threshold about $0.10$; $q_2 = 0.37$,
+$q_3 = 0.22$, $q_4 = 0.16$, $q_5 = 0.06$) it selects $k = 4$, and the measured speedup rises
+from 1.27\xx{} at $k{=}1$ to 1.37\xx{} at $k{=}3$ and 1.41\xx{} at $k{=}5$
+(Table~\ref{tab:model}), the last step again within noise. On BFCL (threshold $0.02$, $q_2 = 0.07$)
+it selects $k = 2$, and the measured speedup is 1.15, 1.20 and 1.19\xx{} at $k = 1$, 2 and 3; on $\tau^2$-bench (threshold $0.02$, $q_2 = 0.35$, $q_3 = 0.27$) it predicts that $k = 3$ gains further,
+and the measured speedup rises from 1.58\xx{} at $k{=}2$ to 1.79\xx{} at $k{=}3$
+(Table~\ref{tab:model}).
+
+\paragraph{Assumptions.}
+The framework assumes that (a) both arms do the same work. Every committed action is
+target-authored, but a speculative trajectory can differ from the target-only one
+(App.~\ref{app:success}); per run, the speculative arm commits between 3.9\% fewer and
+2.5\% more steps than the sequential arm in the configurations of Table~\ref{tab:model};
+(b) concurrent verification on a dedicated GPU is close to free: on the Qwen3 target we measure
+$+1$ to $+4\%$ per generated token with up to four concurrent requests and
+unchanged generation length, so $\beta$ is a max-of-$n$ effect rather than a
+throughput effect (on the Gemma planning configurations of Table~\ref{tab:four}, measured $\beta$
+exceeds the offline-hit replay by 0.05--0.13, Sec.~\ref{sec:validation}); (c) tool time is small relative to generation on the
+benchmarks we use (simulated backends, $\le 0.07$\,s per step); we exercise the
+$t_{\mathrm{tool}}$ terms by adding 2 or 5\,s to every executed tool step on $\tau^2$-bench and BFCL
+(Table~\ref{tab:tool}); (d) proposing and
+verifying do not overlap, as in Sec.~\ref{sec:loop}; a draft that ran ahead of
+the target could hide part of the proposing cost $D$, which we leave to future work; (e) the
+harness cancels discarded verifications (Sec.~\ref{sec:loop}), and we report the
+residual idle time separately.

@@ -1,0 +1,167 @@
+% !TEX root = ../main.tex
+\section{\method}
+\label{sec:method}
+
+\subsection{Overview}
+\label{sec:method:overview}
+
+\method runs the next turn while the current turn is still reasoning (\cref{fig:overview}).
+Consider two consecutive turns $t$ and $t{+}1$ of the target model.
+We call turn $t$ the \emph{parent}.
+While the parent reasons, speculative tool dispatch predicts its call, $\hat a_t$, and executes it, which yields an observation $\hat o_t$.
+As soon as $\hat o_t$ is ready, \method starts turn $t{+}1$ on the same model, from the input that would follow if the parent ended with exactly this call.
+We call this early run the \emph{successor}.
+When the parent finishes, \method checks whether the successor ran on the right input.
+If so, the successor is committed as turn $t{+}1$, including the work it has already done.
+If not, it is discarded and turn $t{+}1$ runs as usual.
+
+Three strategies make this work.
+\stratLaunch decides when the successor starts and how its input is built (\cref{sec:method:launch}).
+\stratSandbox keeps the tool calls of unconfirmed turns away from the real environment (\cref{sec:method:sandbox}).
+\stratCommit decides whether the successor may be kept (\cref{sec:method:commit}).
+\Cref{alg:window} summarizes one window.
+
+\begin{algorithm}[t]
+\caption{One \method window. \textsc{Turn} runs one turn of the target model; \textsc{Check} is the test of \cref{sec:method:commit}.}
+\label{alg:window}
+\small
+\begin{algorithmic}[1]
+\Require input $X_t$, history $H_t$, environment $S_t$
+\State $P \gets \textsc{Turn}(X_t, S_t)$;\; $C \gets \varnothing$
+\State $(\hat a,\hat o,\hat S) \gets \textsc{Dispatch}(P)$ \Comment{on a copy of $S_t$}
+\If{$\textsc{Reasoning}(P)$} \Comment{\S\ref{sec:method:launch}}
+  \State $\hat X \gets \textsc{Render}(H_t\oplus\langle\hat a,\hat o\rangle)$
+  \State $C \gets \textsc{Turn}(\hat X, \textsc{Copy}(\hat S))$ \Comment{\S\ref{sec:method:sandbox}}
+\EndIf
+\State $(X_{t+1}, S_{t+1}) \gets \textsc{Await}(P)$
+\If{$C\neq\varnothing$ \textbf{and} $\textsc{Check}(C, P)$} \Comment{\S\ref{sec:method:commit}}
+  \State $\textsc{Adopt}(\textsc{Await}(C))$
+\Else
+  \State $\textsc{Cancel}(C)$;\; $\textsc{Turn}(X_{t+1}, S_{t+1})$
+\EndIf
+\end{algorithmic}
+\end{algorithm}
+
+\paragraph{Time saved.}
+Let $R_t$ be the generation time of the parent, $\tau_t$ the time at which $\hat o_t$ is ready, and $B_{t+1}$ the duration of turn $t{+}1$.
+With speculative tool dispatch alone, the two turns take $R_t+B_{t+1}$.
+With a committed successor they take $\max(R_t,\,\tau_t+B_{t+1})$, which saves
+\begin{equation}
+  \Delta T_t=\min\big(B_{t+1},\,\sigma_t\big),
+  \qquad \sigma_t=R_t-\tau_t,
+  \label{eq:saving}
+\end{equation}
+where $\sigma_t$ is the slack of \cref{sec:motivation:slack}.
+The saving is limited by the slack and by the length of the next turn, not by the tool latency, so it adds to what speculative tool dispatch already saves.
+
+The successor shares the server with the parent.
+Suppose that each of two concurrent requests runs $s\ge 1$ times slower than it would alone.
+A committed window then saves $(2-s)\,\Delta T_t$, and a discarded successor delays its parent by $(s-1)$ times the time for which the two overlap (\cref{app:consistency}).
+If committed windows account for a fraction $p$ of the total overlap, a window saves about $(p-(s-1))$ times its overlap on average.
+\method therefore pays off when this overlap-weighted commit rate exceeds the relative cost of the second request, and \cref{sec:exp:analysis} measures both.
+
+\paragraph{Losslessness.}
+We call an acceleration \emph{lossless} if the committed trajectory is the same as under serial execution: every visible output, tool call, and observation, and the final environment state.
+\method is designed to be lossless when decoding is deterministic (\cref{sec:method:commit}).
+
+\subsection{\stratLaunch}
+\label{sec:method:launch}
+
+\paragraph{When to start.}
+The successor starts at the moment the observation of the dispatched call arrives, provided that the parent is still reasoning, that is, it has neither closed its reasoning nor begun to write its call.
+We refer to the dispatched call together with its observation as the \emph{anchor} of the window.
+Starting at the anchor gives the successor the whole slack.
+If the parent is already writing its call, the slack is almost over and \method does not start a successor.
+
+\paragraph{Which input to use.}
+The successor's input is rendered from the committed history $H_t$ extended by the anchor:
+\begin{equation}
+  \hat X_{t+1}=\mathrm{Render}\big(H_t\oplus\langle\hat a_t,\hat o_t\rangle\big).
+  \label{eq:input}
+\end{equation}
+The assistant message consists of the call $\hat a_t$ alone, and the tool message of $\hat o_t$.
+Following \cref{sec:motivation:input}, the parent's reasoning is left out, as it would be in the real history, and no other visible text is assumed.
+
+\paragraph{What the successor runs.}
+The successor is a complete turn of the target model with the same decoding configuration as any other turn.
+It reasons in full and emits its own call.
+No smaller model, prompt variant, or training is involved, so its output is what the target itself produces on $\hat X_{t+1}$.
+Speculative tool dispatch stays active inside the successor, so the successor's own tool call is overlapped as well.
+
+\paragraph{Windows.}
+\method groups turns into disjoint windows $(1,2),(3,4),\dots$
+A successor does not start a successor of its own, and the next window starts from the committed history.
+A window never extends beyond a reply to the user, because the following input depends on the user's answer.
+A depth of one limits the wasted work to at most one turn per window.
+
+\paragraph{Other anchor sources.}
+\stratLaunch needs only an anchor: a candidate call and its observation that are available before the parent ends.
+We obtain it from speculative tool dispatch, which requires no training.
+A trained action drafter~\citep{xu2026leap} or a memory of past trajectories~\citep{li2026specmemory} could supply it instead, and the rest of \method would stay the same.
+We do not evaluate such sources.
+
+\subsection{\stratSandbox}
+\label{sec:method:sandbox}
+
+Both the dispatched call and the calls of the successor run before the parent has confirmed them.
+In \taubench, such calls cancel reservations, issue refunds, and modify orders.
+\method therefore executes them on copies of the environment, at two levels.
+
+\paragraph{First level: the dispatched call.}
+The call $\hat a_t$ is executed on a copy of the current environment.
+Its observation $\hat o_t$ is therefore a real tool result, not a prediction.
+If the parent later emits the same call, this copy becomes the committed environment and the tool is not run again.
+Otherwise the copy is dropped.
+
+\paragraph{Second level: the successor.}
+The successor runs on a second copy, taken from the first one after $\hat a_t$ has been applied.
+A separate copy is necessary because the first copy may become the committed environment as soon as the parent ends, while it is still open whether the successor will be kept.
+The tool calls of the successor change only the second copy.
+
+\paragraph{Adoption.}
+When the successor is committed, its copy replaces the environment.
+When it is discarded, the copy is dropped.
+Every tool call thus takes effect at most once, and only after the turn that issued it has been validated.
+
+\paragraph{Deferred execution.}
+Copying presupposes that the effects of a tool live in state that can be copied.
+For tools with external effects, such as sending a message, \method offers a deferred mode.
+The successor generates as usual, but its tool calls are held until the commit decision and run only if the successor is kept.
+Only the model computation is then speculative, and the saving is smaller (\cref{sec:exp:ablation}).
+
+\subsection{\stratCommit}
+\label{sec:method:commit}
+
+When the parent ends, its real output is known.
+If it ends with a reply to the user instead of a tool call, the successor is discarded.
+Otherwise the parent's call is committed as usual, which fixes the real observation $o_t$, the real environment, and the real next input $X_{t+1}$.
+
+\paragraph{The check.}
+The successor is kept only if five conditions hold:
+(i) the dispatched call equals the parent's call in tool name and in every argument;
+(ii) the two observations have the same hash;
+(iii) the environment from which the successor started has the same fingerprint as the committed environment;
+(iv) the successor's input $\hat X_{t+1}$ is identical, token by token, to $X_{t+1}$; and
+(v) the decoding configuration is the same.
+Condition (iv) is the central one.
+As \cref{sec:motivation:input} shows, a matching call does not always give a matching input, and a turn generated from a different input is not the turn the serial agent would have produced.
+Conditions (i) and (ii) follow from (iv) and serve to report why a successor was rejected.
+Conditions (iii) and (v) cover what the input does not show: the environment behind the conversation and the settings of the request.
+
+\paragraph{Commit.}
+If the check passes, \method waits for the successor to finish, repeats the check, and adopts the successor's turn together with its environment copy.
+The time that the successor spent running inside the parent's slack is the saving of \cref{eq:saving}.
+
+\paragraph{Discard and resume.}
+If the check fails, \method cancels the successor's requests, waits until the tool calls it has in flight have returned, and drops its copy.
+Turn $t{+}1$ then runs normally from the committed history.
+Waiting for the in-flight calls ensures that no abandoned work competes with the resumed turn or outlives the window.
+A discarded successor costs compute and some contention, but it never changes what the agent does.
+
+\paragraph{Guarantee.}
+Suppose that decoding is deterministic, so that the model's output depends only on its input and configuration, and that the environment's response depends only on its state and the call.
+Then a committed successor is exactly the turn that serial execution would have produced, and the committed trajectory is identical to that of serial execution.
+\Cref{app:consistency} gives the argument.
+\Cref{sec:exp:fidelity} tests trajectory identity on Qwen3-32B with batch-invariant kernels~\citep{he2025nondeterminism}.
+With standard kernels, the output of a request can depend on the requests decoded with it.
+A committed successor is then still what the target generated from exactly the input of the serial turn, but trajectories are no longer reproducible across configurations, for speculative tool dispatch as much as for \method.
