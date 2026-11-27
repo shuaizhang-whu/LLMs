@@ -159,7 +159,7 @@ async def run_timed_retry_turn(session, client, adapter, messages, executor, tur
     async with _TurnResources(cfg.d3_clear) as resources:
         resources.main_task = asyncio.create_task(http.stream(
             session, prompt_ids, state, max_tokens=budget, seed=cfg.seed,
-            stop=adapter.main_stop, request_id=cfg.main_request_id,
+            stop=adapter.main_stop, request_id=cfg.main_request_id, sampling=cfg.actor_sampling,
         ), name="spork-actor")
         main = resources.main_task
         first_text, first_count, trace = await choose_first_launch(
@@ -229,7 +229,11 @@ async def run_timed_retry_turn(session, client, adapter, messages, executor, tur
 
         await main
         if state.finish_reason != "stop":
-            raise RuntimeError(f"Incomplete Actor generation: finish_reason={state.finish_reason!r}")
+            error = RuntimeError(f"Incomplete Actor generation: finish_reason={state.finish_reason!r}")
+            error.partial_actor = {"turn": turn, "text": state.text,
+                "token_ids": list(state.token_ids), "finish_reason": state.finish_reason,
+                "usage": state.usage, "probes": probes, "completion_valid": False}
+            raise error
         main_observed_ms = elapsed_ms()
         main_end_ms = elapsed_ms(state.finished_at)
         main_call = adapter.parse_main_tool_call(state.text)
@@ -256,7 +260,8 @@ async def run_timed_retry_turn(session, client, adapter, messages, executor, tur
             canonical_end_ms = elapsed_ms()
         ready_ms = elapsed_ms()
         if has_tool:
-            _append_tool_messages(messages, state.text, tool_result)
+            _append_tool_messages(messages, state.text, tool_result,
+                                  canonical_call=main_call if cfg.canonical_tool_history else None)
         hit_name = bool(spec_call and main_call and spec_call.get("name") == main_call.get("name"))
         entry = {
             "turn": turn, "fork_point": _fork_point(turn), "mode": "spork_retry",

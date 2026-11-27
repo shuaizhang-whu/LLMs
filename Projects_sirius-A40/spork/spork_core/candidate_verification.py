@@ -93,7 +93,8 @@ def tool_probability(choice, token_text="<tool_call>"):
 
 
 async def decision_probe(session, client, tokenizer, prefix_ids, *, candidate=None,
-                         use_d3=False, threshold=0.9, max_tokens=160, seed=42):
+                         use_d3=False, threshold=0.9, max_tokens=160, seed=42,
+                         reuse_mode="single"):
     """Generate an unforced decision, optionally reusing the previous call draft.
 
     A one-token free probe cheaply rejects no-tool branches. If a tool is likely,
@@ -107,6 +108,7 @@ async def decision_probe(session, client, tokenizer, prefix_ids, *, candidate=No
     open_ids = tokenizer.encode("<tool_call>", add_special_tokens=False)
     result = {"tool_probability": probability, "free_wall_s": free["wall_s"],
               "free_usage": free.get("usage", {}), "call_text": None,
+              "reuse_mode": reuse_mode if use_d3 else None,
               "d3_registered": False, "registration_attempts": []}
     if free["token_ids"] != open_ids or probability < threshold:
         return {**result, "wall_s": time.perf_counter() - start}
@@ -122,7 +124,8 @@ async def decision_probe(session, client, tokenizer, prefix_ids, *, candidate=No
             while not completion.done() and time.perf_counter() < deadline:
                 await asyncio.sleep(0.015)
                 registration = await client.set_draft(
-                    session, request_id, len(prefix_ids), candidate, tokenizer)
+                    session, request_id, len(prefix_ids), candidate, tokenizer,
+                    reuse_mode=reuse_mode)
                 result["registration_attempts"].append(registration)
                 if registration.get("status") == "ok":
                     result["d3_registered"] = True
@@ -143,3 +146,54 @@ async def decision_probe(session, client, tokenizer, prefix_ids, *, candidate=No
                   continuation_wall_s=choice["wall_s"],
                   wall_s=time.perf_counter() - start)
     return result
+
+
+async def forced_probe_with_draft(session, client, tokenizer, request_ids, *, candidate,
+                                  reuse_mode="prefix", **generation):
+    """Accelerate an unchanged forced probe with the preceding probe's draft.
+
+    The full forced call and all target logprobs are still generated. No free
+    probability gate is added and no stability evidence is skipped. The caller
+    owns end-of-turn cleanup; this helper must not clear the concurrent Actor.
+    """
+    from .draft_reuse import REUSE_MODES
+    if reuse_mode not in REUSE_MODES:
+        raise ValueError(f"Unsupported forced-probe reuse mode: {reuse_mode}")
+    started = time.perf_counter()
+    metadata = {"candidate": candidate, "reuse_mode": reuse_mode,
+                "d3_registered": False, "registration_attempts": []}
+    if candidate is None:
+        choice = await client.complete(session, request_ids, **generation)
+        metadata["wall_s"] = time.perf_counter() - started
+        return choice, metadata
+    opener = tokenizer.encode("<tool_call>", add_special_tokens=False)
+    head = tokenizer.encode('\n{"name": "', add_special_tokens=False)
+    anchor = len(request_ids) - len(opener) - len(head)
+    if not opener or anchor < 0 or list(request_ids[anchor:]) != opener + head:
+        raise ValueError("Forced-probe draft requires the exact trailing tool/name opener")
+    request_id = "forced-probe-" + uuid.uuid4().hex
+    metadata.update(request_id=request_id, prompt_anchor=anchor)
+    completion = asyncio.create_task(client.complete(
+        session, request_ids, request_id=request_id, **generation))
+    try:
+        deadline = time.perf_counter() + 1.0
+        while not completion.done() and time.perf_counter() < deadline:
+            await asyncio.sleep(.015)
+            if completion.done():
+                break
+            registration = await client.set_draft(
+                session, request_id, anchor, candidate, tokenizer, reuse_mode=reuse_mode)
+            metadata["registration_attempts"].append(registration)
+            if registration.get("status") == "ok":
+                metadata["d3_registered"] = True
+                break
+            if (registration.get("error") != "main_request_not_active_or_ambiguous"
+                    or registration.get("matches", 0) > 1):
+                raise RuntimeError(f"Forced-probe D3 registration failed: {registration}")
+        choice = await completion
+    finally:
+        if not completion.done():
+            completion.cancel()
+        await asyncio.gather(completion, return_exceptions=True)
+    metadata["wall_s"] = time.perf_counter() - started
+    return choice, metadata

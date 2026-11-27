@@ -66,9 +66,13 @@ class FailureTests(unittest.IsolatedAsyncioTestCase):
             args[3].finish_reason = "length"
 
         with transport(truncated):
-            with self.assertRaisesRegex(RuntimeError, "[Ii]ncomplete Actor"):
+            with self.assertRaisesRegex(RuntimeError, "[Ii]ncomplete Actor") as caught:
                 await self.run_turn(RetryTurnConfig(launch_mode="off"), tool)
         self.assertFalse(tool.started.is_set())
+        partial = caught.exception.partial_actor
+        self.assertEqual(partial["finish_reason"], "length")
+        self.assertFalse(partial["completion_valid"])
+        self.assertEqual(bytes(partial["token_ids"]).decode(), partial["text"])
 
     async def test_malformed_tool_call_is_not_a_valid_final_answer(self):
         with transport(finished_stream), patch.object(Adapter, "parse_main_tool_call", return_value=None):
@@ -214,6 +218,9 @@ class FailureTests(unittest.IsolatedAsyncioTestCase):
         port = site._server.sockets[0].getsockname()[1]
         client = Client()
         client.base_url = f"http://127.0.0.1:{port}/v1"
+        # This checks HTTP error propagation and request count, not latency.
+        # Shared-host I/O stalls must not replace the intended 503 with a timeout.
+        client.timeout_s = 30
         try:
             async with ClientSession(trust_env=False) as session:
                 with transport(fake_stream):
