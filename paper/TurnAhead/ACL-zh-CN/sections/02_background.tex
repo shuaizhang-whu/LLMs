@@ -1,0 +1,69 @@
+% !TEX root = ../main.tex
+\section{背景与问题设定}
+\label{sec:background}
+
+\subsection{推理智能体}
+\label{sec:background:loop}
+
+我们考虑一种由推理模型驱动、能够调用工具的智能体，并将该模型称为\emph{目标模型}（target）。
+任务按轮次 $t=1,2,\dots$ 推进。
+在第 $t$ 轮，目标模型读取输入 $\ctx{t}$，并生成 $Y_t=(\rsn{t},\vis{t},\act{t})$：其中，$\rsn{t}$ 是位于思考分隔符内的推理片段，$\vis{t}$ 是可选的可见文本，$\act{t}$ 是工具调用；若没有调用，则记为 $\act{t}=\bot$。
+没有工具调用时，$\vis{t}$ 是一条回复，它结束当前智能体执行片段，并将控制权交还给用户。
+工具调用在环境状态 $\env{t}$ 上执行：
+\begin{equation}
+  (\obs{t},\env{t+1}) = E(\env{t},\act{t}),
+  \label{eq:env}
+\end{equation}
+随后，执行框架将本轮追加到已提交历史，并渲染下一轮输入：
+\begin{equation}
+  \hist_{t+1} = \hist_t \oplus \langle \vis{t},\act{t},\obs{t}\rangle,
+  \qquad
+  \ctx{t+1} = \render(\hist_{t+1}),
+  \label{eq:history}
+\end{equation}
+其中，$\render$ 表示应用聊天模板并进行词元化。
+
+\paragraph{历史策略。}
+\Cref{eq:history} 丢弃已经完成的推理内容。
+这遵循了模型开发者的建议：在多轮使用时，历史应仅保留模型每轮的最终输出，而不保留其思考内容~\citep{qwen2025qwen3card,qwen2026qwen35card}。
+这一策略也与 \citet{bai2026spork} 的参考执行框架一致。
+本文所有方法均采用这一策略。\footnote{对于最后一条用户消息之后的助手消息，如果调用方提供了推理内容，两种模型的参考聊天模板都会重新插入这些内容。我们的执行框架从不提供推理内容。“局限性”一节讨论了保留推理内容的执行框架。}
+在此策略下，一轮执行仅通过其可见文本、动作及由此产生的观测影响后续执行。
+
+\paragraph{延迟的来源。}
+各轮次严格串行。
+输入 $\ctx{t+1}$ 包含 $\obs{t}$，而 $\obs{t}$ 依赖于 $\act{t}$；后者只有在目标模型完成生成后才会确定。
+因此，一轮的耗时等于完整生成时间 $R_t$ 加上工具延迟 $L_t$。
+对于推理模型，$R_t$ 占据主导地位（\cref{sec:motivation}）。
+
+\subsection{无损加速}
+\label{sec:background:lossless}
+
+参考执行即上述串行循环。
+
+\begin{definition}[无损加速]
+\label{def:lossless}
+若一种加速执行在每项任务上提交的可见输出、动作和观测序列均与参考执行相同，并到达相同的最终环境状态，则称其为\emph{无损}（lossless）。
+\end{definition}
+
+这一定义约束完整轨迹。
+它强于逐动作保证：逐动作保证只要求每个已提交动作均由目标模型生成，但执行轨迹仍可能发生分歧~\citep{xu2026leap}。
+该定义还要求参考执行可复现。
+因此，我们采用贪心解码，并使用批次不变内核（batch-invariant kernels）~\citep{he2025nondeterminism}，使给定输入的输出不依赖同一批次中的其他请求。
+
+\subsection{自推测工具派发}
+\label{sec:background:spork}
+
+\spork~\citep{bai2026spork} 通过三个组件，将工具延迟隐藏在目标模型自身的推理过程中。
+\textbf{(D1) 分叉探测。}目标模型解码第 $t$ 轮时，一个探测请求从相同前缀继续生成：前缀包含输入、已生成的推理，以及一个强制关闭推理并开始工具调用的后缀。
+探测请求解码得到候选调用 $\hat a_t$。
+由于复用了前缀缓存，其开销较低。
+\textbf{(D2) 置信度门控。}只有当候选调用中工具名片段的最小词元概率不低于 $\theta$ 时，才会派发该候选。
+否则，每再生成 $\Delta$ 个词元就重试一次探测，每轮最多探测 $K$ 次。
+\textbf{(D3) 草稿复用。}当目标模型生成正式工具调用时，探测得到的词元被用作推测解码草稿~\citep{leviathan2023fast,chen2023accelerating}。
+
+生成结束后，只有在 $\hat a_t\equiv\act{t}$ 时，才采用已派发调用的结果；这里的一致要求工具名和所有参数完全相同。
+否则，正常执行 $\act{t}$。
+我们使用默认参数的 \spork（$\theta=0.9$、$\Delta=50$、$K=5$）作为 \method 的底层机制及主要基线。
+若一个正确候选在本轮开始后的 $d_t$ 时刻派发，\spork 最多节省 $\min(L_t,R_t-d_t)$。
+因此，其收益受工具延迟限制；当工具很快时，这一收益较小。

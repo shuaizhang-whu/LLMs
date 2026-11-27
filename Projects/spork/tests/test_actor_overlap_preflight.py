@@ -55,6 +55,12 @@ class Checks(unittest.IsolatedAsyncioTestCase):
             await measure(None, http, self.pair, "parallel", 6)
         self.assertEqual(http.closed, {11, 22})
 
+    async def test_first_failure_during_launch_delay_does_not_launch_successor(self):
+        http = HTTP(fail_first=True)
+        with self.assertRaisesRegex(RuntimeError, "first request failed"):
+            await measure(None, http, self.pair, "parallel", 6, launch_delay_s=.03)
+        self.assertEqual(http.closed, {11})
+
 
 if __name__ == "__main__":
     unittest.main()

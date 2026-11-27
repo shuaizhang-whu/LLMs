@@ -1,0 +1,34 @@
+% !TEX root = ../main.tex
+\section{Additional Results}
+\label{app:results}
+
+\begin{table*}[t]
+\centering
+\small
+\setlength{\tabcolsep}{4pt}
+\input{generated/tab_breakdown}
+\caption{Mean task time with speculative tool dispatch and with \method by domain, with the saving and its 95\% bootstrap interval.}
+\label{tab:breakdown}
+\end{table*}
+
+\paragraph{Domains.}
+\Cref{tab:breakdown} splits the comparison of \method with speculative tool dispatch by domain.
+
+\paragraph{Motivation statistics under standard serving.}
+The analysis of \cref{sec:motivation} gives the same picture under standard serving.
+A correct call is dispatched in \MotStdAnchorPct\% of the tool-calling turns, and its observation is ready after a median of \MotStdReadyPosPct\% of the turn's generation time.
+The median slack is \MotStdSlackMedian\,s (\MotStdSlackSharePct\% of the turn), and the median ratio of slack to next-turn duration is \MotStdSlackOverNext.
+The whole next turn fits into the slack in \MotStdNextFitsPct\% of the pairs and at least half of it in \MotStdNextHalfPct\%.
+The next input built from the dispatched call is identical to the real one in \MotStdInputSamePct\% of the cases.
+
+\paragraph{Predicting the saving.}
+For \cref{sec:exp:analysis} we form the windows of \method in the runs of speculative tool dispatch.
+A window has a successor if its parent dispatched a call whose observation arrived before the parent's reasoning ended.
+It commits if the dispatched call equals the parent's call and the input built from it equals the real next input, which is the test of \cref{sec:motivation:input}.
+Its overlap is the smaller of the slack and the duration of the next turn if it commits, and the smaller of the slack and the median turn duration otherwise.
+The predicted saving of a task is $(2-s)$ times the overlap of its committing windows minus $(s-1)$ times the overlap of the others, with $s$ taken from the measurement of \cref{app:impl}.
+Under standard serving, where each task has its own trajectory in every configuration, the prediction is meaningful only in aggregate.
+
+\paragraph{Repeated runs under standard serving.}
+Two runs of the same task yield the same tokens in \StdRepeatSameNone{} of \StdRepeatPairsNone{} cases without speculation, in \StdRepeatSameDisp{} of \StdRepeatPairsDisp{} with speculative tool dispatch, and in \StdRepeatSameOurs{} of \StdRepeatPairsOurs{} with \method.
+The more of a turn overlaps with other requests, the less reproducible its output is under standard kernels.

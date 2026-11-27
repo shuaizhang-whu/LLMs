@@ -1,0 +1,89 @@
+{
+  "purpose": "research iteration, not a claim of a new paper contribution",
+  "baseline": "SPORK Qwen3-32B, TP4, batch-invariant, D1/D2/D3; all comparisons on the same live server",
+  "authorization": "User explicitly authorized bounded GPU smoke experiments; full evaluations remain user-launched in tmux",
+  "source_papers": {
+    "SpecAgent": {
+      "path": "/mnt/data/zhangshuai/LLMs/paper/Agent系列latex论文/Agent动作投机/Trajectory-Level Speculation with Semantic Verification for Tool-Using Agents/main.tex",
+      "sha256": "49bdaf8e3c419f28ef802be73e9c2cfcfc658514db1178562f49f6f4e7492154",
+      "reading_note": "Method and benchmark adapters: semantic review at state-changing boundaries, pure-read chunks can commit without review; approximate Actor behavior."
+    },
+    "ObsSpec": {
+      "path": "/mnt/data/zhangshuai/LLMs/paper/Agent系列latex论文/Agent动作投机/ObsSpec- Accelerating Agentic Reinforcement Learning with Observation Speculation/main.tex",
+      "sha256": "24a45f6c8f2e7b8332b26ef616e9bff9b5d67e0d3386f28c945be2f1062f13f1",
+      "reading_note": "Predict observations from history and action; exact observation match before retaining generated actions; observation-token CE; experiments train world model by replaying fixed policy rollouts."
+    },
+    "ToolSpec": {
+      "path": "/mnt/data/zhangshuai/LLMs/paper/Agent系列latex论文/Agent动作投机/ToolSpec- Accelerating Tool Calling via Schema-Aware and Retrieval-Augmented Speculative Decoding/Sections/4-Methodology.tex",
+      "sha256": "6fd902456fb034418729c792aa02d645b76421e73004379c98bfe482c0bc21c0",
+      "reading_note": "Schema FSM and top-10 hidden-state retrieval of prior tool calls; suffix matching supplies draft tokens; standard target verification."
+    },
+    "DLite": {
+      "path": "/mnt/data/zhangshuai/LLMs/paper/Agent系列latex论文/Agent动作投机/DLite- History-free Speculative Decoding for Agentic AI/tex/3-DLite.tex",
+      "sha256": "a9a800fb72fbbc767b9cbac7270dfc425e1768fca424f8f86348e032cd7dd5a3",
+      "reading_note": "Target hidden states plus anchor; no draft history KV; parallel backbone and low-rank sequential head; teacher warmup then CE+TV distillation."
+    },
+    "CTES": {
+      "path": "/mnt/data/zhangshuai/LLMs/paper/Agent系列latex论文/Agent动作投机/Controlled Token-Efficient Speculation for Large Language Model Agents/2120_Controlled_Token_Efficien.pdf",
+      "sha256": "7f27e13d6ba7ade0361c35b0bd2a85b6b62bf265cb522f739ec6166fa446ea3d",
+      "reading_note": "Pre-draft budget and post-draft branch selection; task-specific MLP labels; exact action and compatible state remain commit authority. Public release planned."
+    },
+    "ETA": {
+      "path": "/mnt/data/zhangshuai/LLMs/paper/Agent系列latex论文/Agent动作投机/ETA- Exit on Tool Arrival in Speculative Agent Loops/102_ETA_Exit_on_Tool_Arrival_i.pdf",
+      "sha256": "22367db1fbc41b2870cb090f8c3426ec981dcc3f1f775108bfd61c6f91c83ed7",
+      "reading_note": "Stable predicted action + free tool/no-tool probe + tool-ready deadline; close reasoning then independently generate action; no-tool rollback. Approximate to original full reasoning."
+    },
+    "ProSpect": {
+      "path": "/mnt/data/zhangshuai/LLMs/paper/Agent系列latex论文/Agent动作投机/ProSpect- Proactive Speculation for Lossless Acceleration of Multi-Agent Systems/44352_ProSpect_Proactive_Specu.pdf",
+      "sha256": "800a3d1750740c4e93d84640d218fdb5ad5ce0ead80aae17ed58bd203dbebf93",
+      "reading_note": "Historical DAG routing prediction plus retrieval-conditioned message generation; exact input match; main latency evaluation records Actor traces then replays with live Speculator."
+    }
+  },
+  "candidates": [
+    {
+      "id": "candidate_checked_exit",
+      "priority": 1,
+      "hypothesis": "Replace repeated autoregressive confirmation of a stable SPORK candidate by target token verification, while using ETA tool readiness and independently generating the final action. Test whether cheaper confirmation improves the ETA speed-quality tradeoff.",
+      "inputs": "Only committed history, tools, visible current reasoning prefix and an already generated candidate.",
+      "labels": "None for the first prototype. Original Actor action is used only for after-run evaluation.",
+      "output": "Continue reasoning or close reasoning; then canonical model action.",
+      "boundary": "Approximate early-exit method, not strict full-Actor trajectory preservation.",
+      "controls": [
+        "SPORK unchanged",
+        "ETA-inspired repeated forced+free probes",
+        "candidate verification with exit",
+        "candidate verification without exit if needed to isolate overhead"
+      ]
+    },
+    {
+      "id": "schema_memory_probe_drafting",
+      "priority": 2,
+      "hypothesis": "Use ToolSpec-style schema/history drafts to accelerate confirmation probes themselves, using exact Target verification and current argument values.",
+      "boundary": "Expected to preserve each probe distribution; early-exit component still changes Actor behavior.",
+      "labels": "Previous committed calls and current generated candidate only; no held-out future trajectories."
+    },
+    {
+      "id": "observation_memory_overlap",
+      "priority": 3,
+      "hypothesis": "Use memory-retrieved tool-output candidates to start the next Actor call during tool waits, retaining work only on exact observation and compatible-state match.",
+      "boundary": "Explore later on a tool-latency-dominated workload; current tau2 tool floor provides limited extra overlap."
+    }
+  ],
+  "prior_evidence": {
+    "source": "/mnt/data/zhangshuai/LLMs/Projects/spork/results/controller_full_20261017_021939_Wid7sh",
+    "filter": "normal completed train timing_spork records only",
+    "tasks": 100,
+    "turns": 525,
+    "turn_total_s": 36774.056716478924,
+    "matched_tool_ready_slack_s": 18952.904180137688,
+    "slack_fraction": 0.5153879085536041,
+    "interpretation": "Retrospective opportunity upper bound; no claim that all slack can be removed."
+  },
+  "screening": {
+    "sample_rule": "lowest numeric task IDs from the existing training split, balanced airline/retail; retain failures and regressions",
+    "preflight": "2 first-turn prefixes, 2 counterbalanced repeats and negative candidate controls; no tools execute",
+    "online_smoke": "paired live runs, common runtime, identical starting state; record all model/tool time, final calls, state hashes, D3 accounting and failures",
+    "success_requires": "Positive measured total wall-time gain, no smoke action/state regression, and mechanism instrumentation confirming the proposed path actually ran. Small samples do not establish non-inferiority or publication value.",
+    "held_out_test": "Not used for choosing code, thresholds or candidates."
+  }
+}

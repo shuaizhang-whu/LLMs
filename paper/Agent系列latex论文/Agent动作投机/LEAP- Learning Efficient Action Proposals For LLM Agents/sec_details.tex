@@ -1,0 +1,329 @@
+\section{Additional related work}
+\label{app:related}
+\paragraph{Token-level speculative decoding.}
+Speculative decoding~\citep{leviathan2023,chen2023} pairs a draft with a verification that keeps the target's output distribution; the draft
+may be a small model or heads on the target (Medusa~\citep{medusa}, EAGLE~\citep{eagle}). A large body of
+work trains the draft to raise acceptance, for example DistillSpec~\citep{distillspec} with on-policy
+data and tailored divergences and domain-adapted drafts~\citep{domaindraft}. Online speculative
+decoding~\citep{osd} keeps distilling a token-level draft from the queries a deployment serves; Sec.~\ref{sec:online}
+does the same at the action level, where the supervision is an exact action rather than a distribution. All of it is at the token
+level, where acceptance depends on matching the target's token distribution. Our setting is action-level:
+only the target's decision matters, which is why we train by supervised imitation of committed actions
+(Sec.~\ref{sec:train}). Our accounting of committed steps per round is the
+token-level acceptance-length formula of \citet{leviathan2023} adapted to actions.
+
+\paragraph{Action-level speculation for agents.}
+Two lines exist. The first overlaps the target's \emph{decision} latency: an approximation agent runs
+ahead and the target verifies. Interactive Speculative Planning~\citep{isp} and its dynamic-$k$
+successor~\citep{dsp} use a cheaper prompting configuration of an API model as the approximation;
+Speculative Actions~\citep{specactions} uses off-the-shelf API models and gives propositions for
+single-step and asynchronous depth speculation, with latency measured on chess; Speculative Macro
+Commit~\citep{smc} commits mined multi-call macros with an untrained 4B draft on three GPUs; other
+systems use the same model without reasoning or off-the-shelf checkpoints~\citep{spagent,dualspec}. The second
+line overlaps \emph{tool} latency: Speculative Tool Calls~\citep{stc} and PASTE~\citep{paste} execute a
+predicted tool call while the model reasons, SPORK~\citep{spork} forks a probe from the running model's
+own state for the same purpose, and Speculate with Memory~\citep{swm} pre-launches read-only actions from
+a memory of past trajectories. AOSpec~\citep{aospec} co-speculates actions and observations so that slow
+tool calls overlap generation, verifying each prediction together with the state it was made from; it
+targets the regime where tools dominate, the complement of the generation-bound regime of
+Sec.~\ref{sec:model}. These works bound their gain by the tool-time share (at most 2\xx{} in
+\citet{stc}). LEAP reduces the number of sequential target generations and pays tool time in
+full; the two compose. Speculative Actions~\citep{specactions} analyzes single-step and asynchronous
+action speculation. Our framework studies synchronous proposal rounds with concurrent verification
+on one shared GPU. It accounts for verification wait, segment boundaries, drafting cost and tool time
+(Sec.~\ref{sec:model}). Among the self-speculation methods considered here, Speculate While You Reason~\citep{swyr},
+trains the agent jointly with a self-speculation head via RL and reports Hit@1 without end-to-end
+latency. LEAP studies a separately trained small action draft for a frozen target and measures wall-clock on a shared GPU.
+
+\paragraph{Benchmarks.}
+We use OpenAGI~\citep{openagi}, TaskBench~\citep{taskbench}, the $\tau^2$-bench domain of
+$\tau^2$-bench~\citep{tau2bench}, and the multi-turn split of BFCL~\citep{bfcl}.
+
+\section{Algorithm, guarantee and supervision}
+\label{app:method}
+\subsection{Problem, guarantee and notation}
+\label{app:detail:problem}
+A target agent $T$ solves a task by a sequence of actions. At step $i$ it sees a context $s_i$
+(instruction, tool schemas, the actions and observations so far, and any user turns) and emits the action
+$a_i = T(s_i)$, the canonical action that greedy decoding returns on $s_i$ after its reasoning; on tool benchmarks the action is
+executed and its observation is appended to the context. We want to run this agent faster while every
+action it executes is still its own.
+
+Property~\ref{prop:exact} states the per-action guarantee used here.
+The loop of Sec.~\ref{sec:loop} maintains this property by construction, and the harness checks it on every
+task. The property holds per action, not per trajectory. The serving engine's floating-point results depend on
+which requests it decodes together, and speculation verifies several contexts at once. Run alone, the target
+repeats its trajectory exactly; with speculation, a small numerical difference can change a token in a long
+chain of reasoning and with it a decision, after which the trajectory differs. Batching is the main source but not
+the only one: with every verification decoded alone, trajectories still differ on some tasks (App.~\ref{app:success}).
+Speculative Actions~\citep{specactions} calls such verification lossless; we keep the per-action guarantee and measure how
+often whole trajectories differ (App.~\ref{app:success}).
+
+\textbf{Draft and agreement.} A draft $D$ is a small model that predicts $T$'s action from the same
+context, $\hat a = D(s)$, decoded greedily without reasoning. Actions are compared after
+canonicalization (tool name and sorted arguments, or the reply marker for a user-facing message). On a set
+of $n$ target contexts $\{(s_i, a_i)\}$ the offline \emph{agreement} of $D$ is
+$\frac{1}{n}\sum_{i}\mathbbm{1}[D(s_i) = a_i]$. Its counterpart in the running system is the
+per-position acceptance $q_j$ of the loop, defined in Sec.~\ref{sec:model} and compared with the offline
+rate in Table~\ref{tab:agree}. Table~\ref{tab:notation} collects the notation.
+
+\begin{table}[t]
+\centering
+\caption{Notation.}
+\label{tab:notation}
+\small
+\begin{tabular}{ll}
+\toprule
+$T$, $D$ & target agent; draft \\
+$s_i$, $a_i$ & context and target action at step $i$; $\hat a_j$: $j$-th proposal of a round \\
+$k$ & proposals per round (depth) \\
+$A$ & accepted proposals in a round; the round commits $A{+}1$ steps \\
+$L$ & agent steps in a segment (between user turns or up to the end of the task) \\
+$q_j$ & $\Pr[A \ge j]$, hit rate at position $j$; $q_1$ is the first-position acceptance \\
+$c$, $e$ & committed steps per round; expected bonus-step loss at segment ends (Eq.~\ref{eq:c}) \\
+$t_{\mathrm{gen}}$, $t_{\mathrm{tool}}$, $t_{\mathrm{draft}}$ & mean target generation, tool and draft-proposal times; $d = t_{\mathrm{draft}}/t_{\mathrm{gen}}$ \\
+$\beta$ & round-wait inflation: mean of the slowest awaited verification over $t_{\mathrm{gen}}$ \\
+$S$ & whole-task speedup, sequential over speculative wall-clock (Eq.~\ref{eq:S}) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{The speculative loop}
+\label{app:detail:loop}
+Execution proceeds in \emph{rounds}. The draft and the target alternate; the draft never runs ahead of the
+target. Given the committed prefix $s$, a round has three steps (Fig.~\ref{fig:loop}).
+\begin{enumerate}
+  \item \textbf{Propose.} $D$ proposes $\hat a_1,\dots,\hat a_k$ one after another, each conditioned on
+  $s$ and its own earlier proposals. On tool benchmarks each proposal is executed in a copy of the
+  environment so that the next proposal can see its observation; the real environment executes only
+  committed actions, and an accepted proposal is not executed again: the copy in which it ran becomes the
+  environment.
+  \item \textbf{Verify.} $T$ generates its own action on the $k{+}1$ contexts $s$, $(s,\hat a_1)$,
+  \dots, $(s,\hat a_1,\dots,\hat a_k)$, sent as concurrent requests to the same server that serves it
+  alone. Let $A$ be the number of leading proposals that equal $T$'s action on their context.
+  \item \textbf{Commit.} The round commits $\hat a_1,\dots,\hat a_A$ and, after them, $T$'s own action on
+  the first context they do not match; if all $k$ match, that is $T$'s action on the $(k{+}1)$-st
+  context, a \emph{bonus} step. The remaining verifications are discarded.
+\end{enumerate}
+A round thus commits $A{+}1 \le k{+}1$ steps for one target wait, and every committed action is one that
+$T$ generated on the context in which it is committed (Property~\ref{prop:exact}). Rounds never cross a
+\emph{segment} boundary: the end of the task, or a reply to the user, after which the next context
+contains a user turn the draft cannot predict. When a proposal is a reply, no request is issued past it,
+and a round that verifies the reply ends without a bonus step. $L$ denotes the number of agent steps in a
+segment. Fig.~\ref{fig:timelines} shows where the time goes when every proposal is accepted and when
+the first one is rejected.
+
+\begin{proposition}[commit-eligible prefixes are teacher-forced]
+\label{prop:commit}
+$\hat a_j$ is committed only if $\hat a_{<j} = a_{<j}$; hence every context in which a proposal can be
+committed is a prefix of the target's own trajectory, at every position $j$ of the round and not only at
+$j{=}1$, and the committed action in that context is the target's teacher-forced action. Deployment
+therefore draws its (context, committed action) pairs from the target's own traces; which contexts are
+drawn depends on where rounds start and which proposals are accepted, a selection that
+Sec.~\ref{sec:validation} measures.
+\end{proposition}
+\emph{Proof.} A round commits $\hat a_1,\dots,\hat a_A$ with $A = \min\{j : \hat a_j \neq a_j\} - 1$. If
+$\hat a_j$ is committed then $j \le A$, so $\hat a_{<j} = a_{<j}$ and $\hat a_j$ was produced by
+$D$ on $(s, a_{<j})$. Proposals made on a mismatched prefix are discarded, never committed.
+\hfill$\square$
+
+If the target's output depended only on the context, and not on the requests decoded with it or before
+it, and if tool results depended only on the environment state and the call, then by
+Proposition~\ref{prop:commit} and induction over rounds the committed trajectory would be exactly the
+target-only one. Property~\ref{prop:exact} needs neither condition; the first does not hold exactly in our
+serving engine (Sec.~\ref{sec:problem} and App.~\ref{app:success}).
+
+\paragraph{Implementation.}
+Verification responses are consumed in prefix order; as soon as context $j$ mismatches, the requests for
+contexts $j{+}1,\dots,k$ are cancelled and the server aborts them, so a round never waits for a
+verification it will discard. Both models are served by the same engine on one GPU; the draft is a LoRA
+adapter on a 0.6B base run without reasoning (App.~\ref{app:serving}).
+
+
+\begin{figure}[tbp]
+\centering\setlength{\fboxsep}{2pt}
+\renewcommand{\looptagnode}[1]{}\renewcommand{\looptagA}[1]{}
+\resizebox{0.9\linewidth}{!}{\input{figures/fig_loop_legend}}\par\smallskip
+\begin{subfigure}{\linewidth}\centering
+\resizebox{\linewidth}{!}{\input{figures/fig_loop_accept}}
+\caption{Both proposals accepted: three committed steps in one verification round.}
+\end{subfigure}\par\smallskip
+\begin{subfigure}{\linewidth}\centering
+\resizebox{\linewidth}{!}{\input{figures/fig_loop_reject}}
+\caption{First proposal rejected: one committed step, plus proposing cost.}
+\end{subfigure}
+\caption{\textbf{Round timelines with $k=2$.} Illustrative durations. A successful round waits for the
+slowest required verification; on a mismatch, unused requests are cancelled. Tool execution for
+proposals occurs while proposing, and accepted environment states are adopted.}
+\label{fig:timelines}
+\end{figure}
+
+
+\subsection{Training the draft on the target's committed actions}
+\label{app:detail:train}
+\textbf{Supervision.} The training set is a by-product of running the agent (Fig.~\ref{fig:loop}): every step yields a pair
+$(s_i, a_i)$ of context and the target's committed action. We run $T$ once over the training tasks, log
+these pairs, and fine-tune $D$ by cross-entropy on the action tokens given the context. No target logits,
+no draft rollouts, and no human labels are used. The separate pass is a convenience, not a requirement:
+once the speculative system runs, every action it commits is one the target generated
+(Proposition~\ref{prop:commit}), whatever the draft proposed, so its commits are the same supervision.
+Sec.~\ref{sec:online} trains the draft from them while the system serves.
+
+\textbf{Predict the decision.} The label $a_i$ is the canonical action, not the target's reasoning text.
+The draft is asked to reproduce a low-entropy policy's next decision, not a 32B model's output
+distribution, which is what makes a 0.6B base viable. The draft runs with reasoning disabled and, on
+tool benchmarks, under the tool schema as a decoding constraint. Implementation: LoRA rank 64,
+$\alpha{=}128$, learning rate $3\times10^{-5}$, two to three epochs with the checkpoint chosen on a
+validation split; training takes minutes on one GPU per benchmark.
+
+\paragraph{Why imitation is a natural objective.}
+By Proposition~\ref{prop:commit} (Sec.~\ref{sec:loop}), a proposal is committed only if it was generated
+on the target's true prefix, so every context in which a proposal can be committed is a prefix of the
+target's own trajectory, at every position and not only the first. Supervised imitation on the target's
+traces trains $D$ on contexts of this kind. Acceptance depends only on the target's decision, so the label
+is the canonical action, not the target's full output distribution. Plain cross-entropy on the canonical
+action is therefore the natural and cheapest objective. It is a surrogate for exact-match acceptance, and
+Sec.~\ref{sec:agreement} tests alternatives. The multi-step figure of merit is the per-position hit-rate
+curve $q_j$ of Sec.~\ref{sec:model}, not the single-step agreement.
+
+
+
+\section{Latency framework and additional checks}
+\label{app:model}
+\input{sec_framework}
+\section{Complete experimental results}
+\label{app:results}
+\label{app:detail:experiments}
+\subsection{Setup}
+\label{app:detail:setup}
+We use two targets. The main one is Qwen3-32B (temperature 0, reasoning enabled); the second,
+Gemma-4-31B-it, repeats the whole pipeline in Sec.~\ref{sec:results4}. The drafts are
+Qwen3-0.6B, 1.7B and 4B, each with a LoRA adapter trained as in Sec.~\ref{sec:train} on the traces of
+one target and one benchmark; the 0.6B draft is the main one, and the offline rates in this section are
+for the Qwen3 target. Target and draft are served on one H100; the draft is co-located with the target
+and takes about a tenth of the GPU memory. Splits are task-disjoint.
+OpenAGI~\citep{openagi}: 250 train / 63 test tasks, 1{,}090 training pairs, ReAct-style planning with a
+fixed tool set. TaskBench~\citep{taskbench}: 228 train / 60 test tasks, 1{,}120 pairs, strict canonical
+tool schemas; no test task's tool sequence appears in training. $\tau^2$-bench~\citep{tau2bench}: we use its telecom domain only, in solo mode (the agent works without a
+simulated user); 60 / 14 / 40 train / validation / test tasks, 932 pairs, 44 tools executed against the
+benchmark's local backend. BFCL is the multi-turn split of the Berkeley Function
+Calling Leaderboard~\citep{bfcl}: 130 train / 60 test tasks, 1{,}254 pairs; user
+turns are speculation boundaries and proposals execute in cloned environments. Each test task is run once
+sequentially (target only) and once speculatively on the same node and service, and we report the pooled
+ratio $\sum \text{seq} / \sum \text{spec}$ of whole-task wall-clock (App.~\ref{app:serving} gives the timing protocol).
+
+\begin{table}[t]
+\centering
+\caption{\textbf{Offline action agreement with the Qwen3-32B target} (exact match on the target's own
+held-out contexts; repeated predictions averaged per context, except the $\tau^2$-bench
+32B-reason reference, which uses the mode of three passes). ``32B-direct'' is the target with
+reasoning disabled; ``32B-reason'' is the target itself with reasoning on, replayed on the same contexts,
+i.e. on the planning benchmarks its agreement with its own earlier pass, a reference set by the engine's nondeterminism rather than a bound. The three prior-work columns are an off-the-shelf small model, a cheaper
+configuration of the same model, and the target as its own draft, for which ``32B-reason'' is the reference, all
+measured in one setting. BFCL rows are on 99 development contexts and count every decision, a turn end or an exact tool group;
+the tool-group rate used for the acceptance comparison is in Table~\ref{tab:agree}. $\tau^2$-bench labels were sampled from the target at temperature 0.6,
+and all $\tau^2$-bench columns are measured against them; there, as on BFCL, the 32B-reason column replays the
+target (reasoning on, temperature 0) on the same contexts.}
+\label{tab:offline}
+\small
+\resizebox{\linewidth}{!}{%
+\begin{tabular}{lrrrrr}
+\toprule
+ & & \multicolumn{3}{c}{drafts used in prior work} & ours \\
+\cmidrule(lr){3-5}\cmidrule(lr){6-6}
+benchmark & contexts & untrained 0.6B & 32B-direct & 32B-reason & trained 0.6B \\
+ & & {\scriptsize\citep{smc}} & {\scriptsize\citep{isp,dsp}} & {\scriptsize\citep{spork,swyr}} & \\
+\midrule
+OpenAGI   & 263 & 12.8 & 76.6 & 97.3 & 75.0 \\
+TaskBench & 277 & 25.0 & 84.8 & 96.9 & 75.2 \\
+$\tau^2$-bench   & 226 & 8.0  & 42.5 & 65.0 & 63.7 \\
+BFCL      & 99  & 2.0  & 62.6 & 91.9 & 66.7 \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+The standard errors in Table~\ref{tab:offline_main} use 10,000 task-level bootstrap resamples.
+All contexts and repeated predictions from a task stay together; each replicate recomputes the
+context-weighted agreement. The evaluated sets contain 63 OpenAGI, 57 TaskBench, 14 $\tau^2$-bench
+and 10 BFCL tasks. These SEs quantify task-sampling uncertainty conditional on the evaluated models
+and runs, rather than variation across training seeds.
+
+
+Table~\ref{tab:offline} gives the offline agreement of the drafts used below. Its columns are the draft
+families of prior work, measured here in one setting: an untrained small model, the target with reasoning
+disabled (a cheaper configuration of the same model), and, as a reference for self-speculation, the target
+replaying itself with reasoning on (32B-reason). Training raises the 0.6B draft from 2--25\% to 64--75\% on every benchmark. On $\tau^2$-bench, whose labels were sampled at temperature 0.6, even the target replayed at temperature 0 matches only 65.0\% of them, so the trained draft (63.7\%) is 1.3 points below the target itself, and the 1.7B and 4B drafts of Sec.~\ref{sec:training} exceed it (68.1\% and 69.5\%). The target with reasoning disabled is a strong
+predictor of its own decisions on the planning benchmarks (76.6 and 84.8, at or above the trained draft)
+but not on the tool benchmarks: on $\tau^2$-bench it agrees with its reasoning-on decisions on 42.5\% of
+contexts, 21 points below the trained 0.6B draft, and on BFCL on 62.6\%, four points below. Where the
+decision depends on reasoning over a policy and a conversation, disabling reasoning changes the decision,
+and a small draft trained on the reasoning-on decisions predicts them better than the target itself does
+without reasoning.
+
+\begin{table}[t]
+\centering
+\caption{\textbf{From offline agreement to live acceptance} for the trained 0.6B drafts. Offline:
+exact match on the target's held-out contexts (Table~\ref{tab:offline}: mean over repeated predictions; BFCL: tool-group rate). Live,
+from the end-to-end runs of Table~\ref{tab:four}: $q_1$, the fraction of rounds whose first proposal is
+accepted; $q_2/q_1$ and $q_3/q_2$, the ratios of successive hit rates, which also count the rounds that
+stop proposing before the position; $a_2$ and $a_3$, the acceptance of the second and third proposal
+among the rounds that made it and accepted the earlier ones; and the pooled per-proposal acceptance.
+BFCL live rates are per tool group. A dash marks a position that does not exist: $\tau^2$-bench and BFCL run
+with $k{=}2$.}
+\label{tab:agree}
+\small
+\begin{tabular}{lrrrrrrr}
+\toprule
+benchmark & offline & $q_1$ & $q_2/q_1$ & $q_3/q_2$ & $a_2$ & $a_3$ & per proposal \\
+\midrule
+OpenAGI   & 75.0 & 0.71 & 0.63 & 0.63 & 0.81 & 0.80 & 0.75 \\
+TaskBench & 75.2 & 0.66 & 0.51 & 0.53 & 0.66 & 0.73 & 0.68 \\
+$\tau^2$-bench   & 63.7 & 0.64 & 0.54 & --   & 0.63 & --   & 0.64 \\
+BFCL      & 49.2 & 0.38 & 0.20 & --   & 0.62 & --   & 0.53 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{From agreement to acceptance.}
+Table~\ref{tab:agree} puts the offline and the live rates side by side. At the first position, live
+acceptance is within four points of offline agreement on OpenAGI and $\tau^2$-bench and nine points below it on
+TaskBench, where the speculative run's trajectories depart from the canonical ones on more tasks
+(trajectory parity 0.86 against 0.98 on OpenAGI), so the draft is scored on contexts it has not seen in
+that form. On BFCL a quarter of the rounds are hand-off probes at turn boundaries that carry no proposal,
+which lowers $q_1$ below the per-group rate. The hit rates fall with position ($q_2/q_1$ is 0.51--0.63),
+but not because later proposals are harder: among the rounds that make a second or third proposal and
+accepted the earlier ones, the acceptance ($a_2$, $a_3$) is 0.81 and 0.80 on OpenAGI against 0.71 at the
+first position, and flat on TaskBench and $\tau^2$-bench. The fall comes from rounds that run into the end of
+the task, or into an invalid draft output, so that the later positions do not exist: on OpenAGI the
+second and third positions exist in 81\% and 62\% of the rounds. This is why the framework of
+Sec.~\ref{sec:model} carries per-position rates $q_j$, which include this truncation, rather than a
+single acceptance rate.
+
+
+\input{sec_results_v2}
+
+\section{Additional training studies}
+\label{app:training}
+\input{sec_training}
+\section{Additional limitations}
+\label{app:limitations}
+The speedups are 1.2--1.6\xx{}, and the framework of Sec.~\ref{sec:model} explains why they are not larger on
+these benchmarks: tasks are short (4--14 steps), BFCL's user turns cut segments to 2.6 steps, and the
+round cost $\beta$ of the trained drafts is 1.1--1.3. We evaluate two
+target families (Qwen3-32B and Gemma-4-31B) on one GPU class, and our tools run against local simulated backends. With added tool latency the speedup
+falls, to 1.20\xx{} on $\tau^2$-bench and 1.02\xx{} on BFCL at 5\,s per tool step (Table~\ref{tab:tool}), because the
+draft's proposals execute their tools while proposing; with slow tools the tool-overlap
+mechanisms of \citet{stc,swm,aospec} would matter more than ours. Every action LEAP executes is
+target-authored, but the trajectories are not those of a target-only run: speculation changes which requests the
+engine decodes together, and on the tool benchmarks, whose steps reason for 10--12\,s, most speculative
+trajectories take a different decision at some step (App.~\ref{app:success}; two $\tau^2$-bench tasks even ran to
+the token budget in the speculative arm only). Task success shows no systematic change. Proposing and verifying do not overlap, so the draft's cost is paid in full; a draft that ran ahead of the
+target would hide that term, which Eq.~\ref{eq:S} without the draft term puts at 1.47$\to$1.72\xx{} on OpenAGI
+and 1.46$\to$1.66\xx{} on TaskBench and at a few hundredths on the tool benchmarks. Verification issues up to
+$k{+}1$ target generations per round (1.16\xx{} the sequential completion tokens on $\tau^2$-bench), so the
+method trades compute for latency. Test sets are 40--63 tasks; task-level bootstrap intervals of the pooled
+ratio are 0.15--0.30 wide (Table~\ref{tab:four}), so differences of a few
+hundredths between configurations are not resolved by these runs. The online experiment of
+Sec.~\ref{sec:online} makes one pass over each benchmark's training split; retraining on the whole buffer
+costs more with every batch, and the continual variant that fixes this cost dipped once on OpenAGI before recovering,
+which we have not studied further.

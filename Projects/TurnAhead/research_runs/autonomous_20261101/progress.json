@@ -1,0 +1,488 @@
+{
+  "goal": "Fix Qwen3.5 service; run preflight and ablation; analyze and perform evidence-driven improvement experiments",
+  "authorization": "User explicitly authorized assistant GPU starts in tmux vllm/train on 2026-11-01",
+  "requirements": [
+    {
+      "id": "service",
+      "done": true
+    },
+    {
+      "id": "preflight_8",
+      "done": true,
+      "evidence": "results/qwen35_9b_20261101_gdnref_v4_preflight/stage_check.json",
+      "previous_evidence": "v1 preflight passed but exposed later D3 equivalence counterexample; final v3 needs a fresh preflight"
+    },
+    {
+      "id": "ablation_64",
+      "done": true,
+      "evidence": "results/qwen35_9b_20261101_gdnref_v4_ablation/stage_check.json"
+    },
+    {
+      "id": "analyze_results",
+      "done": true,
+      "evidence": "results/qwen35_9b_20261101_gdnref_v4_ablation/formal_analysis.json"
+    },
+    {
+      "id": "evaluate_and_test_improvements_if_justified",
+      "done": true,
+      "evidence": "results/qwen35_9b_20261101_gdnref_v4_child_probe/formal_analysis.json"
+    }
+  ],
+  "startup_failure": {
+    "log": "results/server_qwen35_9b_20261101_000322_YMlDWa.log",
+    "root_cause": "vLLM 0.29 GDN_ATTN does not support batch-invariant mode",
+    "repair": "Guarded worker-local GDN arithmetic, metadata routing and previous accepted-state handoff v4; parser/probe-prefix adapters corrected; strict preflight and ablation completed.",
+    "initial_diagnostic_repair": "Disable unsupported engine option; preserve exact empirical trajectory checks; use new output tag"
+  },
+  "phase": "complete",
+  "run_tag": "qwen35_9b_20261101_gdnref_v4",
+  "previous_prepared_plans_preserved": true,
+  "updated_at": "2026-11-01T10:59:12.687983+08:00",
+  "server_window": "vllm:codex-q35-gdnref-v4",
+  "server_pane": "%32",
+  "server_launcher_pid": 1687708,
+  "server_log": "results/server_qwen35_9b_20261101_035706_F3g4sm.log",
+  "last_verified": "Current v4 service and both TP worker identities verified; active_requests=0 and pending_verifications=0. All final formal and bounded follow-up gates passed.",
+  "server_api_pid": 1688010,
+  "server_worker_pids": [
+    1688544,
+    1688545
+  ],
+  "preflight_window": "train:codex-q35-preflight-v4",
+  "preflight_result": "results/qwen35_9b_20261101_gdnref_v4_preflight",
+  "finding": "Original raw pipeline reduced mean bounded-trajectory latency by12.23%; no-probe follow-up improved another5.84% on average, almost entirely one train task. Retain both for broader validation.",
+  "completed_diagnostics": "results/qwen35_invariance_20261101_a",
+  "diagnostic_findings": {
+    "solo_repeats_identical": true,
+    "greedy_next_turn_repeats": true,
+    "probe_outputs_malformed": true,
+    "parent_difference_has_tied_token_logprobs": true
+  },
+  "change_under_test": {
+    "status": "completed",
+    "serving_profile": "qwen35_9b_gdn_reference_v4",
+    "VLLM_BATCH_INVARIANT": "1",
+    "head_dtype": "model",
+    "enforce_eager": true
+  },
+  "diagnostic_b": "results/qwen35_invariance_20261101_b",
+  "findings_b": {
+    "parent_solo_mixed_equal": true,
+    "next_solo_mixed_equal": false,
+    "safe_probe_prefix_early_and_late": "get_user_details, 32 tokens, parseable",
+    "legacy_probe_prefix": "malformed, including 160-token truncation"
+  },
+  "next_serving_change": {
+    "max_num_batched_tokens": 4096,
+    "block_size": 640,
+    "reason": "Use a cache grid divisible by the 64-token GDN chunk size and avoid sub-block mixed prefills; empirical equality remains mandatory"
+  },
+  "diagnostic_window": "train:codex-q35-d3-audit-v3",
+  "diagnostic_output": "results/qwen35_d3_equivalence_20261101_c",
+  "aligned_preflight": {
+    "completed_records": 8,
+    "passed": false,
+    "errors": "length loops and missing thinking termination; one actor_only run completed",
+    "D3_and_probe_path_exercised": true
+  },
+  "next_test": {
+    "presence_penalty": 1.5,
+    "temperature": 0,
+    "note": "Diagnostic only. If selected, all methods will share a new frozen generation policy."
+  },
+  "diagnostic_c": {
+    "output": "results/qwen35_invariance_20261101_c",
+    "terminated_all_12": true,
+    "solo_repeats_equal": true,
+    "cold_vs_warm_equal": true,
+    "solo_vs_mixed_parent_equal": false,
+    "solo_vs_mixed_next_equal": true,
+    "presence_penalty": 1.5
+  },
+  "fp32_head_test": {
+    "method": "supported hf_overrides head_dtype=float32",
+    "scope": "diagnostic, not an assumed batch-invariance guarantee"
+  },
+  "cpu_checks": {
+    "generation_policy_tests": 2,
+    "full_eval_tests": 4,
+    "passed": true
+  },
+  "diagnostic_d": {
+    "repeated_tokens_equal": {
+      "parent_warm0": true,
+      "parent_warm1": true,
+      "next_warm0": true,
+      "next_warm1": true
+    },
+    "solo_vs_mixed_tokens_equal": {
+      "parent": false,
+      "next": false
+    },
+    "cold_vs_warm_tokens_equal": {
+      "parent": true,
+      "next": true
+    },
+    "scope": "Serving diagnostic only; saved future prompts are not used in online evaluation",
+    "output": "results/qwen35_invariance_20261101_d",
+    "head_dtype": "float32"
+  },
+  "fp32p15_preflight": {
+    "recorded": 8,
+    "failed": 3,
+    "passed": false,
+    "completed_prefixes_identical": true,
+    "successful_comparisons_identical": true,
+    "output": "results/qwen35_9b_20261101_fp32p15_preflight"
+  },
+  "diagnostic_ablation": {
+    "window": "train:codex-q35-characterization",
+    "output": "results/qwen35_9b_20261101_fp32p15_characterization",
+    "expected": 64,
+    "reason": "Quantify known backend sensitivity and malformed outputs across train tasks; original strict ablation remains gated",
+    "formal_gate_overridden": false,
+    "status": "interrupted to repair confirmed adapter mismatch; preserve all records and incomplete attempt",
+    "recorded": 42,
+    "failed_under_old_adapter": 23,
+    "complete": false
+  },
+  "next_improvement_candidate": {
+    "problem": "When a verified-input speculative child raises, await child_task currently aborts the task rather than discarding that isolated branch and returning to canonical SPORK.",
+    "evidence": "First 12 diagnostic runs contain 4 failed speculative children; preserved records and child_error fields identify the failure path.",
+    "proposed_change": "At most one canonical fallback after child failure; drain child work, discard isolated state, preserve failed child generation and total latency. Keep parent validation and cancellation behavior.",
+    "scope": "Robustness correction, not a novelty claim or a repair of GDN batch invariance.",
+    "implementation_status": "Opt-in raw_fallback arm applied to production after reference completed; 24 production CPU tests passed.",
+    "design": "Add opt-in raw_fallback arm; on a failed isolated child, keep the committed parent, record the failure, drain work, discard fork state and run canonical SPORK once. Existing raw/serial/actor_only arms keep their behavior for within-version controls.",
+    "bounded_test": {
+      "tasks": [
+        "airline:2",
+        "airline:4"
+      ],
+      "split": "train",
+      "configs": [
+        "spork",
+        "raw",
+        "raw_fallback"
+      ],
+      "repetitions": 2,
+      "planned_runs": 12,
+      "scope": "Failure-recovery stress test, not held-out quality or losslessness evidence"
+    },
+    "quality_caveat": "Fallback adds a target attempt; report attempt count and full latency. It does not restore backend batch invariance or prove stochastic distribution preservation.",
+    "prepared_patch": "research_runs/autonomous_20261101/child_failure_recovery.patch",
+    "candidate_cpu_tests": 24,
+    "candidate_cpu_tests_passed": true,
+    "candidate_cpu_test_log": "research_runs/autonomous_20261101/recovery_candidate_tests.log",
+    "candidate_directory": "research_runs/autonomous_20261101/recovery_candidate",
+    "production_cpu_test_log": "research_runs/autonomous_20261101/recovery_production_tests.log",
+    "production_cpu_tests": 24
+  },
+  "native_parser_audit": {
+    "log": "research_runs/autonomous_20261101/official_parser_audit.log",
+    "upstream_file": "/mnt/data/zhangshuai/anaconda3/envs/spork/lib/python3.12/site-packages/vllm/parser/qwen3.py",
+    "finding": "Official parser treats tool start as implicit reasoning end and flushes incomplete zero-argument headers at natural end. Strict local adapter rejected valid official calls. Missing required arguments remain invalid for our executor.",
+    "implication": "Earlier format failure counts are harness-specific and cannot be attributed entirely to model quality or batch sensitivity.",
+    "repair": "Use installed upstream Qwen parser for syntax, implicit tool boundary and EOS flush. Retain name/required/type checks; full generation length rejection remains outside parser.",
+    "tests": {
+      "native": 10,
+      "failure_and_cleanup": 11,
+      "passed": true
+    },
+    "parser_source_snapshots": "New manifests freeze external vllm/parser Python source hashes and copies.",
+    "offline_reclassification": {
+      "old_failed_records": 23,
+      "accepted_syntax_and_schema": 13,
+      "artifact": "research_runs/autonomous_20261101/parser_reclassification.json",
+      "not_online_task_success": true
+    }
+  },
+  "native_preflight": {
+    "output": "results/qwen35_9b_20261101_nativeparser_preflight",
+    "recorded": 3,
+    "failed": 0,
+    "passed": false,
+    "stop_reason": "actor_only completed but diverged in Actor tokens and actions from SPORK; strict gate stopped before fourth run"
+  },
+  "corrected_diagnostic": {
+    "window": "train:codex-q35-native-characterize",
+    "output": "results/qwen35_9b_20261101_nativeparser_characterization",
+    "expected": 64,
+    "formal_gate_overridden": false,
+    "recorded": 64,
+    "failed": 20,
+    "pane": "%15",
+    "launcher_pid": 1549804,
+    "complete": true,
+    "exit_status": 0,
+    "audit": "research_runs/autonomous_20261101/reference64_audit.json",
+    "common_error_free_groups": 10,
+    "exact_common_groups": 5,
+    "exact_common_raw_children_started": 0
+  },
+  "next_steps": [],
+  "previous_goal_turn_classification": {
+    "kind": "progress",
+    "evidence": "Completed and audited the original64-run formal ablation, implemented the child-probe ablation with40CPU checks, then completed and analyzed all48follow-up runs."
+  },
+  "current_goal_turn_classification": {
+    "kind": "completion audit",
+    "evidence": "Every original objective item has direct current-state evidence in completion_report.json; no required experiment or analysis remains."
+  },
+  "upstream_review_20261101": {
+    "checked_at": "2026-11-01T01:55:50.036534+08:00",
+    "gdn_main_backend": "https://raw.githubusercontent.com/vllm-project/vllm/main/vllm/v1/attention/backends/gdn_attn.py",
+    "superseding_pr": "https://github.com/vllm-project/vllm/pull/60033",
+    "tested_head_in_pr": "1cdaeab837",
+    "reported_scope": "H100 Qwen3.5-0.8B TP1 eager MRV1 BF16 prefix cache off; speculative decoding explicitly unsupported. TP/EP and cache-on serving unvalidated.",
+    "decision": "Do not install or claim this unmerged patch fixes our SM86 TP2 prefix-cache plus D3 profile. Main GDN backend still does not declare batch-invariance support."
+  },
+  "completion_scope_audit": {
+    "service": "Verified running after supported GDN startup repair.",
+    "formal_preflight": "Current v4 strict preflight passed all 8, including request provenance, successful child tool/reply reuse and D3.",
+    "formal_ablation": "Current v4 original 64-run ablation starting; no completion claim yet.",
+    "diagnostic_analysis": "Completed and audited: 64 records, 20 failures; 5 all-arm exact groups with no early raw child in any of them.",
+    "improvement_testing": "Recovery check completed: 12 runs, 2 raw failures recovered in opt-in arm, but zero strict matches for that arm. Eight GPU core checks passed; full-model backend integration still pending.",
+    "goal_status": "Leave active; do not mark complete based only on compatible serving or diagnostic outcomes."
+  },
+  "recovery_check": {
+    "window": "train:codex-q35-recovery",
+    "output": "results/qwen35_9b_20261101_recovery_check",
+    "expected": 12,
+    "configs": [
+      "spork",
+      "raw",
+      "raw_fallback"
+    ],
+    "diagnostic_only": true,
+    "formal_gate_overridden": false,
+    "recorded": 12,
+    "failed": 2,
+    "complete": true,
+    "exit_status": 0,
+    "attempted": 2,
+    "recovered": 2,
+    "strict_trajectory_matches": 0
+  },
+  "gdn_core_candidate": {
+    "implementation": "research_runs/autonomous_20261101/gdn_candidate/invariant_core.py",
+    "gpu_test": "research_runs/autonomous_20261101/gdn_candidate/check_gpu.py",
+    "scope": "Experimental shared recurrence for non-spec and speculative GDN using native existing convolution and recurrent kernels; not installed in model service",
+    "next": "Run bounded SM86 GPU output/state/rollback checks before considering any backend support declaration",
+    "not_upstream_supported": true,
+    "window": "train:codex-q35-gdn-core-v3",
+    "output": "research_runs/autonomous_20261101/gdn_core_test_v3",
+    "status": "8 valid GPU checks passed; not installed into the model service",
+    "previous_fixture_error": "v1 used reserved block 0, discovered by non-vacuous numeric/state assertions; v2 reserves zero and tests padding explicitly",
+    "tests": 8,
+    "passed": true,
+    "integration_plan": "research_runs/autonomous_20261101/gdn_candidate/integration_plan.json",
+    "numeric_oracle_evidence": "gdn_conv_arithmetic_audit.log: native convolution matched BF16 products exactly over 17408 values; float32 products did not; v3 oracle corrected and tolerances tightened"
+  },
+  "reference_integration": {
+    "core": "spork_core/gdn_invariant_core.py",
+    "installer": "spork_core/gdn_invariant_worker.py",
+    "extension": "spork_core/gdn_worker_extension.py",
+    "cpu_profile_tests": 3,
+    "cpu_runner_tests": 5,
+    "gpu_core_tests": 8,
+    "all_passed": true,
+    "formal_gate_relaxed": false,
+    "old_server_stop_sent_to": "vllm:codex-q35-fp32head",
+    "shared_conda_files_modified": false,
+    "eager": true,
+    "batch_invariant_requested": true,
+    "head_dtype": "model",
+    "server_weights_loaded": true,
+    "full_model_validated": false,
+    "service_ready": true,
+    "worker_identity_verified": true,
+    "model_diagnostic_output": "results/qwen35_invariance_20261101_gdnref_a",
+    "allocator_review": {
+      "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+      "findings": "align mode allocates request-owned active/speculative scratch blocks; same-step Mamba cache hits are deferred; partial hits use copy-on-write. Preserve these native mechanisms.",
+      "sha256": "3038a12b187453a5e1a3b2fd4f5cb4f5be08b23108f8352263032d9179472d55"
+    },
+    "full_model_diagnostic_passed": true,
+    "full_model_diagnostic_runs": 12,
+    "scope": "Two saved training inputs; repeated/cold/warm/solo/mixed checks exact; not universal guarantee",
+    "evidence": "results/qwen35_invariance_20261101_gdnref_a/summary.json"
+  },
+  "formal_preflight": {
+    "output": "results/qwen35_9b_20261101_gdnref_preflight",
+    "stage_check": {
+      "passed": true,
+      "stage": "preflight",
+      "recorded": 8,
+      "failed_records": 0,
+      "raw_early_children": 2,
+      "raw_adopted_children": 1,
+      "d3_verified_injections": 12,
+      "status": "compatibility evidence only; not a positive speedup assertion",
+      "complete_interactive_tau2": false
+    },
+    "passed": true
+  },
+  "formal_ablation": {
+    "window": "train:codex-q35-gdn-ablation",
+    "output": "results/qwen35_9b_20261101_gdnref_ablation",
+    "expected": 64,
+    "strict_trajectory_gate": true,
+    "started": true,
+    "recorded": 14,
+    "failed": 6,
+    "pane": "%24",
+    "launcher_pid": 1635046,
+    "status": "interrupted; additional child-only failures are not accepted as common model failures",
+    "complete": false
+  },
+  "new_blocking_evidence": "SPORK succeeds on a tool-producing second turn while serial/actor_only/raw child paths fail despite matching completed parent; original valid-only gate did not reject success/failure disagreement.",
+  "d3_equivalence_audit": {
+    "window": "train:codex-q35-d3-audit",
+    "output": "results/qwen35_d3_equivalence_20261101_a",
+    "expected": 6,
+    "cases": [
+      "off",
+      "correct draft",
+      "deliberately wrong draft"
+    ],
+    "input": "exact saved failed airline:4 child prompt",
+    "tool_execution": false,
+    "complete": true,
+    "passed": false,
+    "off_tokens": 69,
+    "correct_draft_tokens": 87,
+    "first_difference": 61,
+    "wrong_draft_coverage": false
+  },
+  "strict_gate_hardening": {
+    "failure_status_must_match": true,
+    "both_failed_generations_must_match": true,
+    "success_and_failure_prompt_ids_and_sampling_settings_recorded": true,
+    "cpu_gate_tests": 6,
+    "cpu_timing_failure_tests": 11,
+    "passed": true
+  },
+  "zero_draft_routing_fix": {
+    "source": "spork_core/gdn_metadata_reference.py",
+    "gpu_report": "research_runs/autonomous_20261101/gdn_state_routing_v3/report.json",
+    "gpu_tests": 4,
+    "passed": true,
+    "finding": "Native metadata discards previous accepted-token offset when total NEW draft count is zero. Native align postprocess does not rebase state inside a block. Regression reproduces stale-state output; retaining the stateful route restores exact output and accepted state without adding input tokens.",
+    "full_model_verified": false,
+    "worker_patch_version": "qwen35_shared_recurrence_spec_v4",
+    "current_fix": "Use authoritative CPU is_prefilling plus actual query lengths to route every decoder row through accepted-state selection, regardless of absent/negative/stale current-draft hints; keep genuine one-token prefills as prefills.",
+    "why_v2_insufficient": "GPUModelRunner refreshes draft-count hints only in scheduled-speculation branch. Zero-count-only correction did not cover negative or stale hints.",
+    "caller_integration": "Worker-local builder wrapper supplies current owning model-runner acceptance buffer when native caller omits it. Native runner updates this buffer after every sampling step.",
+    "cpu_profile_tests": 4,
+    "cpu_profile_tests_passed": true,
+    "full_model_d3_counterexample_resolved": true
+  },
+  "d3_equivalence_audit_v2": {
+    "window": "train:codex-q35-d3-audit-v2",
+    "output": "results/qwen35_d3_equivalence_20261101_b",
+    "expected": 6,
+    "wrong_draft": "Shares committed get_reservation prefix; must actually inject and be rejected for coverage.",
+    "complete": true,
+    "passed": false,
+    "off_tokens": 69,
+    "draft_tokens": 87,
+    "wrong_draft_injected_and_rejected": true
+  },
+  "d3_equivalence_audit_v3": {
+    "window": "train:codex-q35-d3-audit-v3",
+    "pane": "%31",
+    "launcher_pid": 1682957,
+    "output": "results/qwen35_d3_equivalence_20261101_c",
+    "status": "waiting for startup / running after server identity check"
+  },
+  "v3_model_failure": {
+    "log": "results/server_qwen35_9b_20261101_035235_n1Fgmq.log",
+    "cause": "GPUModelRunner only passes accepted-token metadata to builder when current batch has drafts; new decoder routing therefore received None on ordinary steps.",
+    "audit_output": "results/qwen35_d3_equivalence_20261101_c",
+    "status": "failed, preserved"
+  },
+  "d3_equivalence_audit_v4": {
+    "output": "results/qwen35_d3_equivalence_20261101_d",
+    "passed": true,
+    "runs": 6,
+    "same_tokens": 84,
+    "correct_draft_accepted": 20,
+    "wrong_draft_accepted": 0,
+    "wrong_draft_verified": 20
+  },
+  "v4_model_checks": {
+    "d3_equivalence_passed": true,
+    "d3_equivalence_runs": 6,
+    "solo_warm_mixed_passed": true,
+    "solo_warm_mixed_runs": 12,
+    "normal_completions": true,
+    "both_worker_routes_verified": true
+  },
+  "v4_preflight": {
+    "window": "train:codex-q35-preflight-v4",
+    "pane": "%35",
+    "launcher_pid": 1698085,
+    "output": "results/qwen35_9b_20261101_gdnref_v4_preflight",
+    "recorded": 8,
+    "failed": 0,
+    "complete": true,
+    "passed": true,
+    "request_provenance_equal": true,
+    "stage_check": {
+      "passed": true,
+      "stage": "preflight",
+      "recorded": 8,
+      "failed_records": 0,
+      "raw_early_children": 2,
+      "raw_adopted_children": 2,
+      "d3_verified_injections": 9,
+      "status": "compatibility evidence only; not a positive speedup assertion",
+      "complete_interactive_tau2": false
+    }
+  },
+  "v4_formal_ablation": {
+    "window": "train:codex-q35-ablation-v4",
+    "output": "results/qwen35_9b_20261101_gdnref_v4_ablation",
+    "expected": 64,
+    "strict_gate_includes_failure_outcomes": true,
+    "started": true,
+    "recorded": 64,
+    "failed": 0,
+    "pane": "%36",
+    "launcher_pid": 1704347,
+    "complete": true,
+    "passed": true,
+    "exit_status": 0
+  },
+  "bounded_followup_plan": "research_runs/autonomous_20261101/child_probe_ablation_plan.json",
+  "bounded_followup_candidate": "research_runs/autonomous_20261101/child_probe_candidate/candidate.patch",
+  "original_completion_audit": "research_runs/autonomous_20261101/v4_original_completion_audit.json",
+  "child_probe_ablation": {
+    "window": "train:codex-q35-child-probe",
+    "pane": "%37",
+    "launcher_pid": 1741847,
+    "output": "results/qwen35_9b_20261101_gdnref_v4_child_probe",
+    "expected": 48,
+    "configs": [
+      "spork",
+      "raw",
+      "raw_no_probe"
+    ],
+    "tasks": 8,
+    "repetitions": 2,
+    "started": true,
+    "cpu_tests_passed": 40,
+    "cpu_logs": [
+      "research_runs/autonomous_20261101/child_probe_successor_tests_v2.log",
+      "research_runs/autonomous_20261101/child_probe_launch_tests.log"
+    ],
+    "first_test_fixture_issue": "New assertions initially found legacy fixture launch_mode=None; fixture now explicitly uses real runner original mode. Failed first log retained.",
+    "recorded": 48,
+    "failed": 0,
+    "complete": true,
+    "passed": true,
+    "exit_status": 0
+  },
+  "completion_report": "research_runs/autonomous_20261101/completion_report.json",
+  "goal_status": "complete"
+}

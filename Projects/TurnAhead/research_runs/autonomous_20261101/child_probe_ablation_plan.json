@@ -1,0 +1,42 @@
+{
+  "status": "proposal awaiting completion and audit of the original 64-run ablation",
+  "motivation": "All original first-repeat raw children were adopted; nevertheless next replies spent 2 and 5 prediction requests. Probe duration overlaps Actor work and cannot be counted as directly removable wall latency. Both early tool hiding and GPU contention may change.",
+  "hypothesis": "Disabling child D1/D2 while retaining early full Actor generation can reduce probe work enough to outweigh the newly exposed child tool execution, under this runtime.",
+  "candidate": "raw_no_probe",
+  "change": "On admitted isolated child only, launch_mode=off and max_retries=0; keep parent full SPORK, child D3 disabled, ordinary ngram decoding, isolated child formal tool execution, exact reuse guards and timed cleanup unchanged.",
+  "causal_input": "Only the parent candidate and its already-executed real observation construct the child; no future label or task-specific gate.",
+  "configs": [
+    "spork",
+    "raw",
+    "raw_no_probe"
+  ],
+  "tasks": [
+    "airline:2",
+    "airline:3",
+    "airline:4",
+    "airline:6",
+    "retail:0",
+    "retail:1",
+    "retail:3",
+    "retail:4"
+  ],
+  "repetitions": 2,
+  "planned_runs": 48,
+  "split": "train",
+  "max_turns": 2,
+  "runtime": "existing v4 eager GDN service, unchanged serving sources/model/profile",
+  "checks": [
+    "No child prediction requests in raw_no_probe; full Target tokens still generated",
+    "Parent request policy unchanged; rejection uses canonical SPORK",
+    "Every input, output, action, observation and state matches spork; stop on divergence",
+    "All planned attempts retained; pairs and same-seed repetitions audited",
+    "End-to-end time includes validation, discard, thread cleanup and formal child tool work"
+  ],
+  "decision": "One bounded follow-up only; report positive and negative task effects. No selected-task or cross-profile headline, no novel-method claim from this switch.",
+  "unvalidated": "No performance claim at planning time. No AOSpec or ETA reproduction in these three arms.",
+  "prechange_source_sha256": {
+    "spork_core/successor_prefetch.py": "a8cb08e5ec5a86fa2865043b33dc684060e01b019a8d45a14b5e7e03f70d91e0",
+    "spork_core/successor_task.py": "7ae0cd65de2beea719325b182b6fc92d40fa9ed7df70bfd9159f607c2584426b",
+    "scripts/run_successor_full_eval.py": "a50ef27c005342f67fc76bbe13d9573fa608d05193f8f9772bc4869f8818b08d"
+  }
+}

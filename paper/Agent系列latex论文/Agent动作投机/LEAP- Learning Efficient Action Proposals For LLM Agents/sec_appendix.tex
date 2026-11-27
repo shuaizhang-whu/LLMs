@@ -1,0 +1,493 @@
+
+\section{Benchmark implementation details}
+\label{app:bench}
+
+All four benchmarks share the same loop (Sec.~\ref{sec:loop}) and the same
+acceptance test: a proposal is accepted if its canonical string equals the
+canonical string of the target's action on the same context. Canonical strings
+are produced by the benchmark's parser from the raw response; a response that
+does not parse (no action, several actions where one is required, an unknown
+tool, or arguments that violate the tool schema) never matches. The target
+decodes greedily (temperature 0, seed 0) in every end-to-end run. Table
+\ref{tab:bench} lists the per-benchmark settings; the paragraphs below give the
+formats.
+
+\begin{table}[h]
+\centering
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\caption{Per-benchmark settings of the end-to-end runs.}
+\label{tab:bench}
+\resizebox{\linewidth}{!}{%
+\begin{tabular}{>{\raggedright\arraybackslash}p{2.5cm}>{\raggedright\arraybackslash}p{2.9cm}>{\raggedright\arraybackslash}p{3.1cm}>{\raggedright\arraybackslash}p{3.0cm}>{\raggedright\arraybackslash}p{3.3cm}}
+\toprule
+ & OpenAGI & TaskBench & $\tau^2$-bench & BFCL multi-turn \\
+\midrule
+task type & tool-selection plan & tool calls with args & ticket-driven support & multi-turn function calling \\
+tools & 14 $+$ TERMINATE & DailyLife APIs & 44 & per-task catalog \\
+target format & ReAct, \texttt{<tool>} tag with tool name & ReAct, \texttt{<tool>} tag with name(\{json\}) & single-call JSON, guided & \texttt{<tool\_call>} tags, ordered group \\
+target reasoning & thought $\le 512$ tok. & thought $\le 512$ tok. & on, budget 2{,}048 & on, budget 4{,}096 \\
+target action budget & 32 tok. & 128 tok. & (in budget) & (in budget) \\
+draft format & direct, tool name & direct, name$+$args & grammar, JSON call & grammar, call group / \texttt{<respond/>} \\
+draft budget & 32 tok. & 128 tok. & 512 tok. & 512 tok. \\
+observation & none (plan-first) & none (plan-first) & tool result (local backend) & tool result (cloned runtime) \\
+segment boundary & task end & task end & task end (\texttt{done}) & user turn \\
+$k$ & 3 & 3 & 2 & 2 \\
+max steps & 12 & 12 & 60 & 20 per turn \\
+train / test tasks & 250 / 63 & 228 / 60 & 60 (+14 val) / 40 & 130 / 60 \\
+training pairs & 1{,}090 & 1{,}120 & 932 & 1{,}254 \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+\paragraph{OpenAGI.}
+The agent selects, one step at a time, which of 14 domain-expert tools to
+apply to a task description~\citep{openagi}, and emits \texttt{TERMINATE} when
+the plan is complete. The target runs ReAct: a thought of at most 512 tokens
+followed by an action of at most 32 tokens in the form
+\texttt{<tool>Image Denoising</tool>}; the parser takes the last tag pair so
+that a preamble naming other tools does not win over the committed action. The
+canonical action is the tool name. Steps do not observe tool outputs, so the
+context of step $i$ is the task and the committed actions $a_{<i}$ (the target's
+thoughts are not part of the context and are not shown to the draft). A task
+ends at \texttt{TERMINATE} or after 12 steps. The 313 tasks are split by task
+into 250 training and 63 test tasks (seed 42); running the target once over the
+training tasks yields 1{,}090 (context, action) pairs, and the test tasks give
+263 held-out contexts for the offline agreement in Table~\ref{tab:offline}. The
+draft receives the same context rendered as a direct prompt and answers with
+the action tag only.
+
+\paragraph{TaskBench.}
+We use the DailyLife API subset of TaskBench~\citep{taskbench}, where each
+step is a tool call with JSON
+arguments, or \texttt{TERMINATE}; for example\par\noindent\hspace*{1.5em}%
+\texttt{<tool>apply\_for\_passport(\{"country":"Germany"\})</tool>}\par\noindent The 300 tasks were split 240 / 60 by task before any
+model call. The target runs ReAct as on OpenAGI (thought $\le 512$ tokens, action
+$\le 128$ tokens). The parser is strict: the response must contain exactly one
+action, the tool must exist, the argument names must equal the schema's
+parameter set, and every argument value must be a string; anything else is a
+parse or schema failure and cannot match. The canonical action is
+\texttt{name(\{sorted-key JSON\})}. The training set is derived
+deterministically from the target's raw responses on the training tasks
+(228 tasks with a valid trajectory, 1{,}120 pairs; 1{,}011 / 109 split by task
+for validation); the same derivation on the test tasks gives 57 tasks / 277
+contexts for offline agreement, and all 60 test tasks are run end to end. No
+test task's tool sequence occurs in training.
+
+\paragraph{$\tau^2$-bench (telecom domain).}
+We use the telecom domain of $\tau^2$-bench~\citep{tau2bench} in its
+\emph{solo} configuration: there is no simulated user; the agent works from the
+task ticket, a policy document, and 44 tools whose implementations run against
+the benchmark's local state. We compact the policy text (same rules, shorter
+wording) so that contexts fit the serving window; the compact policy is
+identical for both arms and both models. The target receives the tool schemas
+natively and must emit exactly one call per step as a JSON object
+\texttt{\{"name":\,\ldots,"arguments":\,\ldots\}}, constrained by a
+\texttt{oneOf} schema over the 44 tools (guided decoding), with reasoning
+enabled and a 2{,}048-token budget; a task ends with the \texttt{done} call or
+after 60 steps, and success is the benchmark's own reward function
+(\texttt{evaluate\_simulation}, solo mode). The canonical action is the JSON
+object with sorted keys. Training and validation pairs were collected from the
+target at its default sampling for this mode (temperature 0.6, top-$p$ 0.95,
+top-$k$ 20, seed 0); end-to-end runs use temperature 0. The draft sees the same
+context rendered as a direct prompt and decodes a \texttt{<tool>\{json\}</tool>}
+block under a grammar derived from the same schemas (512-token budget, no
+reasoning). Each proposal is executed in a cloned environment branch so that
+the next proposal sees its observation; a rejected branch is discarded.
+
+\paragraph{BFCL multi-turn.}
+We use the multi-turn split of the Berkeley Function Calling
+Leaderboard~\citep{bfcl}, 130 training and 60 test tasks.
+Each task is a conversation; in each user turn the agent issues one or more
+ordered groups of function calls and ends the turn with a natural-language
+reply. The target emits calls as \texttt{<tool\_call>\{json\}</tool\_call>}
+tags (several tags form one ordered group, which is one decision), with
+reasoning enabled, a 4{,}096-token budget, and at most 20 decisions per turn.
+The draft predicts the next decision as
+\texttt{<tool>[\{call\},\ldots]</tool>} or the literal \texttt{<respond/>},
+decoding under a GBNF grammar built from the tools visible in the context
+(512-token budget, no reasoning); it never predicts reply text. A decision
+matches when the ordered call group is identical after canonicalization (JSON
+with sorted keys) or when both sides end the turn. Proposals execute in a
+cloned tool runtime (deep-copied instances); the committed branch's state is
+the one the next turn sees. User turns are segment boundaries: at the end of
+each turn a width-1 probe lets the target confirm the turn end. Official
+success is computed by the official BFCL evaluator on the final state and
+responses. Verification uses prefix-ordered cancellation
+(App.~\ref{app:serving}); the 60 test tasks were run twice end to end, one task
+at a time. On the 10-task development split, run twice at each depth before
+the test runs, the speculative arm was faster at $k{=}1$ and $k{=}2$
+(1.14/1.23\xx{} and 1.18/1.24\xx{}) but completed fewer tasks (9 against 14 at
+$k{=}1$, 13 against 14 at $k{=}2$); we selected $k{=}2$ and report the test
+split, where success was higher in both passes (Table~\ref{tab:four}).
+
+\section{Trace-replay predictor and idle-time accounting}
+\label{app:predictor}
+
+\paragraph{Inputs.}
+The predictor of Sec.~\ref{sec:validation} uses (i) the sequential arm's
+per-step generation times, grouped by segment; (ii) the per-position hit rates
+$q_j$; and (iii) the mean draft time per round from the speculative arm's draft
+records. It uses no timing from the speculative arm's verifications.
+
+\paragraph{Replay.}
+For every segment of every task, the replay walks the sequential steps in
+order. At the start of a round with $r$ steps remaining it draws the number of
+leading hits $A$ from independent Bernoulli trials with rate $q_1$, capped at
+$\min(k, r-1)$; the round commits $A{+}1$ steps and its wait is the maximum of
+those steps' sequential generation times. The predicted $\beta$ is the sum of
+round waits divided by the number of rounds times $t_{\mathrm{gen}}$, averaged
+over 50 replays. The commits per round $c$ in Table~\ref{tab:model} is the
+measured value (Eq.~\ref{eq:c} with the measured $q_j$ and $e$); the
+i.i.d.\ column uses the replay's own $A$ instead. Table~\ref{tab:qj} lists the
+measured $q_j$ and $e$ for the nine configurations.
+
+\begin{table}[h]
+\centering
+\small
+\caption{Measured per-position hit rates $q_j = \Pr[A \ge j]$, end-of-segment
+loss $e$, and committed steps per round $c = 1 + \sum_j q_j - e$. A dash marks a position beyond the row's $k$.}
+\label{tab:qj}
+\begin{tabular}{llrrrrrrrr}
+\toprule
+benchmark & draft & $k$ & $q_1$ & $q_2$ & $q_3$ & $q_4$ & $q_5$ & $e$ & $c$ \\
+\midrule
+OpenAGI   & trained 0.6B   & 3 & 0.71 & 0.44 & 0.28 & --   & --   & 0.38 & 2.05 \\
+OpenAGI   & trained 0.6B   & 1 & 0.74 & --   & --   & --   & --   & 0.20 & 1.54 \\
+OpenAGI   & trained 0.6B   & 5 & 0.70 & 0.47 & 0.31 & 0.14 & 0.08 & 0.46 & 2.25 \\
+OpenAGI   & untrained 0.6B & 3 & 0.15 & 0.00 & 0.00 & --   & --   & 0.01 & 1.14 \\
+OpenAGI   & 32B-direct     & 3 & 0.70 & 0.50 & 0.33 & --   & --   & 0.34 & 2.19 \\
+TaskBench & trained 0.6B   & 3 & 0.66 & 0.34 & 0.18 & --   & --   & 0.30 & 1.88 \\
+TaskBench & 32B-direct     & 3 & 0.74 & 0.50 & 0.33 & --   & --   & 0.36 & 2.21 \\
+$\tau^2$-bench   & trained 0.6B   & 2 & 0.64 & 0.35 & --   & --   & --   & 0.11 & 1.88 \\
+BFCL      & trained 0.6B   & 2 & 0.38 & 0.07 & --   & --   & --   & 0.00 & 1.45 \\
+\midrule
+\multicolumn{10}{l}{\emph{Draft-size study, common serving configuration (Sec.~\ref{sec:training})}} \\
+OpenAGI   & trained 0.6B   & 3 & 0.69 & 0.44 & 0.27 & --   & --   & 0.37 & 2.04 \\
+OpenAGI   & trained 1.7B   & 3 & 0.74 & 0.50 & 0.33 & --   & --   & 0.37 & 2.20 \\
+OpenAGI   & trained 4B     & 3 & 0.79 & 0.50 & 0.31 & --   & --   & 0.34 & 2.26 \\
+TaskBench & trained 0.6B   & 3 & 0.67 & 0.37 & 0.20 & --   & --   & 0.30 & 1.94 \\
+TaskBench & trained 1.7B   & 3 & 0.69 & 0.42 & 0.28 & --   & --   & 0.34 & 2.05 \\
+TaskBench & trained 4B     & 3 & 0.71 & 0.43 & 0.27 & --   & --   & 0.31 & 2.10 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Tool terms.}
+With a delay $\delta$ added to every executed tool step and $\tau = \delta / t_{\mathrm{gen}}$, the sequential
+arm pays $\tau$ (in target steps) on every step that executes a tool. A round pays it for the proposals' tools,
+which run while proposing and are part of the measured draft term $D$, and for every tool step the target
+itself executes. Eq.~\ref{eq:S} becomes $S = c\,(1 + f\tau) / (\beta + D + g\tau)$, with $f$ the share of
+sequential steps that execute a tool and $g$ the number of tool steps per round that the target executes. On
+$\tau^2$-bench every step but the final one executes a tool and each round ends with one target action, and we
+use $f = g = 1$. On BFCL, turn ends execute no tool ($f = 0.62$), accepted proposals are adopted rather than
+executed again, so only the target's corrections and bonus actions count ($g = 0.44$--$0.45$), and $D$ is the
+rollout time per round, which contains the proposals' tool steps.
+
+\paragraph{Decomposition of the speculative arm.}
+For each round we record the wall-clock of every target verification and the
+round's total verification wall-clock. The speculative arm's task time then
+decomposes as
+\[
+  \text{spec} \;=\; \sum_{\text{rounds}} \max_{\text{used}} \text{wall}
+  \;+\; \text{idle} \;+\; \text{draft} \;+\; \text{residual},
+\]
+where ``used'' are the verifications whose result the round consumed, idle is
+$\sum_{\text{rounds}} (\text{verification wall} - \max_{\text{used}}
+\text{wall})$, i.e.\ time spent waiting for verifications that were already
+discarded, draft is the summed draft time, and residual covers tool execution
+and bookkeeping. With prefix-ordered cancellation the idle time is 0\,s of
+199\,s on OpenAGI, 0\,s of 400\,s on TaskBench, 3\,s of 4{,}367\,s on $\tau^2$-bench
+and 14\,s of 11{,}132\,s on BFCL, and at most 4\,s in every other row of Table~\ref{tab:model}.
+The earlier gather-mode runs waited for discarded verifications: 9\,s of 205\,s (OpenAGI), 12\,s of
+391\,s (TaskBench) and 552\,s of 4{,}882\,s ($\tau^2$-bench) for the trained draft, 9\,s of 267\,s and 16\,s
+of 481\,s for 32B-direct on OpenAGI and TaskBench, and 242\,s of 544\,s for the untrained draft.
+Re-running every row with cancellation moved the main speedups from 1.46, 1.37 and 1.41\xx{} to 1.51, 1.37
+and 1.58\xx{}, the untrained draft from 0.55\xx{} to 0.98\xx{}, 32B-direct from 1.12 and 1.11\xx{} to 1.16
+and 1.13\xx{}, and OpenAGI at $k{=}1$ and $k{=}5$ from 1.30 and 1.48\xx{} to 1.34 and 1.57\xx{}. Residual
+is at most 83\,s (BFCL). ``No idle'' in Table~\ref{tab:model} is
+$\text{seq} / (\text{spec} - \text{idle})$.
+
+\paragraph{Concurrency cost.}
+To check assumption (b) of Sec.~\ref{sec:model} we compare milliseconds per
+generated token in the sequential arm with the same quantity over the used
+verifications of the speculative arm: 25.5 vs.\ 26.7 (OpenAGI), 25.5 vs.\ 26.3
+(TaskBench), 26.0 vs.\ 26.7 ($\tau^2$-bench), 26.1 vs.\ 26.4 (BFCL). Tokens per step
+are unchanged on three benchmarks and 5\% lower on $\tau^2$-bench.
+
+\section{Serving configuration}
+\label{app:serving}
+
+All runs use vLLM on one NVIDIA H100 (80\,GB). The target is
+Qwen3-32B (bf16, tensor parallel 1) and the draft is Qwen3-0.6B (bf16) with a
+LoRA adapter of rank 64
+served through vLLM's LoRA support (\texttt{--enable-lora},
+\texttt{--max-lora-rank 64}); both servers run on the same GPU with the memory
+fractions in Table~\ref{tab:serving}. Prefix caching is enabled on both
+servers, and the cache is reset through the development endpoint
+\texttt{/reset\_prefix\_cache} before each arm so that neither arm reuses the
+other's KV cache. Requests are OpenAI-compatible chat completions with
+temperature 0 and seed 0; $\tau^2$-bench and BFCL use the \texttt{xgrammar} guided
+decoding backend and the \texttt{qwen3} reasoning parser.
+
+\begin{table}[h]
+\centering
+\small
+\caption{vLLM server settings per benchmark (target / draft on the same H100). A dash marks a setting
+not used for that benchmark. On TaskBench at $k{=}5$ (Table~\ref{tab:model}) a round issues up to six
+verification requests, so those beyond the fourth wait for a free slot.}
+\label{tab:serving}
+\begin{tabular}{lcccc}
+\toprule
+ & OpenAGI & TaskBench & $\tau^2$-bench & BFCL \\
+\midrule
+max model length (tokens) & 2{,}048 & 4{,}096 & 16{,}384 & 24{,}576 \\
+GPU memory fraction, target / draft & 0.82 / 0.10 & 0.85 / 0.10 & 0.88 / 0.08 & 0.88 / 0.06 \\
+max concurrent sequences, target / draft & 8 / 2 & 4 / 2 & 4 / 4 & 4 / 1 \\
+guided decoding & -- & -- & xgrammar & xgrammar \\
+reasoning parser & -- & -- & qwen3 & qwen3 \\
+verification & \multicolumn{4}{c}{prefix-ordered, cancel} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Common configurations of the size study.}
+The rows of Table~\ref{tab:four} serve each benchmark's three drafts in one configuration that fits the 4B
+draft beside the target: target / draft memory fractions 0.82 / 0.14 on OpenAGI and TaskBench, 0.83 / 0.13
+with a 12{,}288-token context on $\tau^2$-bench, and 0.84 / 0.135 with a 15{,}360-token context on BFCL, all
+with prefix-ordered cancellation; the Gemma target uses the same configurations.
+
+\paragraph{The Gemma target.} Gemma-4-31B-it runs with FP8 weights on one H100: in bf16 it leaves a KV cache of
+7{,}500 tokens at 85\% of the GPU, too few for $k{+}1$ concurrent verifications beside a draft. Its request
+settings are those of the Qwen3 runs. Gemma departs from the prescribed action syntax more often than Qwen3
+(Markdown fences, its native tool-call markup, keyword-argument calls on TaskBench, several calls in one
+decision on $\tau^2$-bench); a surface-syntax normalization rewrites these forms into the prescribed one
+before parsing, is applied identically to collection and to both arms, and every rewrite is counted (33 of
+the 949 parsed actions of a TaskBench run).
+
+\paragraph{Verification requests.}
+The $k{+}1$ verification contexts of a round are issued as concurrent HTTP
+requests to the target server. In the \emph{gather} mode of our earlier runs (no row of Table~\ref{tab:model} uses it), the round waits for all $k{+}1$ responses before
+committing; the time spent waiting for responses that the first mismatch has
+already made irrelevant is the idle term of App.~\ref{app:predictor}. In the \emph{prefix-ordered} mode used for every run we report, responses are consumed
+in prefix order; as soon as context $i$ mismatches, the client closes the connections of
+contexts $i{+}1,\dots,k$, which makes vLLM abort those requests, and the round
+commits without waiting for them. The mode changes only when the round returns,
+not what it commits.
+
+\paragraph{Timing protocol.}
+The test tasks of a shard are run first sequentially (target only) and then speculatively
+on the same node and the same servers, with a cache reset in between; the
+reported speedup is the pooled ratio of the summed whole-task wall-clocks.
+OpenAGI was additionally run with prefix caching disabled on both servers as a
+control (1.35\xx{} vs.\ 1.46\xx{} with caching, in the earlier gather-mode run). In Table~\ref{tab:four}, the
+Qwen3 OpenAGI and TaskBench rows pool two independent passes over the test tasks (both passes of a task are
+attached to it in the bootstrap); $\tau^2$-bench is run in two shards of 20 tasks and BFCL in three shards of
+20, each sequential then speculative; the Gemma rows are single passes. The main runs of Table~\ref{tab:model}
+were repeated once on $\tau^2$-bench and BFCL (App.~\ref{app:success}).
+
+
+\section{Segment truncation by task length}
+\label{app:length}
+\begin{table}[h]
+\centering
+\caption{\textbf{Segment truncation by task length.} Tasks of the main runs bucketed by their sequential
+length. $e$ (Eq.~\ref{eq:c}), the hit-rate sum $\sum_j q_j$ and $c$ are measured per bucket; the
+prediction replays the bucket's sequential traces with the run-wide hit rates truncated at the task end,
+so it carries the truncation effect only. Buckets hold 7--27 tasks, so individual ratios are noisy.}
+\label{tab:length}
+\small
+\begin{tabular}{llrrrrrr}
+\toprule
+ & & & & & & \multicolumn{2}{c}{speedup} \\
+\cmidrule(lr){7-8}
+benchmark & steps & tasks & $e$ & $\sum_j q_j$ & $c$ & meas. & pred. \\
+\midrule
+OpenAGI   & 3        & 15 & 0.52 & 1.66 & 2.14 & 1.54\xx{} & 1.35\xx{} \\
+OpenAGI   & 4        & 21 & 0.31 & 1.46 & 2.15 & 1.52\xx{} & 1.39\xx{} \\
+OpenAGI   & 5        & 15 & 0.40 & 1.54 & 2.14 & 1.60\xx{} & 1.57\xx{} \\
+OpenAGI   & $\ge 6$  &  9 & 0.30 & 1.10 & 1.80 & 1.39\xx{} & 1.55\xx{} \\
+\midrule
+TaskBench & $\le 4$  & 27 & 0.38 & 1.29 & 1.91 & 1.48\xx{} & 1.37\xx{} \\
+TaskBench & 5        & 16 & 0.40 & 1.40 & 2.00 & 1.49\xx{} & 1.52\xx{} \\
+TaskBench & 6        &  7 & 0.32 & 1.53 & 2.21 & 1.50\xx{} & 1.50\xx{} \\
+TaskBench & $\ge 7$  & 10 & 0.12 & 0.77 & 1.65 & 1.14\xx{} & 1.52\xx{} \\
+\midrule
+$\tau^2$-bench   & $\le 9$  &  9 & 0.20 & 0.95 & 1.75 & 1.47\xx{} & 1.28\xx{} \\
+$\tau^2$-bench   & 10--13   &  9 & 0.12 & 1.08 & 1.96 & 1.65\xx{} & 1.51\xx{} \\
+$\tau^2$-bench   & 14--17   & 10 & 0.11 & 0.98 & 1.87 & 1.66\xx{} & 1.70\xx{} \\
+$\tau^2$-bench   & $\ge 18$ & 12 & 0.07 & 0.96 & 1.89 & 1.55\xx{} & 1.72\xx{} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Table~\ref{tab:length} buckets the tasks of the main runs by length. The truncation loss $e$ behaves as
+Eq.~\ref{eq:c} says: it falls from 0.52 on three-step OpenAGI tasks to 0.30 on tasks of six or more
+steps, and from 0.20 to 0.07 across $\tau^2$-bench's length range. The per-bucket speedup does not fall with
+it, because task length and acceptance are not independent: short OpenAGI tasks are also the ones the
+draft predicts best ($\sum_j q_j$ 1.66 against 1.10 on the longest tasks), and the longest TaskBench
+tasks are where acceptance collapses ($\sum_j q_j$ 0.77, $c$ 1.65, 1.14\xx{}). A prediction that replays
+each bucket with the run-wide hit rates captures the truncation effect but not this correlation, and
+misses by up to 0.4 in the extreme buckets, whereas the run-level prediction is within 0.10. The
+truncation term is therefore visible in the data, and the benchmarks' short tasks cost less than $e$
+alone suggests because the draft is most often right on them.
+
+\section{Transfer across benchmarks}
+\label{app:transfer}
+Table~\ref{tab:transfer} scores each trained 0.6B draft, and the untrained base, on the held-out contexts of
+every benchmark with that benchmark's evaluator (Table~\ref{tab:offline}). All twenty cells come from one
+job. The diagonal and the base row were measured again there; they differ from Table~\ref{tab:offline} by at
+most 0.5 points, as repeated evaluations of the same draft do (the size study measured 75.4 and 74.7,
+Table~\ref{tab:size}).
+
+\begin{table}[h]
+\centering
+\caption{\textbf{Transfer across benchmarks.} Offline agreement (\%) of each 0.6B draft (rows) on the
+held-out contexts of each benchmark (columns), scored as in Table~\ref{tab:offline} (BFCL: decision agreement
+on the 99 development contexts).}
+\label{tab:transfer}
+\small
+\begin{tabular}{lrrrr}
+\toprule
+ & \multicolumn{4}{c}{evaluated on} \\
+\cmidrule(lr){2-5}
+draft trained on & OpenAGI & TaskBench & $\tau^2$-bench & BFCL \\
+\midrule
+OpenAGI        & \textbf{75.5} & 29.6 & 8.8 & 3.0 \\
+TaskBench      & 23.3 & \textbf{74.7} & 9.3 & 6.1 \\
+$\tau^2$-bench & 10.8 & 21.7 & \textbf{63.7} & 1.0 \\
+BFCL           & 12.0 & 23.1 & 8.0 & \textbf{66.7} \\
+\midrule
+untrained base & 13.3 & 25.3 & 8.0 & 2.0 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Online training details}
+\label{app:online}
+\paragraph{Stream and servers.} The training tasks of the benchmark are shuffled once with a fixed seed and
+run in batches through the speculative system (target and draft on one GPU, the serving configuration of
+App.~\ref{app:serving}). On OpenAGI each batch runs both arms. On $\tau^2$-bench the stream runs the
+speculative arm only; the sequential arm on the same training tasks was run separately in the same serving
+configuration. Fig.~\ref{fig:online}b reports, for both benchmarks, sequential time per step over speculative time
+per committed step on each batch. Training runs on a second GPU while the servers wait between batches. The new adapter is
+loaded into the running draft server by name through its runtime adapter endpoint, and the next batch proposes
+with it. Every measurement on the stream is prequential: batch $b$ is never seen by the adapter that serves it.
+
+\paragraph{Pairs.} On OpenAGI the commits of a batch are the (context, target action) pairs directly, with
+duplicate (task, step) entries removed. $\tau^2$-bench records keep only hashes of the prompts, so the pairs are
+rebuilt by replaying the committed actions in the benchmark environment, exactly as the collection pass
+builds a step; every rebuilt prompt is checked against the hash the run recorded for the draft's request at
+that step (898 pairs, no mismatch).
+
+\paragraph{Recipe.} The adapter of every version is trained from the base with the recipe of
+Table~\ref{tab:recipe}. Checkpoint selection uses a task-level 10\% carve of the buffer on OpenAGI and the
+frozen 14 validation tasks on $\tau^2$-bench. The $\tau^2$-bench validation pairs were collected with the target sampling at
+temperature 0.6, while the commits of the running system come from the verification setting (temperature 0);
+the agreement of every $\tau^2$-bench draft in this paper, offline or online, is measured on the same validation
+labels, so the curves are comparable, and the end-to-end acceptance is the measure under the verification
+setting.
+
+\paragraph{Continual variant.} Each version continues the previous adapter for two epochs on the new batch's
+pairs plus an equal-size uniform sample of the earlier pairs, with the learning rate and rank of the recipe;
+the first version is a fresh adapter on the first batch. The replay ratio and the number of epochs were not
+tuned.
+
+\input{tab_online_ci}
+
+\paragraph{Endpoint.} The final adapter is measured on the test split with the protocol of
+Table~\ref{tab:four} ($\tau^2$-bench: two shards of 20 tasks, each sequential then speculative, on separate server
+pairs). Table~\ref{tab:online} lists the agreement of every version and the update times.
+
+\begin{table}[h]
+\centering
+\caption{\textbf{Online training: agreement of each adapter version} (offline exact match on the held-out
+contexts, \%). OpenAGI: 263 test contexts, one version per 25 training tasks; $\tau^2$-bench: 226 validation
+contexts, one version per 10 tasks, so its 60 training tasks give six versions. Offline drafts: 75.0 (OpenAGI) and 63.7 ($\tau^2$-bench). Update time is the
+time from the end of a batch to the loaded adapter (buffer build and training).}
+\label{tab:online}
+\small
+\resizebox{\linewidth}{!}{\begin{tabular}{lrrrrrrrrrrr}
+\toprule
+version & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 & 9 & 10 & update time \\
+\midrule
+OpenAGI, retrain on buffer & 53.0 & 58.8 & 67.0 & 69.6 & 73.3 & 74.7 & 73.4 & 72.8 & 74.1 & 74.0 & 27--73 s \\
+OpenAGI, continual         & 48.7 & 61.6 & 65.7 & 69.8 & 63.5 & 69.2 & 70.8 & 72.5 & 75.9 & 74.9 & 22 s \\
+$\tau^2$-bench, retrain on buffer & 33.6 & 57.5 & 58.4 & 58.4 & 64.6 & 66.4 & -- & -- & -- & -- & 3--18 min \\
+$\tau^2$-bench, continual         & 28.3 & 57.1 & 54.9 & 59.7 & 63.3 & 63.3 & -- & -- & -- & -- & 3--6 min \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+
+\section{Task success and trajectory identity}
+\label{app:success}
+Table~\ref{tab:success} lists task outcomes for every configuration in Table~\ref{tab:four}. $\tau^2$-bench and BFCL use the benchmark's official success; OpenAGI and TaskBench have no
+task-level success metric beyond termination, and the count is the number of runs that terminated. The
+Qwen3 OpenAGI and TaskBench counts are over two runs of 63 and 60 tasks. The two passes of the Qwen3
+$\tau^2$-bench main run gave 22 and 22 sequential against 21 and 20 speculative successes, and the two passes of the
+BFCL main run 34 and 34 against 37 and 35. Across the 12 tool-benchmark size configurations and these four repeat comparisons,
+official task success increases in 8 cases, decreases in 5, and is unchanged in 3.
+Differences are at most three tasks per comparison. The 12 planning-benchmark comparisons instead
+count normal termination: 3 decrease and 9 are unchanged.
+
+Table~\ref{tab:parity} compares whole trajectories. The target run alone is reproducible: every pair of
+target-only runs of the same configuration commits identical decisions on every task. Speculative runs are not,
+mainly because verification decodes several contexts together and the engine's floating-point results depend on which
+requests share a batch. On the planning benchmarks, where a target step takes 1--2\,s, 83--96\% of the
+speculative trajectories are identical to the target-only one. On the tool benchmarks, where a step reasons for
+10--12\,s, a small numerical difference changes some decision on most tasks, and the trajectory differs from
+then on; two speculative runs also differ from each other. Every one of the 938 speculative task runs in
+Table~\ref{tab:parity} passed the harness's commit audit, which replays the task and checks that each committed
+action is the target's output on the context in which it was committed.
+
+\paragraph{Serialized verification.} To separate batching from other effects, we reran speculation with the
+target server limited to one sequence at a time, so that every verification request is decoded alone, as in the
+target-only run (TaskBench: 60 tasks, both arms; $\tau^2$-bench: the first 20 test tasks, compared with the
+target-only arm of the main run). The limit does not change the target-only run (60 of 60 TaskBench tasks
+identical). The speculative trajectories then match the target-only ones on 57 of 60 TaskBench tasks, against 50
+of 60 with concurrent verification, and on 8 of 20 $\tau^2$-bench tasks, against 0 of 20; every commit passes the
+audit. Batching thus accounts for most of the divergence but not for all of it; we did not identify the other
+source within the serving engine.
+
+\begin{table}[!ht]
+\centering
+\caption{\textbf{Task outcomes per arm} for the configurations of Table~\ref{tab:four}.
+Counts denote normal termination on OpenAGI and TaskBench, and official task success on
+$\tau^2$-bench and BFCL. The sequential count is the same across the three draft-size comparisons.}
+\label{tab:success}
+\small
+\begin{tabular}{lrrrrrrrr}
+\toprule
+ & \multicolumn{4}{c}{Qwen3-32B target} & \multicolumn{4}{c}{Gemma-4-31B target} \\
+\cmidrule(lr){2-5}\cmidrule(lr){6-9}
+ & & \multicolumn{3}{c}{speculative} & & \multicolumn{3}{c}{speculative} \\
+\cmidrule(lr){3-5}\cmidrule(lr){7-9}
+benchmark & sequential & 0.6B & 1.7B & 4B & sequential & 0.6B & 1.7B & 4B \\
+\midrule
+OpenAGI         & 126 & 126 & 126 & 126 & 63 & 63 & 63 & 63 \\
+TaskBench       & 116 & 114 & 115 & 114 & 60 & 60 & 60 & 60 \\
+$\tau^2$-bench  &  22 &  23 &  24 &  21 & 39 & 40 & 40 & 40 \\
+BFCL multi-turn &  34 &  34 &  36 &  34 & 48 & 47 & 47 & 48 \\
+\bottomrule
+\end{tabular}
+
+\vspace{1.5em}
+\caption{\textbf{Trajectory identity.} Share of tasks (\%) on which two runs of the same configuration commit
+identical decisions, with the free text of replies and summaries ignored; comparing that text as well gives
+3.3\% on BFCL and 0\% on $\tau^2$-bench for target-only against speculative. OpenAGI and TaskBench: the six
+runs of the draft-size study (three drafts, two repeats); $\tau^2$-bench and BFCL: the two passes of the main
+configuration.}
+\label{tab:parity}
+\small
+\begin{tabular}{lrrr}
+\toprule
+benchmark & two target-only runs & target-only vs.\ speculative & two speculative runs \\
+\midrule
+OpenAGI        & 100 & 95.5 & 96.5 \\
+TaskBench      & 100 & 82.8 & 81.7 \\
+$\tau^2$-bench & 100 &  1.3 & 45.0 \\
+BFCL           & 100 & 34.2 & 60.0 \\
+\bottomrule
+\end{tabular}
+\end{table}

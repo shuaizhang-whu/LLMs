@@ -50,6 +50,7 @@ async def status(request: Request):
     result['server_config'] = {
         'vllm_version': version('vllm'),
         'batch_invariant_requested': os.environ.get('VLLM_BATCH_INVARIANT', '0') == '1',
+        'prefix_cache_reset_available': True,
     }
     return JSONResponse(result)
 
@@ -59,6 +60,13 @@ async def clear(request: Request):
     return JSONResponse(select_worker(results))
 
 
+async def reset_prefix_cache(request: Request):
+    # vLLM 0.29 returns False while live requests still hold cache blocks.
+    # Never abort running requests or reset external connector state here.
+    success = await request.app.state.engine_client.reset_prefix_cache(False, False)
+    return JSONResponse({'success': bool(success)})
+
+
 original_build_app = entry.build_app
 
 def build_app(*args,**kwargs):
@@ -66,6 +74,7 @@ def build_app(*args,**kwargs):
     app.add_api_route('/spork/set_tokens',set_tokens,methods=['POST'])
     app.add_api_route('/spork/status',status,methods=['GET'])
     app.add_api_route('/spork/clear',clear,methods=['POST'])
+    app.add_api_route('/spork/reset_prefix_cache',reset_prefix_cache,methods=['POST'])
     return app
 
 entry.build_app = build_app

@@ -1,0 +1,101 @@
+{
+  "status": "research_design_only; no new GPU experiment launched",
+  "selection_rule": "lowest four numeric training task IDs per domain; no outcome-based exclusions",
+  "task_split_sha256": "1dfd913bbe9f6600bda2e051979c14bc9eeb7ff86aac963fdb0ea04d1992d339",
+  "mechanism_ablation": {
+    "task_ids": [
+      "airline:2",
+      "airline:3",
+      "airline:4",
+      "airline:6",
+      "retail:0",
+      "retail:1",
+      "retail:3",
+      "retail:4"
+    ],
+    "max_turns": 2,
+    "max_tokens": 8192,
+    "repetitions": 2,
+    "seed": 42,
+    "expected_runs": 64,
+    "conditions": [
+      {
+        "name": "spork",
+        "status": "implemented",
+        "purpose": "reference full-reasoning D1/D2/D3"
+      },
+      {
+        "name": "serial_child_without_d3",
+        "status": "not_implemented",
+        "purpose": "same parent/child D3 configuration as raw but child starts only after parent validation"
+      },
+      {
+        "name": "speculative_actor_only",
+        "status": "not_implemented",
+        "purpose": "precompute complete next model output; defer child tool execution and effects until parent validation"
+      },
+      {
+        "name": "raw",
+        "status": "implemented",
+        "purpose": "current complete next-Actor and isolated next-tool precomputation"
+      }
+    ],
+    "measurements": [
+      "whole-pair/task wall time including cancellations",
+      "exact committed Actor tokens, tool calls, observations and state",
+      "parent elapsed and TPOT under competition",
+      "candidate-result ready, child launch, child first token and child completion",
+      "verification and drain duration",
+      "prefill tokens, decode tokens, wasted work, peak KV/memory; GPU busy time if instrumentable"
+    ],
+    "run_rule": "Do not run the two new controls until implementation and bounded CPU lifecycle checks are complete."
+  },
+  "priority_order": [
+    "mechanism controls and reuse-contract stress checks",
+    "one-factor tool-delay/background-load sweeps",
+    "additional frozen-method repetitions",
+    "complete native user-simulator interaction with official reward",
+    "second model and second benchmark, matched near-neighbor methods",
+    "optional admission/memory/child-D3 improvements only after measured need"
+  ],
+  "factor_sweeps": {
+    "tool_floor_seconds": [
+      0,
+      2,
+      10
+    ],
+    "background_request_count": [
+      0,
+      2
+    ],
+    "protocol": "one factor at a time on training tasks; background requests must not use global D3 state",
+    "status": "plan_only"
+  },
+  "interactive_protocol": {
+    "requirements": [
+      "fixed user model/settings and official task/environment evaluator",
+      "verify user fidelity and terminal protocol before performance comparison",
+      "separate Actor time, user-simulator time and total time",
+      "same resources and initial state for both methods"
+    ],
+    "status": "full interactive comparison not yet validated"
+  },
+  "optional_controller": {
+    "inputs": "only currently visible history/prefix/candidate/observation and measured runtime features",
+    "label_acceptance": "future actual validation outcome, with failure/censoring recorded separately",
+    "label_gain": "matched on/off continuation timing with identical visible input and environment; future time is a label only",
+    "split": "develop on original train; tune on validation; obtain fresh untouched final tasks if adapting after inspecting current test",
+    "current_train_only_optimistic_extra_s_per_task": 5.453355178169799,
+    "current_extra_relative_percent": 1.8159185628602175,
+    "current_status": "no training, no new labels collected"
+  },
+  "literature": {
+    "spork": "https://arxiv.org/abs/2607.03333",
+    "sa": "https://arxiv.org/abs/2510.04371",
+    "obsspec": "https://arxiv.org/abs/2610.15246",
+    "aospec": "https://arxiv.org/abs/2608.00881",
+    "prospect_local": "/mnt/data/zhangshuai/LLMs/paper/Agent系列latex论文/Agent动作投机/ProSpect- Proactive Speculation for Lossless Acceleration of Multi-Agent Systems/44352_ProSpect_Proactive_Specu.pdf",
+    "ctes_local": "/mnt/data/zhangshuai/LLMs/paper/Agent系列latex论文/Agent动作投机/Controlled Token-Efficient Speculation for Large Language Model Agents/2120_Controlled_Token_Efficien.pdf"
+  },
+  "novelty_boundary": "Advance target calls, exact-input reuse, state validation, and overlap/cost formulae have prior coverage; current observations alone do not establish a first-of-kind method."
+}

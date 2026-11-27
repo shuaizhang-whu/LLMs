@@ -1,0 +1,262 @@
+*** Begin Patch
+*** Update File: /mnt/data/zhangshuai/LLMs/Projects/spork-codex/spork_core/successor_prefetch.py
+@@
+ 
+ 
+ async def run_successor_pair(session, client, adapter, messages, executor, first_turn,
+-                             make_cfg, *, mode="confirmed", on_turn=None, trace=None):
++                             make_cfg, *, mode="confirmed", on_turn=None, trace=None,
++                             recover_child_failure=False):
+     """Run at most two canonical turns; measure elapsed pair time externally.
+ 
+     Modes: baseline (no prefetch), raw (result-ready prefetch), confirmed (one
+@@
+                 launch_child("after_parent_validation")
+             if deferred_tools is not None:
+                 deferred_tools.allow()
+-            child = await child_task
+-            # Verify again at commit; awaiting the child must not expose it to
+-            # any mutation of the real parent environment or conversation.
+-            if rejection_reason(ticket, parent, executor.env,
+-                    adapter.tokenizer.encode(adapter.render_main_prompt(messages, enable_thinking=True), add_special_tokens=False),
+-                    generation_key(next_cfg, client, adapter)) is not None:
+-                raise RuntimeError("Reuse contract changed while awaiting child")
+-            executor.env = ticket["executor"].env
+-            executor.last_real_wall_s = ticket["executor"].last_real_wall_s
+-            executor.last_floor_sleep_s = ticket["executor"].last_floor_sleep_s
+-            messages[:] = ticket["messages"]
+-            info["adopted"] = True
+-            child["prefetch_compute_turn_end_ms"] = child["turn_end_ms"]
+-            if next_cfg.d3_clear is not None:
+-                child["d3_status"] = await next_cfg.d3_clear()
+-            child["turn_end_ms"] = (time.perf_counter() - next_started) * 1000
+-            child["timing_scope"] = "Canonical child wait/adoption; original compute duration retained separately"
+-            child["prefetch_d3_disabled"] = True
++            try:
++                child = await child_task
++            except Exception as exc:
++                if not recover_child_failure:
++                    raise
++                # A failed isolated branch must never replace committed state.
++                # CancelledError intentionally propagates instead of retrying.
++                info.update(rejection="child_failure", recovery_attempted=True,
++                            recovery_succeeded=False,
++                            recovery_reason=f"{type(exc).__name__}: {exc}")
++                if getattr(exc, "partial_generation", None) is not None:
++                    info["failed_child_generation"] = exc.partial_generation
++                if deferred_tools is not None:
++                    deferred_tools.discard()
++                await cancel_and_drain([child_task])
++                info["rejection_cleanup_finished_s"] = elapsed()
++                child = await run_timed_retry_turn(session, client, adapter,
++                    messages, executor, first_turn + 1, next_cfg)
++                info["recovery_succeeded"] = True
++            else:
++                # Verify again at commit; awaiting the child must not expose it to
++                # any mutation of the real parent environment or conversation.
++                if rejection_reason(ticket, parent, executor.env,
++                        adapter.tokenizer.encode(adapter.render_main_prompt(messages, enable_thinking=True), add_special_tokens=False),
++                        generation_key(next_cfg, client, adapter)) is not None:
++                    raise RuntimeError("Reuse contract changed while awaiting child")
++                executor.env = ticket["executor"].env
++                executor.last_real_wall_s = ticket["executor"].last_real_wall_s
++                executor.last_floor_sleep_s = ticket["executor"].last_floor_sleep_s
++                messages[:] = ticket["messages"]
++                info["adopted"] = True
++                child["prefetch_compute_turn_end_ms"] = child["turn_end_ms"]
++                if next_cfg.d3_clear is not None:
++                    child["d3_status"] = await next_cfg.d3_clear()
++                child["turn_end_ms"] = (time.perf_counter() - next_started) * 1000
++                child["timing_scope"] = "Canonical child wait/adoption; original compute duration retained separately"
++                child["prefetch_d3_disabled"] = True
+         else:
+             if deferred_tools is not None:
+                 deferred_tools.discard()
+*** Update File: /mnt/data/zhangshuai/LLMs/Projects/spork-codex/spork_core/successor_task.py
+@@
+ 
+ 
+ async def run_successor_task(session, client, adapter, messages, executor, make_cfg,
+-                             *, mode="raw", max_turns=8, on_turn=None, trace=None):
++                             *, mode="raw", max_turns=8, on_turn=None, trace=None,
++                             recover_child_failure=False):
+     """Keep all completed turns, stopping on a visible reply or the shared cap.
+ 
+     A pair never speculates recursively. After it is consumed or discarded, the
+@@
+     if mode not in {"baseline", "raw", "confirmed", "serial", "actor_only"} or max_turns < 1:
+         raise ValueError("Invalid task mode or turn budget")
+     trace = trace if trace is not None else {}
+-    trace.update(mode=mode, pairs=[], adopted=0, errors=[], observed_wasted_child_tokens=0)
++    trace.update(mode=mode, recover_child_failure=recover_child_failure, pairs=[], adopted=0, errors=[], observed_wasted_child_tokens=0)
+     entries = []
+     started = time.perf_counter()
+ 
+@@
+             else:
+                 pair["kind"] = "successor_pair"
+                 await run_successor_pair(session, client, adapter, messages, executor,
+-                    turn, make_cfg, mode=mode, on_turn=accept, trace=pair)
++                    turn, make_cfg, mode=mode, on_turn=accept, trace=pair,
++                    recover_child_failure=recover_child_failure)
+             pair["end_offset_s"] = time.perf_counter() - started
+             if entries and not entries[-1]["baseline_has_tool_call"]:
+                 break
+*** Update File: /mnt/data/zhangshuai/LLMs/Projects/spork-codex/scripts/run_successor_full_eval.py
+@@
+         selected.sort(key=lambda t: (t["domain"], int(t["task_id"])))
+     configs = args.configs.split(",")
+     if (not selected or "spork" not in configs or len(configs) != len(set(configs))
+-            or set(configs) - {"spork", "raw", "confirmed", "serial", "actor_only"}):
+-        raise ValueError("Select unique configs from spork,raw,confirmed,serial,actor_only including spork")
++            or set(configs) - {"spork", "raw", "raw_fallback", "confirmed", "serial", "actor_only"}):
++        raise ValueError("Select unique configs from spork,raw,raw_fallback,confirmed,serial,actor_only including spork")
+     family = getattr(args, "model_family", "qwen3")
+     parser_root = (Path(importlib.util.find_spec("vllm").origin).parent
+                    if family == "qwen35" else None)
+@@
+         "config_semantics": {
+             "spork": "Original full-reasoning SPORK with D1/D2/D3",
+             "raw": "Early complete next Actor and isolated tool execution",
++            "raw_fallback": "Raw plus at most one canonical SPORK attempt after a failed isolated child; extra attempt and cleanup remain timed; no stochastic distribution guarantee",
+             "serial": "Build the same candidate ticket, validate first, then run its child without D3; misses use canonical SPORK",
+             "actor_only": "Early next Actor; all child tool execution waits for parent validation",
+             "confirmed": "Legacy Qwen3-only extra free confirmation before early child launch"},
+@@
+             record["stage"] = "running"
+             try:
+                 await run_successor_task(session, client, adapter, messages, executor, make_cfg,
+-                    mode="baseline" if item["config"] == "spork" else item["config"],
++                    mode=("baseline" if item["config"] == "spork" else
++                          "raw" if item["config"] == "raw_fallback" else item["config"]),
++                    recover_child_failure=item["config"] == "raw_fallback",
+                     max_turns=args.max_turns, on_turn=checkpoint, trace=record["prefetch"])
+                 record["errors"].extend(record["prefetch"].get("errors", []))
+             except asyncio.CancelledError:
+*** Update File: /mnt/data/zhangshuai/LLMs/Projects/spork-codex/tests/test_successor_prefetch.py
+@@
+             changed = copy.deepcopy(ticket); changed[key] = value
+             self.assertEqual(rejection_reason(changed, parent, env, [1, 2, 3], {"seed": 42}), reason)
+ 
+-    async def fake_pair(self, parent_delta=1, different_serialization=False, parent_reply=False, mode="raw"):
++    async def fake_pair(self, parent_delta=1, different_serialization=False, parent_reply=False, mode="raw",
++                        recover_child_failure=False, child_failure=False,
++                        canonical_failure=False, child_cancellation=False):
+         real = Env()
+         executor = Tau2ToolExecutor(real, floor_s=0)
+         client = SimpleNamespace(model="mock", base_url="mock", timeout_s=10)
+         messages = [{"role": "user", "content": "advance"}]
+         isolated_states = []
++        self.last_isolated_states = isolated_states
+ 
+         async def runner(session, client, adapter, messages, executor, turn, cfg, *, http=None):
+             state = SimpleNamespace(finished_at=None, finish_reason=None,
+@@
+                 call = {"name": "advance", "arguments": {"delta": 10}}
+                 result, _ = await asyncio.to_thread(executor.execute, call)
+                 isolated_states.append(executor.env.value)
++                if child_cancellation and http is not None:
++                    raise asyncio.CancelledError()
++                if child_failure and (http is not None or canonical_failure):
++                    raise RuntimeError("synthetic isolated child failure")
+             state.finished_at = time.perf_counter()
+             state.finish_reason = "stop"
+             text = "<tool_call>\n" + json.dumps(call) + "\n"
+@@
+ 
+         with patch("spork_core.successor_prefetch.run_timed_retry_turn", runner):
+             entries, info = await run_successor_pair(None, client, Adapter(), messages, executor, 1,
+-                lambda messages, turn: RetryTurnConfig(), mode=mode)
++                lambda messages, turn: RetryTurnConfig(), mode=mode,
++                recover_child_failure=recover_child_failure)
+         return executor, entries, info, isolated_states
+ 
+     async def test_accepted_child_cannot_mutate_parent_before_commit(self):
+@@
+         self.assertEqual(executor.env.value, 12)
+ 
+ 
++    async def test_failed_child_discards_its_mutations_and_recovers_once(self):
++        for mode in ["raw", "serial", "actor_only"]:
++            with self.subTest(mode=mode):
++                executor, entries, info, values = await self.fake_pair(
++                    mode=mode, child_failure=True, recover_child_failure=True)
++                self.assertEqual(executor.env.value, 11)
++                self.assertEqual(values, [11, 11])
++                self.assertEqual(len(entries), 2)
++                self.assertFalse(info["adopted"])
++                self.assertEqual(info["rejection"], "child_failure")
++                self.assertTrue(info["recovery_succeeded"])
++                self.assertEqual(info["observed_wasted_child_tokens"], 2)
++
++    async def test_canonical_failure_after_child_failure_is_not_retried(self):
++        with self.assertRaisesRegex(RuntimeError, "synthetic isolated child failure"):
++            await self.fake_pair(child_failure=True, canonical_failure=True,
++                                 recover_child_failure=True)
++        self.assertEqual(self.last_isolated_states, [11, 11])
++
++    async def test_cancelled_child_never_starts_recovery(self):
++        with self.assertRaises(asyncio.CancelledError):
++            await self.fake_pair(child_cancellation=True, recover_child_failure=True)
++        self.assertEqual(self.last_isolated_states, [11])
++
+ if __name__ == "__main__":
+     unittest.main()
+*** Update File: /mnt/data/zhangshuai/LLMs/Projects/spork-codex/tests/test_successor_task.py
+@@
+ 
+ 
+ class Tests(unittest.IsolatedAsyncioTestCase):
+-    async def simulate(self, max_turns=8, reply_at=99, fail_at=None):
++    async def simulate(self, max_turns=8, reply_at=99, fail_at=None, recover_child_failure=False):
+         observed, calls, trace = [], [], {}
+-        async def pair(session, client, adapter, messages, executor, turn, make_cfg, *, mode, on_turn, trace):
++        expected_recovery = recover_child_failure
++        async def pair(session, client, adapter, messages, executor, turn, make_cfg, *, mode, on_turn, trace, recover_child_failure=False):
++            self.assertEqual(recover_child_failure, expected_recovery)
+             calls.append(("pair", turn))
+             trace.update(adopted=True, observed_wasted_child_tokens=3, errors=[])
+             for current in (turn, turn + 1):
+@@
+         with patch("spork_core.successor_task.run_successor_pair", pair), patch("spork_core.successor_task.run_timed_retry_turn", single):
+             try:
+                 result = await run_successor_task(None, None, None, [], None, lambda m, t: None,
+-                    max_turns=max_turns, on_turn=observed.append, trace=trace)
++                    max_turns=max_turns, on_turn=observed.append, trace=trace,
++                    recover_child_failure=recover_child_failure)
+             except RuntimeError as error:
+                 result = error
+         return result, observed, calls, trace
+@@
+         self.assertEqual(calls, [("pair", 1), ("pair", 3)])
+         self.assertEqual(len(observed), 3)
+         self.assertFalse(trace["turn_limit_reached"])
++
++    async def test_recovery_opt_in_reaches_each_pair(self):
++        _, _, calls, trace = await self.simulate(recover_child_failure=True)
++        self.assertEqual(len(calls), 4)
++        self.assertTrue(trace["recover_child_failure"])
+ 
+     async def test_odd_budget_has_no_unusable_successor(self):
+         _, observed, calls, _ = await self.simulate(max_turns=5)
+*** Update File: /mnt/data/zhangshuai/LLMs/Projects/spork-codex/tests/test_successor_full_eval.py
+@@
+             runner.main()
+         self.assertEqual(self.started, 4)
+ 
++    async def test_recovery_is_enabled_only_for_the_explicit_recovery_arm(self):
++        self.args.output = Path(self.tmp.name) / "recovery"
++        self.args.configs = "spork,raw_fallback"
++        manifest, tasks = runner.prepare(self.args)
++        with self.transport():
++            with patch.object(runner, "run_successor_task", wraps=runner.run_successor_task) as calls:
++                await runner.execute(self.args, manifest, tasks)
++        settings = [(c.kwargs["mode"], c.kwargs["recover_child_failure"])
++                    for c in calls.call_args_list]
++        self.assertEqual(settings.count(("baseline", False)), 2)
++        self.assertEqual(settings.count(("raw", True)), 2)
++
+     async def test_interruption_is_preserved_and_is_not_a_completed_trial(self):
+         with self.transport(interrupt=True):
+             with self.assertRaises(asyncio.CancelledError):
+*** End Patch

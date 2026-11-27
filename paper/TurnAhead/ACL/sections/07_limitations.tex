@@ -1,0 +1,27 @@
+% !TEX root = ../main.tex
+\section*{Limitations}
+
+\paragraph{History policy.}
+\method relies on a history that keeps only the final output of earlier turns.
+If a harness keeps their reasoning, the input of a successor can never match the real one, every successor is discarded, and \method should be switched off.
+
+\paragraph{Depth.}
+Windows are disjoint and one turn deep, so at most every second turn starts early.
+Deeper speculation would add concurrent requests and discarded work, and we do not evaluate it.
+
+\paragraph{Sandboxing.}
+Copy-based sandboxing requires an environment whose state can be copied.
+Tools with external effects need the deferred mode, which we evaluate only on \taubench, where it is not required.
+
+\paragraph{Determinism.}
+The guarantee of identical trajectories requires deterministic decoding.
+We verify it with batch-invariant kernels within one server instance and with greedy decoding.
+With standard kernels, outputs depend on batching for every method that issues concurrent requests, and we can only compare aggregates.
+
+\paragraph{Compute and sharing.}
+\method generates \OvhDetGenOurs{} tokens per committed token, and its gain shrinks as a second concurrent request becomes more expensive.
+All experiments use a dedicated server and one agent at a time.
+On a shared server, successors would compete with the requests of other users, which we do not evaluate.
+
+\paragraph{Evaluation.}
+The tasks give the user's request in a single message and are scored by their gold actions, not by the interactive success rate of the benchmark, and tool latency is a fixed floor.

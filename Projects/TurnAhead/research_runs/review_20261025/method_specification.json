@@ -1,0 +1,36 @@
+{
+  "name": "下一轮完整 Actor 预计算",
+  "baseline": "SPORK with full reasoning, D1/D2/D3; same Qwen3-32B and generation settings",
+  "input": [
+    "Committed dialogue and tool schemas",
+    "SPORK predicted call and its real isolated tool result",
+    "Exact next-prompt tokens, environment fingerprints and frozen generation settings"
+  ],
+  "output": "A completed full next-Actor response and isolated next-tool state, conditionally reusable after the parent completes normally.",
+  "training": "No new model training or learned labels; original SPORK confidence threshold retained.",
+  "acceptance": [
+    "Parent tool name and arguments match",
+    "Parent observation hash matches",
+    "Post-parent environment state matches",
+    "Full serialized next-prompt token IDs match",
+    "Model and generation settings match"
+  ],
+  "fallback": "Cancel and drain mismatching child work, keep its cost, and execute the next canonical SPORK turn.",
+  "scope": [
+    "This SPORK baseline removes prior thinking from later tool-turn messages; no unknown future reasoning is inserted into the child input.",
+    "Validated in local isolated deterministic tau2 environments with greedy generation and the tested serving setup.",
+    "Exact-input checks are not a universal guarantee for opaque model state, untracked external effects or arbitrary nondeterministic backends.",
+    "Fixed user messages and turn caps are not official interactive tau2 success."
+  ],
+  "attribution": {
+    "SPORK": "Partial-reasoning tool prediction, isolated early tool execution and D3",
+    "Speculative Actions / CTES": "Multistep speculative branches and compatible-work reuse",
+    "ObsSpec / ProSpect": "Overlapping later model work with an anticipated input and validating input compatibility; this implementation uses an actual early tool result and live shared-GPU execution."
+  },
+  "rejected_variant": "The extra unforced confirmation gate was slower on the initial two-task comparison; it is retained only as an experimental control.",
+  "code": [
+    "spork_core/successor_prefetch.py",
+    "spork_core/successor_task.py",
+    "scripts/run_successor_full_eval.py"
+  ]
+}

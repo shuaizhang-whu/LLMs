@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+SPORK_Q35_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
+export SPORK_CODEX_MODEL="${SPORK_Q35_MODEL:-$(dirname -- "$(dirname -- "$SPORK_Q35_ROOT")")/Models/Qwen3.5-9B}"
+export SPORK_CHECK_PORT="${SPORK_Q35_PORT:-8027}"
+source "$SPORK_Q35_ROOT/scripts/codex_env.sh"
+export SPORK_Q35_DEVICES="${SPORK_Q35_DEVICES:-2,3}"
+export SPORK_Q35_TP="${SPORK_Q35_TP:-2}"
+export SPORK_TOOL_CALL_OPEN_TOKEN_ID=248058
+export SPORK_Q35_REFERENCE_GDN="${SPORK_Q35_REFERENCE_GDN:-0}"
+if [[ "$SPORK_Q35_REFERENCE_GDN" == 1 ]]; then
+    export SPORK_EXPERIMENT_PROFILE=qwen35_9b_gdn_reference_v4
+    export SPORK_Q35_BATCH_INVARIANT=1
+    export SPORK_Q35_HEAD_DTYPE=model
+    export VLLM_SSM_CONV_STATE_LAYOUT=SD
+    export SPORK_Q35_RUN_TAG="${SPORK_Q35_RUN_TAG:-qwen35_9b_20261101_gdnref_v4}"
+else
+    export SPORK_EXPERIMENT_PROFILE=qwen35_9b_successor_v1
+    export SPORK_Q35_BATCH_INVARIANT=0
+    export SPORK_Q35_HEAD_DTYPE="${SPORK_Q35_HEAD_DTYPE:-float32}"
+    export SPORK_Q35_RUN_TAG="${SPORK_Q35_RUN_TAG:-qwen35_9b_20261101_nativeparser}"
+fi
+export SPORK_Q35_BATCH_TOKENS=4096
+export SPORK_Q35_BLOCK_SIZE=640
+export SPORK_Q35_PRESENCE_PENALTY="${SPORK_Q35_PRESENCE_PENALTY:-1.5}"
+export VLLM_GDN_DECODE_KERNEL=triton
+export VLLM_ENABLE_FLA_PACKED_RECURRENT_DECODE=0

@@ -1,0 +1,435 @@
+--- a/scripts/run_refresh_full_eval.py
++++ b/scripts/run_refresh_full_eval.py
+@@ -36,11 +36,13 @@
+ sys.path.insert(0, str(ROOT))
+ 
+ from spork_core.stable_refresh_exit import ExitConfig, run_early_exit_turn  # noqa: E402
+-from spork_core.prefix_replay import PrefixHttpClient, counter_delta  # noqa: E402
++from spork_core.prefix_replay import PrefixHttpClient, counter_delta, COUNTERS  # noqa: E402
+ from spork_core.qwen import QwenToolCallAdapter  # noqa: E402
+ from spork_core.timed_retry import run_timed_retry_turn  # noqa: E402
+ from spork_core.turn_runner import RetryTurnConfig  # noqa: E402
+ from spork_core.vllm_client import VllmClient  # noqa: E402
++from spork_core.evaluation_artifacts import (freeze_plan, read_completed, complete_record,
++    archive_unfinished, planned_records, visible_final_answers)  # noqa: E402
+ 
+ 
+ def dump(path: Path, value):
+@@ -57,7 +59,7 @@
+ 
+ 
+ def final_answers(record):
+-    return [t.get("final_answer") for t in record["turns"]]
++    return visible_final_answers(record)
+ 
+ 
+ def select_tasks(split, scope, domains=("airline", "retail")):
+@@ -78,18 +80,17 @@
+ 
+ 
+ def analyze(output: Path, manifest):
+-    records = []
+-    for path in sorted((output / "records").glob("*.json")):
+-        try:
+-            records.append(json.loads(path.read_text()))
+-        except Exception:
+-            continue
++    records, unfinished = planned_records(output, manifest)
+     configs = manifest["configs"]
+     groups = {}
+     for record in records:
+         groups.setdefault((record["group_id"], record["repeat"]), {})[record["config"]] = record
+ 
+-    report = {"scope": manifest["scope"], "configs": configs, "splits": {},
++    report = {"expected_runs": len(manifest["schedule"]), "finished_runs": len(records),
++              "experiment_complete": len(records) == len(manifest["schedule"]),
++              "unsealed_records": unfinished,
++              "final_answer_comparison": "Exact visible reply, excluding reasoning; unobserved replies are explicitly marked",
++              "scope": manifest["scope"], "configs": configs, "splits": {},
+               "comparisons": {}, "quality_by_initial_match": {},
+               "quality_scope": "fixed user message; ACTION reward, not official interactive tau2 success"}
+     for split_name in ("all", "train", "validation", "test"):
+@@ -135,6 +136,7 @@
+                     "initial_match": bool(ref["turns"] and ref["turns"][0].get("spec_used")),
+                     "same_action_results_state": valid and signature(ref) == signature(other),
+                     "same_final_answer": final_answers(ref) == final_answers(other),
++                    "final_answer_observed": bool(final_answers(ref) or final_answers(other)),
+                     "baseline_s": ref["wall_s"], "method_s": other["wall_s"],
+                     "saved_s": ref["wall_s"] - other["wall_s"],
+                     "refreshes": sum(t.get("exit", {}).get("refresh_count", 0) for t in other["turns"]),
+@@ -194,17 +196,41 @@
+         raise ValueError(f"Tasks missing from local tau2 loader: {missing[:5]}")
+ 
+     configs = [c.strip() for c in args.configs.split(",") if c.strip()]
++    if not configs or len(set(configs)) != len(configs) or set(configs) - {"spork", "eta", "refresh", "off"}:
++        raise ValueError("Use unique configs from spork, eta, refresh, off")
+     for required in ("spork",):
+         if required not in configs:
+             raise ValueError("The spork reference is required")
+     schedule = make_schedule(selected, configs, args.repetitions)
+-    args.output.mkdir(parents=True, exist_ok=False)
+     sources = [Path(__file__), ROOT / "spork_core/stable_refresh_exit.py",
+                ROOT / "spork_core/candidate_verification.py", ROOT / "spork_core/timed_retry.py",
+-               ROOT / "spork_core/prefix_replay.py", ROOT / "spork_core/turn_runner.py"]
++               ROOT / "spork_core/prefix_replay.py", ROOT / "spork_core/turn_runner.py",
++               ROOT / "spork_core/evaluation_artifacts.py", ROOT / "spork_core/executors.py",
++               ROOT / "spork_core/qwen.py", ROOT / "spork_core/launch_timing.py",
++               ROOT / "spork_core/vllm029_d3.py", ROOT / "launch_vllm_spork_http.py",
++               ROOT / "scripts/serve_qwen32_candidate_checks.sh"]
+     manifest = {
+         "purpose": "stable_refresh_full_eval", "created_at": datetime.now().isoformat(),
+         "model": args.model, "base_url": args.base_url, "scope": args.scope,
++        "max_tokens": args.max_tokens, "context_window": 40960,
++        "exit_parameters": {k: v for k, v in asdict(ExitConfig(
++            stable_checks=args.stable_checks, max_checks=args.max_checks,
++            max_refreshes=args.max_refreshes)).items() if k not in {"method", "enable_exit"}},
++        "config_semantics": {"spork": "unchanged full-reasoning SPORK",
++            "eta": "ETA-style exit with the common exit_parameters",
++            "refresh": "stable candidate replacement plus the same exit rule",
++            "off": "ETA instrumentation and speculation retained; only early exit disabled"},
++        "measurement": "Each task starts after the same discarded one-token prompt warmup; measured wall includes turn cleanup",
++        "task_split_sha256": hashlib.sha256(args.task_split.read_bytes()).hexdigest(),
++        "task_material_sha256": hashlib.sha256(json.dumps(
++            {t["group_id"]: task_map[t["group_id"]] for t in selected},
++            sort_keys=True, ensure_ascii=False).encode()).hexdigest(),
++        "policy_tools_sha256": {d: hashlib.sha256(json.dumps(
++            [load_system_prompt(d), load_tools(d)], sort_keys=True, ensure_ascii=False).encode()).hexdigest()
++            for d in ("airline", "retail")},
++        "model_config_sha256": {name: hashlib.sha256((Path(args.model) / name).read_bytes()).hexdigest()
++            for name in ("config.json", "tokenizer_config.json", "generation_config.json")
++            if (Path(args.model) / name).is_file()},
+         "seed": args.seed, "configs": configs, "max_turns": args.max_turns,
+         "repetitions": args.repetitions, "tool_floor_s": args.tool_floor,
+         "stable_checks": args.stable_checks, "max_checks": args.max_checks,
+@@ -213,7 +239,7 @@
+         "code_sha256": {str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest()
+                         for p in sources},
+     }
+-    dump(args.output / "manifest.json", manifest)
++    manifest = freeze_plan(args.output, manifest, ROOT, sources)
+     print(f"{len(selected)} tasks x {len(configs)} configs x {args.repetitions} repeats = {len(schedule)} runs")
+     if args.dry_run:
+         print("dry run; schedule written to", args.output / "manifest.json")
+@@ -229,7 +255,8 @@
+             connector=aiohttp.TCPConnector(force_close=True)) as session:
+         status = await http.status(session)
+         if (status.get("server_config", {}).get("batch_invariant_requested") is not True
+-                or not status.get("has_drafter") or status.get("active_requests") != 0):
++                or not status.get("has_drafter") or status.get("active_requests") != 0
++                or status.get("pending_verifications") != 0):
+             raise RuntimeError("An idle batch-invariant D3 server is required")
+         dump(args.output / "server_start.json", status)
+         started_all = time.perf_counter()
+@@ -237,20 +264,21 @@
+         for position, item in enumerate(schedule):
+             path = args.output / "records" / (
+                 f'{item["domain"]}_{item["task_id"]}_r{item["repeat"]}_{item["config"]}.json')
+-            if path.exists():
+-                try:
+-                    prior = json.loads(path.read_text())
+-                    if not prior.get("errors"):
+-                        continue
+-                except Exception:
+-                    pass
++            if read_completed(path, item) is not None:
++                continue  # Completed failures are preserved, not silently retried.
++            previous_unsealed = archive_unfinished(path)
+             adapter = adapters[item["domain"]]
+             task = task_map[item["group_id"]]
+             messages = [{"role": "system", "content": policies[item["domain"]]},
+                         {"role": "user", "content": task["user_message"]}]
+             executor = Tau2ToolExecutor(get_environment(item["domain"]), floor_s=args.tool_floor)
+-            record = {**item, "turns": [], "errors": []}
++            record = {**item, "turns": [], "errors": [], "previous_unsealed": previous_unsealed}
+             print(f'[{position + 1}/{len(schedule)}] {item["split"]} {item["group_id"]} {item["config"]}', flush=True)
++            initial_ids = tok.encode(adapter.render_main_prompt(messages, enable_thinking=True), add_special_tokens=False)
++            await http.complete(session, initial_ids, max_tokens=1, seed=args.seed)
++            status = await http.status(session)
++            if status.get("active_requests") != 0 or status.get("pending_verifications") != 0:
++                raise RuntimeError("Server is not idle after discarded warmup")
+             started = time.perf_counter()
+             try:
+                 for turn in range(1, args.max_turns + 1):
+@@ -304,17 +332,35 @@
+             for key in ("accounting_errors", "dropped_injections"):
+                 if record.get("d3_counters", {}).get(key):
+                     record["errors"].append(key)
+-            record["action_reward"] = (tau2_action_reward(task.get("raw_task") or {}, record["turns"])
+-                                       if not record["errors"] else None)
++            if any(key not in after for key in COUNTERS):
++                record["errors"].append("missing_d3_counters")
++            if any(value < 0 for value in record.get("d3_counters", {}).values()):
++                record["errors"].append("d3_counter_reset")
++            if after.get("active_requests") != 0 or after.get("pending_verifications") != 0:
++                record["errors"].append("residual_d3_state")
++            if not record["turns"] and not record["errors"]:
++                record["errors"].append("empty_task")
++            for entry in record["turns"]:
++                if not entry.get("completion_valid") or entry.get("worker_errors") or entry.get("spec_cleanup_error"):
++                    record["errors"].append("turn_completion_or_cleanup_error")
++                if (entry.get("d3_status") or {}).get("clear_status") not in ("ok", "cleared"):
++                    record["errors"].append("unconfirmed_d3_cleanup")
++            try:
++                record["action_reward"] = (tau2_action_reward(task.get("raw_task") or {}, record["turns"])
++                                           if not record["errors"] else None)
++            except Exception as score_error:
++                record["action_reward"] = None
++                record["errors"].append(f"reward_evaluation: {type(score_error).__name__}: {score_error}")
+             record["completed_at"] = datetime.now().isoformat()
+-            dump(path, record)
++            complete_record(path, record)
+             completed += 1
+             mean_s = (time.perf_counter() - started_all) / completed
+             print(f'  {record["wall_s"]:.1f}s turns={len(record["turns"])} '
+                   f'errors={record["errors"]} ETA≈{mean_s * (len(schedule) - position - 1) / 3600:.1f}h', flush=True)
+             analyze(args.output, manifest)
+-            if (after.get("active_requests") != 0 or after.get("pending_verifications") != 0):
+-                raise RuntimeError("Server/D3 state is not clean; result saved before stopping")
++            if any(e in record["errors"] for e in ("accounting_errors", "dropped_injections",
++                    "missing_d3_counters", "d3_counter_reset", "residual_d3_state", "unconfirmed_d3_cleanup")):
++                raise RuntimeError("Server/D3 integrity failed; sealed result saved before stopping")
+         dump(args.output / "server_end.json", await http.status(session))
+         save_stats = {"completed": completed, "total": len(schedule),
+                       "wall_s": time.perf_counter() - started_all}
+@@ -349,11 +395,11 @@
+     if args.dry_run:
+         asyncio.run(run(args))
+         return
+-    locks = [ROOT / "results" / f"controller_online_{port}.lock"]
+-    sibling_name = "spork" if ROOT.name == "spork_v2" else "spork_v2"
+-    sibling = ROOT.parent / sibling_name / "results"
+-    if sibling.is_dir():
+-        locks.append(sibling / f"controller_online_{port}.lock")
++    # Several checked-out SPORK copies may share the same local serving port.
++    locks = {(ROOT / "results" / f"controller_online_{port}.lock").resolve()}
++    for sibling in ROOT.parent.iterdir():
++        if sibling.name.startswith("spork") and (sibling / "spork_core").is_dir():
++            locks.add((sibling / "results" / f"controller_online_{port}.lock").resolve())
+     with ExitStack() as stack:
+         for path in sorted(set(locks)):
+             path.parent.mkdir(parents=True, exist_ok=True)
+--- /dev/null
++++ b/spork_core/evaluation_artifacts.py
+@@ -0,0 +1,131 @@
++"""Frozen plans and sealed records for resumable research evaluations."""
++from __future__ import annotations
++
++from datetime import datetime
++import hashlib
++import json
++from pathlib import Path
++import uuid
++
++
++def digest(path):
++    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
++
++
++def visible_final_answers(record):
++    """Visible replies only; raw thinking and tool-turn count are separate data."""
++    replies = []
++    for turn in record.get("turns", []):
++        if not turn.get("baseline_has_tool_call") and turn.get("final_answer") is not None:
++            text = turn.get("baseline_text", turn["final_answer"])
++            replies.append(text.split("</think>")[-1].strip())
++    return replies
++
++
++def write_json(path, value):
++    path = Path(path)
++    path.parent.mkdir(parents=True, exist_ok=True)
++    temporary = path.with_name(path.name + "." + uuid.uuid4().hex + ".tmp")
++    temporary.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n")
++    temporary.replace(path)
++
++
++def freeze_plan(output, candidate, root, sources):
++    """Prepare once or require an identical plan, inputs, and implementation."""
++    output, root = Path(output), Path(root)
++    candidate = dict(candidate)
++    candidate["artifact_schema"] = 1
++    expected = {str(Path(p).relative_to(root)): digest(p) for p in sources}
++    if candidate["code_sha256"] != expected:
++        raise ValueError("Source changed while constructing the plan")
++    path = output / "manifest.json"
++    if path.exists():
++        existing = json.loads(path.read_text())
++        stable = lambda m: {k: v for k, v in m.items() if k != "created_at"}
++        if stable(existing) != stable(candidate):
++            raise ValueError("Frozen configuration, inputs, or source changed; use a new output directory")
++        for relative, checksum in expected.items():
++            snapshot = output / "code" / relative
++            if not snapshot.is_file() or digest(snapshot) != checksum:
++                raise ValueError(f"Missing or modified code snapshot: {relative}")
++        return existing
++    if output.exists() and any(output.iterdir()):
++        raise ValueError("Nonempty output directory has no frozen manifest")
++    output.mkdir(parents=True, exist_ok=True)
++    for source in sources:
++        relative = Path(source).relative_to(root)
++        content = Path(source).read_bytes()
++        if hashlib.sha256(content).hexdigest() != expected[str(relative)]:
++            raise ValueError(f"Source changed during snapshot: {relative}")
++        target = output / "code" / relative
++        target.parent.mkdir(parents=True, exist_ok=True)
++        target.write_bytes(content)
++    write_json(path, candidate)
++    return candidate
++
++
++def seal_path(path):
++    path = Path(path)
++    # A non-.json suffix prevents legacy '*.json' discovery from reading seals
++    # as if they were completed task records.
++    return path.with_name(path.name + ".seal")
++
++
++def read_completed(path, item=None):
++    """Return both successes and failures; never silently substitute a rerun."""
++    path = Path(path)
++    seal = seal_path(path)
++    if not seal.exists():
++        return None
++    if not path.is_file():
++        raise ValueError(f"Sealed record is missing: {path}")
++    expected = json.loads(seal.read_text())
++    if digest(path) != expected["sha256"]:
++        raise ValueError(f"Sealed record changed: {path}")
++    record = json.loads(path.read_text())
++    if not isinstance(record.get("errors"), list) or not isinstance(record.get("turns"), list):
++        raise ValueError(f"Malformed completed record: {path}")
++    if not record["errors"] and not record["turns"]:
++        raise ValueError(f"Empty run cannot be a successful record: {path}")
++    if item is not None:
++        for key in ("group_id", "split", "repeat", "config"):
++            if record.get(key) != item.get(key):
++                raise ValueError(f"Record identity changed ({key}): {path}")
++    return record
++
++
++def archive_unfinished(path):
++    """Preserve an interrupted, unsealed record before a fresh attempt."""
++    path = Path(path)
++    if seal_path(path).exists():
++        raise ValueError("A completed record must not be archived or rerun")
++    if not path.exists():
++        return None
++    target = path.parent / "attempts" / (path.stem + "_" + uuid.uuid4().hex + "_unsealed.json")
++    target.parent.mkdir(parents=True, exist_ok=True)
++    path.replace(target)
++    return str(target)
++
++
++def complete_record(path, record):
++    path = Path(path)
++    if path.exists() or seal_path(path).exists():
++        raise ValueError(f"Refusing to overwrite an existing attempt: {path}")
++    write_json(path, record)
++    write_json(seal_path(path), {"sha256": digest(path), "sealed_at": datetime.now().isoformat()})
++
++
++def record_path(output, item):
++    return Path(output) / "records" / f"{item['domain']}_{item['task_id']}_r{item['repeat']}_{item['config']}.json"
++
++
++def planned_records(output, manifest):
++    records, unfinished = [], []
++    for item in manifest["schedule"]:
++        path = record_path(output, item)
++        record = read_completed(path, item)
++        if record is not None:
++            records.append(record)
++        elif path.exists():
++            unfinished.append(str(path))
++    return records, unfinished
+--- /dev/null
++++ b/tests/test_evaluation_artifacts.py
+@@ -0,0 +1,88 @@
++import copy
++from pathlib import Path
++import tempfile
++import unittest
++
++from spork_core.evaluation_artifacts import (archive_unfinished, complete_record,
++    digest, freeze_plan, planned_records, read_completed, record_path, visible_final_answers)
++
++
++class ArtifactTests(unittest.TestCase):
++    def setUp(self):
++        self.tmp = tempfile.TemporaryDirectory()
++        self.addCleanup(self.tmp.cleanup)
++        self.root = Path(self.tmp.name)
++        self.source = self.root / "runner.py"
++        self.source.write_text("original source\n")
++        self.output = self.root / "run"
++        self.item = {"domain": "retail", "task_id": "0", "group_id": "retail:0",
++                     "split": "train", "repeat": 0, "config": "spork"}
++        self.plan = {"created_at": "first", "max_tokens": 8192, "schedule": [self.item],
++                     "input_sha256": "inputs", "code_sha256": {"runner.py": digest(self.source)}}
++
++    def freeze(self, plan=None):
++        return freeze_plan(self.output, plan or self.plan, self.root, [self.source])
++
++    def test_prepare_then_resume_keeps_first_manifest_and_source(self):
++        first = self.freeze()
++        again = copy.deepcopy(self.plan); again["created_at"] = "second"
++        self.assertEqual(self.freeze(again), first)
++        self.assertEqual((self.output / "code/runner.py").read_bytes(), self.source.read_bytes())
++
++    def test_changed_budget_or_inputs_cannot_mix_into_existing_results(self):
++        self.freeze()
++        for key, value in [("max_tokens", 4096), ("input_sha256", "different")]:
++            changed = copy.deepcopy(self.plan);changed[key] = value
++            with self.assertRaisesRegex(ValueError, "Frozen"):
++                self.freeze(changed)
++
++    def test_changed_source_and_damaged_snapshot_are_rejected(self):
++        self.freeze()
++        self.source.write_text("changed")
++        with self.assertRaises(ValueError):
++            self.freeze()
++        self.source.write_text("original source\n")
++        (self.output / "code/runner.py").write_text("tampered snapshot")
++        with self.assertRaisesRegex(ValueError, "snapshot"):
++            self.freeze()
++
++    def test_failed_run_is_completed_and_cannot_be_overwritten(self):
++        manifest = self.freeze()
++        path = record_path(self.output, self.item)
++        record = {**self.item, "turns": [], "errors": ["generation length limit"]}
++        complete_record(path, record)
++        self.assertEqual(read_completed(path, self.item), record)
++        self.assertEqual(planned_records(self.output, manifest)[0], [record])
++        with self.assertRaisesRegex(ValueError, "overwrite"):
++            complete_record(path, {**record, "errors": []})
++
++    def test_record_corruption_or_identity_mismatch_is_visible(self):
++        self.freeze();path = record_path(self.output, self.item)
++        complete_record(path, {**self.item, "turns": [{}], "errors": []})
++        with self.assertRaisesRegex(ValueError, "identity"):
++            read_completed(path, {**self.item, "config": "refresh"})
++        path.write_text("{}")
++        with self.assertRaisesRegex(ValueError, "changed"):
++            read_completed(path)
++
++    def test_unsealed_partial_is_archived_instead_of_treated_as_success(self):
++        self.freeze();path = record_path(self.output, self.item)
++        path.parent.mkdir();path.write_text('{"incomplete":')
++        self.assertIsNone(read_completed(path))
++        archived = Path(archive_unfinished(path))
++        self.assertEqual(archived.read_text(), '{"incomplete":')
++        self.assertFalse(path.exists())
++
++    def test_answer_comparison_excludes_reasoning_but_keeps_changed_content(self):
++        def record(text):
++            return {"turns": [{"baseline_has_tool_call": False, "final_answer": text}]}
++        a = record("<think>long reasoning</think> Please provide the flight number.\n")
++        b = record("<think>different reasoning</think>\nPlease provide the flight number.")
++        self.assertEqual(visible_final_answers(a), visible_final_answers(b))
++        c = record("<think>reason</think>Your refund was issued.")
++        self.assertNotEqual(visible_final_answers(a), visible_final_answers(c))
++        self.assertEqual(visible_final_answers({"turns": [{"baseline_has_tool_call": True}]}), [])
++
++
++if __name__ == "__main__":
++    unittest.main()

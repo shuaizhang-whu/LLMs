@@ -1,0 +1,38 @@
+% !TEX root = ../main.tex
+\section{Background and Related Work}
+\label{sec:background}
+
+\paragraph{Reasoning agents and speculative tool dispatch.}
+A tool-using agent works in turns~\citep{yao2023react}.
+In each turn the model reads the conversation so far, reasons, and emits a tool call.
+The tool returns an observation, which is appended to the conversation and starts the next turn.
+With a reasoning model, one turn can decode hundreds of tokens before the call appears.
+The loop is serial: the tool cannot start before the call is written, and the next turn cannot start before the observation exists.
+
+One line of work takes the tool off this critical path by predicting the call and executing it while the model is still generating~\citep{nichols2025speculative,sui2026paste,huang2025spagent,li2026specmemory,bai2026spork}.
+In its self-speculative form, no extra model is needed~\citep{bai2026spork}.
+A probe request continues the model's own reasoning prefix and is forced to write a tool call.
+If the probe is confident, the call is executed at once.
+The result is used only if the model later emits the same call, and the probe's tokens can serve as drafts when the model writes it.
+We build on this mechanism and call it \emph{speculative tool dispatch}.
+Its benefit is bounded by the tool latency, which is small when tools are fast and reasoning is long.
+
+\paragraph{Cross-turn action speculation.}
+A second line of work starts future steps before the current one is confirmed.
+Interactive and Dynamic Speculative Planning let a cheaper approximation agent run ahead of the target agent, which verifies each step~\citep{hua2024isp,guan2025dsp}.
+Speculative Actions formulates this propose--verify pattern for general agent actions and analyzes when it is lossless~\citep{ye2026speculative}.
+LEAP trains a small drafter on the target's own actions, executes the drafted actions in a copy of the environment, and lets the target verify the resulting contexts concurrently~\citep{xu2026leap}.
+Other systems speculate multi-call macros~\citep{liu2026smc}, combine fast and slow reasoning modes~\citep{zhong2026dualspec}, or predict the observation instead of waiting for the tool~\citep{chen2026aospec,montgomery2026obsspec}.
+
+These methods obtain the future input from a separate component: a cheaper or trained proposer for the action, or a learned model for the observation.
+Their gain depends on how often this component agrees with the target, and a trained proposer must be fitted to each workload.
+\method needs no such component.
+It takes the action from the target's own unfinished turn and the observation from actually executing that action.
+It also commits a turn only when its entire input is unchanged, which targets identity of whole trajectories rather than of single actions (\cref{sec:method:commit}).
+
+\paragraph{Faster reasoning.}
+Speculative decoding accelerates generation inside a turn at the token level and preserves the model's output~\citep{leviathan2023fast,chen2023accelerating}.
+It is orthogonal to \method.
+ETA observes, as we do in \cref{sec:motivation}, that reasoning continues long after the dispatched tool has returned, and it ends the reasoning early once the observation arrives~\citep{anon2026eta}.
+This shortens the turn but changes what the model generates.
+\method keeps the reasoning intact and uses the remaining time to run the next turn.

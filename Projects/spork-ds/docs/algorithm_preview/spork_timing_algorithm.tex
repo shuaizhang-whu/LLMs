@@ -1,0 +1,44 @@
+% Requires: algorithm, algorithmic, amsmath, amssymb, xcolor, float.
+% Change [H] to [t] when using this fragment in a paper float.
+\definecolor{TimingBlue}{HTML}{245C9C}
+\begin{algorithm}[H]
+\caption{\spork{} with Learned First-Launch Timing}
+\label{alg:spork-timing}
+\begin{algorithmic}[1]
+\REQUIRE History $H$, tools $\mathcal{T}$, confidence $\theta$, attempts $R$, retry step $s$;
+{\color{TimingBlue} controller $C_\phi$, decision prefix $b$, wait budget $\Delta$}
+\STATE $M \gets \mathrm{AsyncMain}(H,\mathcal{T})$; $\mathrm{spec} \gets \varnothing$
+\STATE Wait for $b$ main tokens, or a main action/end
+\IF{a $b$-token reasoning prefix is available}
+    \STATE {\color{TimingBlue}$h \gets M_{\leq b}$; $(Q_{\mathrm{now}},Q_{\mathrm{wait}}) \gets C_\phi(H,\mathcal{T},h;b,\Delta)$}
+    \STATE {\color{TimingBlue}$Q_{\mathrm{off}} \gets 0$; $u \gets \operatorname*{arg\,max}_{a\in\{\mathrm{off},\mathrm{now},\mathrm{wait}\}} Q_a$}
+    \STATE {\color{TimingBlue}\textbf{if} $u=\mathrm{wait}$ \textbf{then} $h\gets\mathrm{WaitPrefix}(b+\Delta)$}
+    \FOR{$r=0,\ldots,R-1$ \textbf{while} $u\neq\mathrm{off}$}
+        \STATE \textbf{if} $r>0$ \textbf{then} $h\gets\mathrm{WaitPrefix}(n+s)$
+        \STATE \textbf{if} main action started or stream ended \textbf{then break}
+        \STATE $n\gets |M|$; $(p,c)\gets\mathrm{Fork}(H,\mathcal{T},h)$ \COMMENT{D1: shared prefix KV}
+        \STATE \textbf{if} $\mathrm{Valid}(p)$ \AND $\mathrm{Active}(M)$ \textbf{then} $\mathrm{RegisterDraft}(M,p)$ \COMMENT{D3}
+        \IF{$\mathrm{Valid}(p)$ \AND $c\geq\theta$}
+            \STATE $\mathrm{spec}\gets(p,\mathrm{AsyncIsolatedTool}(p))$; \textbf{break} \COMMENT{D2}
+        \ENDIF
+    \ENDFOR
+\ENDIF
+\STATE $o\gets\mathrm{AwaitValidOutcome}(M)$
+\IF{$o$ is a tool call}
+    \STATE $z\gets\mathrm{Commit}(\mathrm{Await}(\mathrm{spec}))$ \textbf{if} $\mathrm{ExactMatch}(\mathrm{spec},o)$ \textbf{else} $\mathrm{Tool}(o)$
+\ELSE
+    \STATE $z\gets o$ \COMMENT{final answer}
+\ENDIF
+\STATE Drain pending work; clear D3 state; \textbf{return} $z$
+\end{algorithmic}
+\vspace{4pt}
+{\footnotesize\noindent
+\textcolor{TimingBlue}{Blue: one timing decision; $C_\phi$ predicts time saved relative to off.}
+The main stream continues in parallel; $(b,\Delta)=(32,64)$.\par
+\vspace{2pt}\noindent
+$\mathrm{WaitPrefix}(k)$ waits for $k$ main tokens or a main action/end, then returns the visible prefix.
+$\mathrm{Fork}$ returns a candidate call $p$ and name-span confidence
+$c=\min_j e^{\ell_j}$.
+D3 drafts are target-verified; $\mathrm{ExactMatch}$ checks the tool name and arguments.
+Cleanup runs on every exit, including failure or cancellation.\par}
+\end{algorithm}

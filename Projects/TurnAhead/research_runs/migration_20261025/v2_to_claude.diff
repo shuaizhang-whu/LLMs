@@ -1,0 +1,560 @@
+--- spork_v2/launch_vllm_spork_http.py
+
++++ spork-claude/launch_vllm_spork_http.py
+
+@@ -50,6 +50,7 @@
+
+     result['server_config'] = {
+         'vllm_version': version('vllm'),
+         'batch_invariant_requested': os.environ.get('VLLM_BATCH_INVARIANT', '0') == '1',
++        'prefix_cache_reset_available': True,
+     }
+     return JSONResponse(result)
+ 
+@@ -59,6 +60,13 @@
+
+     return JSONResponse(select_worker(results))
+ 
+ 
++async def reset_prefix_cache(request: Request):
++    # vLLM 0.29 returns False while live requests still hold cache blocks.
++    # Never abort running requests or reset external connector state here.
++    success = await request.app.state.engine_client.reset_prefix_cache(False, False)
++    return JSONResponse({'success': bool(success)})
++
++
+ original_build_app = entry.build_app
+ 
+ def build_app(*args,**kwargs):
+@@ -66,6 +74,7 @@
+
+     app.add_api_route('/spork/set_tokens',set_tokens,methods=['POST'])
+     app.add_api_route('/spork/status',status,methods=['GET'])
+     app.add_api_route('/spork/clear',clear,methods=['POST'])
++    app.add_api_route('/spork/reset_prefix_cache',reset_prefix_cache,methods=['POST'])
+     return app
+ 
+ entry.build_app = build_app
+--- spork_v2/research_runs/ideas_20261021/GRAFT_MATRIX.md
+
++++ spork-claude/research_runs/ideas_20261021/GRAFT_MATRIX.md
+
+@@ -7,7 +7,9 @@
+
+ - 【推导】基于上述事实的推论，尚未实验验证；
+ - 【待验证】需要冒烟或离线实验回答的问题。
+ 
+-工作目录：`Projects/spork_v2`（从 `Projects/spork` 复制的独立开发副本，baseline runner 未改）。
++工作目录：`Projects/spork-claude`（Claude 专用工作副本；由 `spork_v2` 复制而来，
++baseline runner 未改）。今后本会话只在这个目录修改代码，不再改动 `Projects/spork`
++或 `Projects/spork_archive`，避免与其他设备并发修改同一份项目文件。
+ GPU 服务：8017 端口，Qwen3-32B，TP=4，batch-invariant，D3 sidecar 可用。
+ 
+ ---
+@@ -151,8 +153,46 @@
+
+ 的回合解锁退出。按现有 930 次运行数据，这类回合占全部工具回合的 22.1%，占任务的 58.0%，
+ 因此整体加速可能显著高于 ETA 的 1.33×。
+ 
+-【待验证】8 任务扩大冒烟（airline:2/3/4/6、retail:0/1/3/4）正在进行；
+-重点是 retail:3 这个第二个未命中任务，以及 `off` 轨迹里「首次 3 连稳定调用」与最终动作的一致率。
++【已核实】扩大冒烟（airline:2/3/4/6）发现一个真实的质量分叉：
++
++- airline:4：SPORK 完整推理**不调用工具、直接回答**；ETA 和 refresh 都在 token 266 截断，
++  截断后的续写生成了 `get_flight_status`，最终答案为空，动作/状态/最终答案均与 SPORK 不一致。
++- `off` 轨迹显示：token 60–515 的 7 次检查都稳定预测 `get_user_details`（p 0.93–1.0），
++  直到 token 595 自由探针 p 掉到 0.435、token 650 才彻底放弃工具调用。
++- 结论：这不是 refresh 的问题，而是 ETA 式截断本身的失败模式——早期稳定不等于完整推理
++  会做同一决定。仅靠 k=3 稳定无法排除这种晚回摆。
++
++【已核实】已加入质量护栏 `rollback_on_action_mismatch`：截断后续写如果产生了一个
++与当前 dispatch 候选**不同**的动作，就放弃这次截断，回到原始推理前缀重新解码（整轮回滚），
++而不是提交这个被截断上下文改变了的动作。回滚原因记录为
++`no_call` / `truncated` / `action_mismatch`。
++
++【推导】护栏把「质量分叉」转化为「速度损失」：触发回滚的回合退化为 SPORK 的全量解码，
++不触发回滚的回合保留 ETA/refresh 的加速。论文必须报告回滚率，并按
++「首探针命中 / 未命中」和「是否回滚」分组报告质量。
++
++【已核实】护栏冒烟（`results/rollback_check_20261021`）：
++
++| 任务 | SPORK | refresh（重解码回滚） | 结果 |
++|---|---:|---:|---|
++| airline:4 | 75.90 s | 80.38 s | `action_mismatch` 回滚，动作/状态/答案与 SPORK 一致 |
++| retail:3（未命中） | 103.05 s | 52.49 s | 刷新成功，省 50.56 s（49.1%），质量一致 |
++
++回滚重解码的代价是 +4.47 s（5.9%）。进一步改为**影子回滚**：截断后不立即取消主流，
++让它在后台继续作为完整推理的影子；续写动作匹配则取消影子，不匹配则直接用影子已经生成的
++完整推理，不再发起第二次解码。
++
++【已核实】影子回滚冒烟（`results/shadow_check_20261021`）：
++
++| 任务 | SPORK | refresh（影子） | 结果 |
++|---|---:|---:|---|
++| airline:2（未命中） | 184.99 s | 36.79 s | 省 148.2 s（80.1%），质量一致 |
++| airline:4（动作分叉） | 76.28 s | 77.04 s | `action_mismatch`，仅 +0.75 s（1.0%），质量一致 |
++
++【推导】影子回滚把「质量护栏」的代价从 5.9% 压到约 1%，同时保证回滚路径就是原始主流本身，
++不存在重解码的非确定性问题。最终方法可以表述为：
++**稳定候选刷新 + 影子验证退出（risk-controlled speculative truncation）**。
++最坏情况只比 SPORK 慢约 1%，不会静默改变动作。
+ 
+ ### E. ObsSpec 式观测预测
+ 
+--- spork_v2/scripts/analyze_refresh_smoke.py
+
++++ spork-claude/scripts/analyze_refresh_smoke.py
+
+@@ -24,6 +24,13 @@
+
+     return [t.get("final_answer") for t in record["turns"]]
+ 
+ 
++def category(turn):
++    """Distinguish a tool turn from a no-tool turn, and matched from stale dispatch."""
++    if not turn.get("baseline_has_tool_call"):
++        return "no_tool"
++    return "tool_matched" if turn.get("spec_used") else "tool_mismatched"
++
++
+ def load(root: Path):
+     return [json.loads(p.read_text()) for p in sorted(root.glob("records/*.json"))]
+ 
+@@ -42,14 +49,14 @@
+
+         spork = by_method.get("spork")
+         if spork is None:
+             continue
+-        initial_match = bool(spork["turns"] and spork["turns"][0].get("spec_used"))
++        cat = category(spork["turns"][0]) if spork["turns"] else "no_tool"
+         refresh = by_method.get("refresh")
+         eta = by_method.get("eta")
+         off = by_method.get("off")
+         rows.append({
+             "group": group_id,
+             "repeat": repeat,
+-            "initial_match": initial_match,
++            "category": cat,
+             "spork_s": spork["wall_s"],
+             "eta_s": eta["wall_s"] if eta else None,
+             "refresh_s": refresh["wall_s"] if refresh else None,
+@@ -69,9 +76,9 @@
+
+         })
+ 
+     print(f"root={args.root} groups={len(rows)}")
+-    print("group                 match  spork_s   eta_s  refresh_s   off_s  r_saved  eta_saved  r#  r_exit  r_ok")
++    print("group                 category       spork_s   eta_s  refresh_s   off_s  r_saved  eta_saved  r#  r_exit  r_ok")
+     for r in rows:
+-        print(f"{r['group']:<20} {str(r['initial_match']):<6} "
++        print(f"{r['group']:<20} {r['category']:<14} "
+               f"{r['spork_s']:7.1f} {r['eta_s'] if r['eta_s'] is not None else -1:7.1f} "
+               f"{r['refresh_s'] if r['refresh_s'] is not None else -1:9.1f} "
+               f"{r['off_s'] if r['off_s'] is not None else -1:7.1f} "
+@@ -80,12 +87,12 @@
+
+               f"{r['refresh_count'] if r['refresh_count'] is not None else -1:3} "
+               f"{str(r['refresh_exits']):>7} {str(r['refresh_same_action_state']):>6}")
+ 
+-    print("\nBy SPORK first-turn match:")
+-    for match in (True, False):
+-        subset = [r for r in rows if r["initial_match"] is match and r["refresh_s"] is not None]
++    print("\nBy turn category:")
++    for cat in ("tool_matched", "tool_mismatched", "no_tool"):
++        subset = [r for r in rows if r["category"] == cat and r["refresh_s"] is not None]
+         if not subset:
+             continue
+-        print(f"  initial_match={match}: n={len(subset)} "
++        print(f"  {cat}: n={len(subset)} "
+               f"mean_spork={statistics.mean(r['spork_s'] for r in subset):.1f}s "
+               f"mean_refresh={statistics.mean(r['refresh_s'] for r in subset):.1f}s "
+               f"mean_saved={statistics.mean(r['refresh_saved_s'] for r in subset):.1f}s "
+--- spork_v2/scripts/run_refresh_full_eval.py
+
++++ spork-claude/scripts/run_refresh_full_eval.py
+
+@@ -36,11 +36,13 @@
+
+ sys.path.insert(0, str(ROOT))
+ 
+ from spork_core.stable_refresh_exit import ExitConfig, run_early_exit_turn  # noqa: E402
+-from spork_core.prefix_replay import PrefixHttpClient, counter_delta  # noqa: E402
++from spork_core.prefix_replay import PrefixHttpClient, counter_delta, COUNTERS  # noqa: E402
+ from spork_core.qwen import QwenToolCallAdapter  # noqa: E402
+ from spork_core.timed_retry import run_timed_retry_turn  # noqa: E402
+ from spork_core.turn_runner import RetryTurnConfig  # noqa: E402
+ from spork_core.vllm_client import VllmClient  # noqa: E402
++from spork_core.evaluation_artifacts import (freeze_plan, read_completed, complete_record,
++    archive_unfinished, planned_records, visible_final_answers)  # noqa: E402
+ 
+ 
+ def dump(path: Path, value):
+@@ -57,7 +59,7 @@
+
+ 
+ 
+ def final_answers(record):
+-    return [t.get("final_answer") for t in record["turns"]]
++    return visible_final_answers(record)
+ 
+ 
+ def select_tasks(split, scope, domains=("airline", "retail")):
+@@ -78,19 +80,18 @@
+
+ 
+ 
+ def analyze(output: Path, manifest):
+-    records = []
+-    for path in sorted((output / "records").glob("*.json")):
+-        try:
+-            records.append(json.loads(path.read_text()))
+-        except Exception:
+-            continue
++    records, unfinished = planned_records(output, manifest)
+     configs = manifest["configs"]
+     groups = {}
+     for record in records:
+         groups.setdefault((record["group_id"], record["repeat"]), {})[record["config"]] = record
+ 
+-    report = {"scope": manifest["scope"], "configs": configs, "splits": {},
+-              "comparisons": {}, "quality_by_initial_match": {},
++    report = {"expected_runs": len(manifest["schedule"]), "finished_runs": len(records),
++              "experiment_complete": len(records) == len(manifest["schedule"]),
++              "unsealed_records": unfinished,
++              "final_answer_comparison": "Exact visible reply, excluding reasoning; unobserved replies are explicitly marked",
++              "scope": manifest["scope"], "configs": configs, "splits": {},
++              "comparisons": {}, "quality_by_category": {},
+               "quality_scope": "fixed user message; ACTION reward, not official interactive tau2 success"}
+     for split_name in ("all", "train", "validation", "test"):
+         subset = [r for r in records if split_name == "all" or r["split"] == split_name]
+@@ -130,11 +131,15 @@
+
+                 if not split_ok:
+                     continue
+                 valid = not ref["errors"] and not other["errors"]
++                first = ref["turns"][0] if ref["turns"] else {}
++                category = ("no_tool" if not first.get("baseline_has_tool_call")
++                            else ("tool_matched" if first.get("spec_used") else "tool_mismatched"))
+                 pairs.append({
+                     "group_id": group_id, "split": ref["split"], "repeat": repeat, "valid": valid,
+-                    "initial_match": bool(ref["turns"] and ref["turns"][0].get("spec_used")),
++                    "category": category,
+                     "same_action_results_state": valid and signature(ref) == signature(other),
+                     "same_final_answer": final_answers(ref) == final_answers(other),
++                    "final_answer_observed": bool(final_answers(ref) or final_answers(other)),
+                     "baseline_s": ref["wall_s"], "method_s": other["wall_s"],
+                     "saved_s": ref["wall_s"] - other["wall_s"],
+                     "refreshes": sum(t.get("exit", {}).get("refresh_count", 0) for t in other["turns"]),
+@@ -144,16 +149,16 @@
+
+ 
+     for config, pairs in report["comparisons"].get("all", {}).items():
+         rows = {}
+-        for matched in (True, False):
+-            subset = [p for p in pairs if p["valid"] and p["initial_match"] is matched]
++        for category in ("tool_matched", "tool_mismatched", "no_tool"):
++            subset = [p for p in pairs if p["valid"] and p["category"] == category]
+             if subset:
+-                rows["matched" if matched else "unmatched"] = {
++                rows[category] = {
+                     "n": len(subset),
+                     "mean_saved_s": statistics.mean(p["saved_s"] for p in subset),
+                     "quality_ok": sum(bool(p["same_action_results_state"]) for p in subset),
+                     "refreshes": sum(p["refreshes"] for p in subset),
+                 }
+-        report["quality_by_initial_match"][config] = rows
++        report["quality_by_category"][config] = rows
+ 
+     report["failures"] = [{"group_id": r["group_id"], "config": r["config"],
+                            "split": r["split"], "errors": r["errors"]}
+@@ -194,17 +199,41 @@
+
+         raise ValueError(f"Tasks missing from local tau2 loader: {missing[:5]}")
+ 
+     configs = [c.strip() for c in args.configs.split(",") if c.strip()]
++    if not configs or len(set(configs)) != len(configs) or set(configs) - {"spork", "eta", "refresh", "off"}:
++        raise ValueError("Use unique configs from spork, eta, refresh, off")
+     for required in ("spork",):
+         if required not in configs:
+             raise ValueError("The spork reference is required")
+     schedule = make_schedule(selected, configs, args.repetitions)
+-    args.output.mkdir(parents=True, exist_ok=False)
+     sources = [Path(__file__), ROOT / "spork_core/stable_refresh_exit.py",
+                ROOT / "spork_core/candidate_verification.py", ROOT / "spork_core/timed_retry.py",
+-               ROOT / "spork_core/prefix_replay.py", ROOT / "spork_core/turn_runner.py"]
++               ROOT / "spork_core/prefix_replay.py", ROOT / "spork_core/turn_runner.py",
++               ROOT / "spork_core/evaluation_artifacts.py", ROOT / "spork_core/executors.py",
++               ROOT / "spork_core/qwen.py", ROOT / "spork_core/launch_timing.py",
++               ROOT / "spork_core/vllm029_d3.py", ROOT / "launch_vllm_spork_http.py",
++               ROOT / "scripts/serve_qwen32_candidate_checks.sh"]
+     manifest = {
+         "purpose": "stable_refresh_full_eval", "created_at": datetime.now().isoformat(),
+         "model": args.model, "base_url": args.base_url, "scope": args.scope,
++        "max_tokens": args.max_tokens, "context_window": 40960,
++        "exit_parameters": {k: v for k, v in asdict(ExitConfig(
++            stable_checks=args.stable_checks, max_checks=args.max_checks,
++            max_refreshes=args.max_refreshes)).items() if k not in {"method", "enable_exit"}},
++        "config_semantics": {"spork": "unchanged full-reasoning SPORK",
++            "eta": "ETA-style exit with the common exit_parameters",
++            "refresh": "stable candidate replacement plus the same exit rule",
++            "off": "ETA instrumentation and speculation retained; only early exit disabled"},
++        "measurement": "Each task starts after the same discarded one-token prompt warmup; measured wall includes turn cleanup",
++        "task_split_sha256": hashlib.sha256(args.task_split.read_bytes()).hexdigest(),
++        "task_material_sha256": hashlib.sha256(json.dumps(
++            {t["group_id"]: task_map[t["group_id"]] for t in selected},
++            sort_keys=True, ensure_ascii=False).encode()).hexdigest(),
++        "policy_tools_sha256": {d: hashlib.sha256(json.dumps(
++            [load_system_prompt(d), load_tools(d)], sort_keys=True, ensure_ascii=False).encode()).hexdigest()
++            for d in ("airline", "retail")},
++        "model_config_sha256": {name: hashlib.sha256((Path(args.model) / name).read_bytes()).hexdigest()
++            for name in ("config.json", "tokenizer_config.json", "generation_config.json")
++            if (Path(args.model) / name).is_file()},
+         "seed": args.seed, "configs": configs, "max_turns": args.max_turns,
+         "repetitions": args.repetitions, "tool_floor_s": args.tool_floor,
+         "stable_checks": args.stable_checks, "max_checks": args.max_checks,
+@@ -213,7 +242,7 @@
+
+         "code_sha256": {str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest()
+                         for p in sources},
+     }
+-    dump(args.output / "manifest.json", manifest)
++    manifest = freeze_plan(args.output, manifest, ROOT, sources)
+     print(f"{len(selected)} tasks x {len(configs)} configs x {args.repetitions} repeats = {len(schedule)} runs")
+     if args.dry_run:
+         print("dry run; schedule written to", args.output / "manifest.json")
+@@ -229,7 +258,8 @@
+
+             connector=aiohttp.TCPConnector(force_close=True)) as session:
+         status = await http.status(session)
+         if (status.get("server_config", {}).get("batch_invariant_requested") is not True
+-                or not status.get("has_drafter") or status.get("active_requests") != 0):
++                or not status.get("has_drafter") or status.get("active_requests") != 0
++                or status.get("pending_verifications") != 0):
+             raise RuntimeError("An idle batch-invariant D3 server is required")
+         dump(args.output / "server_start.json", status)
+         started_all = time.perf_counter()
+@@ -237,20 +267,21 @@
+
+         for position, item in enumerate(schedule):
+             path = args.output / "records" / (
+                 f'{item["domain"]}_{item["task_id"]}_r{item["repeat"]}_{item["config"]}.json')
+-            if path.exists():
+-                try:
+-                    prior = json.loads(path.read_text())
+-                    if not prior.get("errors"):
+-                        continue
+-                except Exception:
+-                    pass
++            if read_completed(path, item) is not None:
++                continue  # Completed failures are preserved, not silently retried.
++            previous_unsealed = archive_unfinished(path)
+             adapter = adapters[item["domain"]]
+             task = task_map[item["group_id"]]
+             messages = [{"role": "system", "content": policies[item["domain"]]},
+                         {"role": "user", "content": task["user_message"]}]
+             executor = Tau2ToolExecutor(get_environment(item["domain"]), floor_s=args.tool_floor)
+-            record = {**item, "turns": [], "errors": []}
++            record = {**item, "turns": [], "errors": [], "previous_unsealed": previous_unsealed}
+             print(f'[{position + 1}/{len(schedule)}] {item["split"]} {item["group_id"]} {item["config"]}', flush=True)
++            initial_ids = tok.encode(adapter.render_main_prompt(messages, enable_thinking=True), add_special_tokens=False)
++            await http.complete(session, initial_ids, max_tokens=1, seed=args.seed)
++            status = await http.status(session)
++            if status.get("active_requests") != 0 or status.get("pending_verifications") != 0:
++                raise RuntimeError("Server is not idle after discarded warmup")
+             started = time.perf_counter()
+             try:
+                 for turn in range(1, args.max_turns + 1):
+@@ -304,17 +335,35 @@
+
+             for key in ("accounting_errors", "dropped_injections"):
+                 if record.get("d3_counters", {}).get(key):
+                     record["errors"].append(key)
+-            record["action_reward"] = (tau2_action_reward(task.get("raw_task") or {}, record["turns"])
+-                                       if not record["errors"] else None)
++            if any(key not in after for key in COUNTERS):
++                record["errors"].append("missing_d3_counters")
++            if any(value < 0 for value in record.get("d3_counters", {}).values()):
++                record["errors"].append("d3_counter_reset")
++            if after.get("active_requests") != 0 or after.get("pending_verifications") != 0:
++                record["errors"].append("residual_d3_state")
++            if not record["turns"] and not record["errors"]:
++                record["errors"].append("empty_task")
++            for entry in record["turns"]:
++                if not entry.get("completion_valid") or entry.get("worker_errors") or entry.get("spec_cleanup_error"):
++                    record["errors"].append("turn_completion_or_cleanup_error")
++                if (entry.get("d3_status") or {}).get("clear_status") not in ("ok", "cleared"):
++                    record["errors"].append("unconfirmed_d3_cleanup")
++            try:
++                record["action_reward"] = (tau2_action_reward(task.get("raw_task") or {}, record["turns"])
++                                           if not record["errors"] else None)
++            except Exception as score_error:
++                record["action_reward"] = None
++                record["errors"].append(f"reward_evaluation: {type(score_error).__name__}: {score_error}")
+             record["completed_at"] = datetime.now().isoformat()
+-            dump(path, record)
++            complete_record(path, record)
+             completed += 1
+             mean_s = (time.perf_counter() - started_all) / completed
+             print(f'  {record["wall_s"]:.1f}s turns={len(record["turns"])} '
+                   f'errors={record["errors"]} ETA≈{mean_s * (len(schedule) - position - 1) / 3600:.1f}h', flush=True)
+             analyze(args.output, manifest)
+-            if (after.get("active_requests") != 0 or after.get("pending_verifications") != 0):
+-                raise RuntimeError("Server/D3 state is not clean; result saved before stopping")
++            if any(e in record["errors"] for e in ("accounting_errors", "dropped_injections",
++                    "missing_d3_counters", "d3_counter_reset", "residual_d3_state", "unconfirmed_d3_cleanup")):
++                raise RuntimeError("Server/D3 integrity failed; sealed result saved before stopping")
+         dump(args.output / "server_end.json", await http.status(session))
+         save_stats = {"completed": completed, "total": len(schedule),
+                       "wall_s": time.perf_counter() - started_all}
+@@ -349,11 +398,11 @@
+
+     if args.dry_run:
+         asyncio.run(run(args))
+         return
+-    locks = [ROOT / "results" / f"controller_online_{port}.lock"]
+-    sibling_name = "spork" if ROOT.name == "spork_v2" else "spork_v2"
+-    sibling = ROOT.parent / sibling_name / "results"
+-    if sibling.is_dir():
+-        locks.append(sibling / f"controller_online_{port}.lock")
++    # Several checked-out SPORK copies may share the same local serving port.
++    locks = {(ROOT / "results" / f"controller_online_{port}.lock").resolve()}
++    for sibling in ROOT.parent.iterdir():
++        if sibling.name.startswith("spork") and (sibling / "spork_core").is_dir():
++            locks.add((sibling / "results" / f"controller_online_{port}.lock").resolve())
+     with ExitStack() as stack:
+         for path in sorted(set(locks)):
+             path.parent.mkdir(parents=True, exist_ok=True)
+--- spork_v2/scripts/run_stable_refresh_smoke.py
+
++++ spork-claude/scripts/run_stable_refresh_smoke.py
+
+@@ -105,11 +105,18 @@
+
+     from spork_core.executors import Tau2ToolExecutor
+     args.output.mkdir(parents=True, exist_ok=False)
+     split = json.loads(args.task_split.read_text())
+-    selected = []
+-    for domain in ("airline", "retail"):
+-        pool = sorted((t for t in split["tasks"] if t["domain"] == domain and t["split"] == "train"),
+-                      key=lambda t: int(t["task_id"]))
+-        selected.extend(pool[args.task_offset:args.task_offset + args.per_domain])
++    if args.task_ids:
++        wanted = {x.strip() for x in args.task_ids.split(",") if x.strip()}
++        selected = [t for t in split["tasks"] if t["group_id"] in wanted]
++        missing = wanted - {t["group_id"] for t in selected}
++        if missing:
++            raise ValueError(f"Unknown task ids: {sorted(missing)}")
++    else:
++        selected = []
++        for domain in ("airline", "retail"):
++            pool = sorted((t for t in split["tasks"] if t["domain"] == domain and t["split"] == "train"),
++                          key=lambda t: int(t["task_id"]))
++            selected.extend(pool[args.task_offset:args.task_offset + args.per_domain])
+     schedule = []
+     for repeat in range(args.repetitions):
+         for index, task in enumerate(selected):
+@@ -239,6 +246,8 @@
+
+     p.add_argument("--task-split", type=Path, default=ROOT / "prefix_data/datasets/controller_stage3_20261008_213013_wi87e7du/task_split.json")
+     p.add_argument("--per-domain", type=int, default=1)
+     p.add_argument("--task-offset", type=int, default=0)
++    p.add_argument("--task-ids", default="",
++                   help="comma-separated group ids, e.g. airline:2,airline:4")
+     p.add_argument("--max-turns", type=int, default=1)
+     p.add_argument("--max-tokens", type=int, default=8192)
+     p.add_argument("--repetitions", type=int, default=1)
+--- spork_v2/spork_core/stable_refresh_exit.py
+
++++ spork-claude/spork_core/stable_refresh_exit.py
+
+@@ -38,6 +38,7 @@
+
+     tool_probability_threshold: float = .9
+     continuation_max_tokens: int = 512
+     enable_exit: bool = True
++    rollback_on_action_mismatch: bool = True
+ 
+     def validate(self):
+         if self.method not in {"eta", "refresh"}:
+@@ -230,9 +231,11 @@
+
+             checks.append(check)
+             if cut["stable_count"] >= exit_cfg.stable_checks and exit_cfg.enable_exit:
+                 if await _wait_cut(state, main, spec_task, len(state.token_ids)):
++                    # Keep the main stream alive as a shadow fallback. If the
++                    # shortened continuation changes the action, the shadow has
++                    # already decoded the full reasoning and no second decode is
++                    # needed. A clean continuation cancels the shadow below.
+                     cut.update(fired=True, cut_tokens=len(state.token_ids), cut_ms=elapsed())
+-                    main.cancel()
+-                    await asyncio.gather(main, return_exceptions=True)
+                 break
+ 
+         if cut["fired"]:
+@@ -244,18 +247,30 @@
+
+                 seed=cfg.seed, stop=adapter.main_stop)
+             output_text = frozen_text + "\n</think>\n\n" + continuation["text"]
+             call = adapter.parse_main_tool_call(output_text)
+-            if call is None or continuation["finish_reason"] != "stop":
+-                # Resume the original, unclosed reasoning prefix. The trial
+-                # continuation never reaches messages or tool execution.
+-                cut["rolled_back"] = True
+-                rollback = await http.complete(session, prompt_ids + frozen_ids,
+-                    max_tokens=min(budget - len(frozen_ids),
+-                                   cfg.context_window_tokens - len(prompt_ids) - len(frozen_ids)),
+-                    seed=cfg.seed, stop=adapter.main_stop)
+-                output_text = frozen_text + rollback["text"]
+-                output_ids = frozen_ids + rollback["token_ids"]
+-                finish_reason = rollback["finish_reason"]
++            if call is None:
++                rollback_reason = "no_call"
++            elif continuation["finish_reason"] != "stop":
++                rollback_reason = "truncated"
++            elif exit_cfg.rollback_on_action_mismatch and not same_call(call, spec_call):
++                # The shortened context changed the action. Committing it would
++                # trade quality for speed; resume the full reasoning instead.
++                rollback_reason = "action_mismatch"
+             else:
++                rollback_reason = None
++            if rollback_reason is not None:
++                # The shadow main stream already contains the full reasoning;
++                # use it instead of paying a second decode.
++                cut.update(rolled_back=True, rollback_reason=rollback_reason,
++                           rollback_mode="shadow")
++                await main
++                output_text = state.text
++                output_ids = list(state.token_ids)
++                finish_reason = state.finish_reason
++                rollback = {"mode": "shadow", "finish_reason": finish_reason,
++                            "output_tokens": len(output_ids)}
++            else:
++                main.cancel()
++                await asyncio.gather(main, return_exceptions=True)
+                 output_ids = frozen_ids + adapter.tokenizer.encode("\n</think>\n\n", add_special_tokens=False) + continuation["token_ids"]
+                 finish_reason = continuation["finish_reason"]
+         else:
+--- spork_v2/spork_core/timed_retry.py
+
++++ spork-claude/spork_core/timed_retry.py
+
+@@ -134,7 +134,7 @@
+
+ 
+ 
+ async def run_timed_retry_turn(session, client, adapter, messages, executor, turn,
+-                              cfg: RetryTurnConfig):
++                              cfg: RetryTurnConfig, *, http=None):
+     """Execute one live turn; only the first launch decision is learned."""
+     from .turn_runner import _append_tool_messages, _fork_point
+ 
+@@ -149,7 +149,7 @@
+
+     budget = min(cfg.baseline_max_tokens, cfg.context_window_tokens - len(prompt_ids))
+     if budget <= 0:
+         raise ValueError("The Actor prompt fills the context window")
+-    http = PrefixHttpClient(client.base_url, client.model, client.timeout_s)
++    http = http or PrefixHttpClient(client.base_url, client.model, client.timeout_s)
+     state = StreamState()
+     probes = []
+     spec_task = spec_call = committed_retry = None

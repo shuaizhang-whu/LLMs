@@ -1,0 +1,238 @@
+% !TEX root = ../main.tex
+\section{\method}
+\label{sec:method}
+
+\Cref{sec:motivation} 表明，目标模型停止推理之前，下一轮输入往往早已确定。
+\method 将这段剩余时间转化为实际进展。
+一旦候选动作执行完毕、真实观测可用，\method 就启动完整的下一轮。
+只有当最终确认的下一轮输入与参考执行原本会使用的输入完全一致时，才保留结果。
+该方法包含启动阶段\stratLaunch，以及由\stratCommit 和\stratRecover 构成的提交阶段。
+\Cref{fig:timeline} 将其时序与串行执行和工具重叠执行进行比较。
+
+\begin{figure*}[t]
+\centering
+\colorlet{reasonfill}{blue!13}
+\colorlet{toolfill}{orange!40}
+\colorlet{nextfill}{blue!30}
+\colorlet{succfill}{green!30}
+\newcommand{\seg}[6]{%
+  \draw[draw=black!55,fill=#5,rounded corners=1pt] ({#1},{#3-#4/2}) rectangle ({#2},{#3+#4/2});
+  \node[font=\scriptsize] at ({(#1+#2)/2},{#3}) {#6};}
+\begin{tikzpicture}[x=1.2cm,y=1cm]
+  \node[anchor=east,font=\small] at (-0.1,0) {串行};
+  \seg{0}{6}{0}{0.42}{reasonfill}{第 $t$ 轮：推理后调用（$R_t$）}
+  \seg{6}{7}{0}{0.42}{toolfill}{工具（$L_t$）}
+  \seg{7}{11}{0}{0.42}{nextfill}{第 $t{+}1$ 轮（$B_{t+1}$）}
+
+  \node[anchor=east,font=\small] at (-0.1,-1.1) {工具重叠};
+  \seg{0}{6}{-1.1}{0.42}{reasonfill}{第 $t$ 轮}
+  \seg{1.5}{2.5}{-1.55}{0.3}{toolfill}{工具}
+  \seg{6}{10}{-1.1}{0.42}{nextfill}{第 $t{+}1$ 轮}
+  \node[font=\scriptsize,anchor=east] at (1.47,-1.55) {$d_t$};
+
+  \node[anchor=east,font=\small] at (-0.1,-2.45) {\method};
+  \seg{0}{6}{-2.45}{0.42}{reasonfill}{第 $t$ 轮}
+  \seg{1.5}{2.5}{-2.9}{0.3}{toolfill}{工具}
+  \seg{2.5}{6.5}{-3.3}{0.3}{succfill}{后继轮次 $t{+}1$（第二沙箱）}
+  \node[font=\scriptsize,anchor=east] at (1.47,-2.9) {$d_t$};
+  \node[font=\scriptsize,anchor=east] at (2.47,-3.3) {$\tau_t$};
+  \draw[decorate,decoration={brace,amplitude=3pt,mirror}] (2.5,-3.52) -- (6,-3.52)
+    node[midway,below=2pt,font=\scriptsize] {锚点就绪后的剩余时间 $\sigma_t$};
+  \draw[very thick,black!70] (6.5,-2.2) -- (6.5,-3.5);
+  \node[font=\scriptsize,anchor=west] at (6.55,-3.3) {$\contract_t=1$ 时提交};
+  \draw[densely dotted,black!60] (10,-1.35) -- (10,-2.45);
+  \draw[<->,>=Stealth,black!70] (6.55,-2.45) -- (10,-2.45)
+    node[midway,above,font=\scriptsize] {节省：$\min(B_{t+1},\sigma_t)$};
+\end{tikzpicture}
+\caption{一个窗口的时序。工具重叠执行（\spork）在推理过程中执行高置信度预测的调用，从而隐藏工具延迟 $L_t$。\method 进一步在调用的真实观测于 $\tau_t$ 时刻就绪后立即启动下一轮，在第二沙箱中运行，并且仅在下一轮输入完全匹配时提交。相对于工具重叠执行，其节省时间为 $\min(B_{t+1},\sigma_t)$（\cref{prop:latency}）。图中时长仅作示意。}
+\label{fig:timeline}
+\end{figure*}
+
+\subsection{锚点}
+\label{sec:method:anchor}
+
+\begin{definition}[锚点]
+\label{def:anchor}
+第 $t$ 轮的\emph{锚点}（anchor）是一个元组 $\anchor_t=(\hat a_t,\hat o_t,\hat S_{t+1},\tau_t)$，包含候选动作、执行该动作获得的观测与执行后状态，以及这些信息可用的时刻 $\tau_t$。
+锚点必须满足以下三个性质。
+\begin{enumerate}[label=(P\arabic*),leftmargin=*,nosep]
+\item \textbf{因果性。}仅依据已提交历史 $\hist_t$、状态 $\env{t}$ 以及 $\tau_t$ 之前已经生成的 $Y_t$ 片段计算。
+\item \textbf{隔离性。}$\hat a_t$ 在 $\env{t}$ 的私有副本上执行，因此计算锚点不会改变已提交状态。
+\item \textbf{可验证性。}各组成部分均可与对应的已提交内容进行精确比较：动作通过规范化形式的相等性比较，观测通过摘要比较，执行后状态通过指纹比较。
+\end{enumerate}
+\end{definition}
+
+启动阶段和提交阶段只读取这四个字段。
+因此，任何满足 (P1)--(P3) 的来源都可以驱动这两个阶段，例如经过训练的动作草拟器~\citep{xu2026leap}，或存储历史轨迹的记忆~\citep{li2026specmemory}。
+我们使用自推测派发来实例化锚点。
+候选 $\hat a_t$ 就是 \spork 在 $d_t$ 时刻派发的调用。
+\method 在 $\env{t}$ 的副本上执行该调用，而非将推测执行限制在只读工具上，因此预订或退款等改变状态的调用也可以作为锚点。
+锚点在 $\tau_t=d_t+L_t$ 时刻就绪。
+这一实例化方式既不需要训练，也不需要辅助模型。
+
+\paragraph{下一轮输入的确定性。}
+给定锚点后，可以在父轮次结束之前构造第 $t{+}1$ 轮的输入。
+假设父轮次除工具调用外没有输出可见文本，\method 构造
+\begin{equation}
+  \hat X_{t+1} = \render\big(\hist_t \oplus \langle \varnothing, \hat a_t, \hat o_t\rangle\big).
+  \label{eq:spec-input}
+\end{equation}
+
+\begin{proposition}[下一轮输入的确定性]
+\label{prop:determinacy}
+在\cref{eq:history} 的历史策略下：
+(i) 若 $\vis{t}=\varnothing$、$\hat a_t\equiv\act{t}$ 且 $\hat o_t=\obs{t}$，则 $\hat X_{t+1}=\ctx{t+1}$；
+(ii) 仅有 $\hat a_t\equiv\act{t}$ 和 $\hat o_t=\obs{t}$，并不能推出 $\hat X_{t+1}=\ctx{t+1}$。
+\end{proposition}
+
+第 (i) 点成立，因为\cref{eq:history} 使 $\ctx{t+1}$ 成为 $(\hist_t,\vis{t},\act{t},\obs{t})$ 的确定性函数。
+对于第 (ii) 点，考虑工具调用相同、但可见前导文本不同的两个父轮次输出；它们会被渲染成不同输入。
+此外，若历史保留 $\rsn{t}$，则 $\ctx{t+1}$ 将依赖在 $\tau_t$ 时刻尚未生成的推理内容。
+因此，\cref{eq:history} 中的窄接口使提前构造输入成为可能，但仅凭动作相等不足以允许复用。
+所以，\method 在提交时检查完整输入（\cref{sec:method:commit}）。
+
+\subsection{启动阶段：\stratLaunch}
+\label{sec:method:launch}
+
+\paragraph{触发条件。}
+当一个窗口的首个锚点就绪、且父轮次仍在推理时，\method 启动后继轮次；这里“仍在推理”是指输出既未关闭推理片段，也未开始工具调用。
+若父轮次已到达这一位置，则剩余时间很少，窗口按底层机制继续执行。
+
+\paragraph{第二沙箱。}
+后继轮次以 $\hat X_{t+1}$ 为输入，在锚点执行后状态 $\hat S_{t+1}$ 的新副本 $\hat S'$ 中运行。
+锚点的执行后状态必须保持不变，因为当 $\hat a_t\equiv\act{t}$ 时，底层机制会将其接纳为已提交状态。
+因此，后继轮次的工具调用只修改 $\hat S'$。
+即便是改变状态的调用，在通过验证之前也无法触及已提交环境。
+
+\paragraph{后继轮次的执行。}
+后继轮次由同一目标模型、使用相同生成配置执行，是一个完整轮次。
+其内部仍启用自推测派发，探测预算为 $m$ 次（默认 $m=K$），因此后继轮次仍会重叠执行自身的工具调用。
+我们考虑后继工具的两种策略。
+默认的\emph{沙箱执行}（sandboxed）策略在 $\hat S'$ 中立即执行工具。
+\emph{延迟执行}（deferred）策略则将工具执行推迟到提交决策之后，因此仅模型计算属于推测执行。
+延迟执行适用于外部效果无法复制的工具，但可节省的时间更少。
+
+\paragraph{窗口。}
+各轮次被分成互不重叠的窗口 $(1,2),(3,4),\dots$。
+后继轮次不会再启动自己的后继轮次，下一个窗口从已提交历史和状态开始。
+窗口不会跨越用户消息或最终回复。
+当轮次预算仅剩一轮时，仅运行底层机制。
+深度为一的设计限制了浪费的工作量，并简化验证；更深或滑动窗口留待未来研究。
+
+\subsection{提交阶段：\stratCommit 与\stratRecover}
+\label{sec:method:commit}
+
+如果父轮次以回复结束（$\act{t}=\bot$），则丢弃后继轮次。
+否则，按照底层机制提交父轮次的调用，得到 $\obs{t}$、$\env{t+1}$ 和 $\ctx{t+1}$。
+随后，\method 计算提交契约（commit contract）
+\begin{equation}
+\begin{aligned}
+  \contract_t = \mathbf{1}\big[\,
+    &\hat a_t\equiv\act{t} \;\wedge\; h(\hat o_t)=h(\obs{t}) \\
+    &\wedge\; \phi(\hat S_{t+1})=\phi(\env{t+1}) \\
+    &\wedge\; \hat X_{t+1}=\ctx{t+1} \;\wedge\; \hat g_{t+1}=g_{t+1}\,\big].
+\end{aligned}
+\label{eq:contract}
+\end{equation}
+动作检查沿用底层机制本身的规则。
+摘要 $h$ 是观测文本的 SHA-256；输入相等实际上已蕴含该检查成立，但单独检查可给出精确的拒绝原因。
+指纹 $\phi$ 对环境状态进行哈希，这里包括智能体数据库和用户数据库，从而确认后继轮次的起始状态与参考执行第 $t{+}1$ 轮的起始状态相同。
+输入检查比较完整词元序列；\cref{prop:determinacy} 表明，该检查不能被动作相等替代。
+最后，$g$ 汇总生成配置，包括模型、随机种子、词元预算、上下文窗口、思考标志、停止字符串和采样参数。
+
+\paragraph{\stratCommit。}
+若 $\contract_t=1$，\method 等待后继轮次完成，并再次计算 $\contract_t$。
+随后，将后继轮次纳入历史，并将 $\hat S'$ 接纳为已提交状态。
+后继轮次中与父轮次推理重叠执行的部分，即为节省的时间。
+
+\paragraph{\stratRecover。}
+若 $\contract_t=0$，或后继轮次失败，\method 就取消其生成请求，并等待正在执行的工具调用返回。
+随后，在 $\ctx{t+1}$ 和 $\env{t+1}$ 上正常运行第 $t{+}1$ 轮。
+排空（drain）操作确保参考路径恢复时，没有过期分支仍在运行或竞争 GPU。
+因此，一次拒绝的代价包括排空时间，以及后继轮次与父轮次重叠期间造成的资源争用。
+\Cref{alg:window} 概述了一个窗口的执行过程。
+
+\begin{algorithm}[t]
+\caption{\method 在第 $t$ 轮和第 $t{+}1$ 轮上的一个窗口。}
+\label{alg:window}
+\small
+\begin{algorithmic}[1]
+\Procedure{锚点就绪}{$\hat a_t,\hat o_t,\hat S_{t+1}$}
+  \If{父轮次仍在推理}
+    \State $\hat X_{t+1}\gets\render(\hist_t\oplus\langle\varnothing,\hat a_t,\hat o_t\rangle)$
+    \State $\hat S'\gets\hat S_{t+1}$ 的副本 \Comment{第二沙箱}
+    \State 在 $\hat S'$ 中以 $\hat X_{t+1}$ 启动后继轮次
+  \EndIf
+\EndProcedure
+\Procedure{父轮次结束}{$Y_t$}
+  \If{$\act{t}=\bot$}
+    \State 取消并排空后继轮次；\Return
+  \EndIf
+  \State 按底层机制提交 $\act{t}$；得到 $\obs{t},\env{t+1},\ctx{t+1}$
+  \If{存在后继轮次且 $\contract_t=1$}
+    \State 等待其完成；重新检查 $\contract_t$
+    \State 接纳其轮次及 $\hat S'$
+  \Else
+    \State 取消并排空后继轮次
+    \State 在 $\env{t+1}$ 中以 $\ctx{t+1}$ 运行第 $t{+}1$ 轮
+  \EndIf
+\EndProcedure
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{保证}
+\label{sec:method:guarantees}
+
+下面说明 \method 在什么条件下满足\cref{def:lossless} 的无损性，以及能够节省多少时间。
+
+\begin{assumption}[执行模型]
+\label{ass:exec}
+\leavevmode
+\begin{enumerate}[label=(A\arabic*),leftmargin=*,nosep]
+\item \textbf{确定性目标模型。}对固定输入和生成配置，目标模型提交到历史中的输出不依赖并发请求或注入的草稿。
+\item \textbf{确定性且带指纹的环境。}$E$ 是状态和动作的确定性函数，且指纹相等蕴含状态相等。
+\item \textbf{隔离与单次提交。}推测执行只接触私有副本；副本只能通过接纳操作成为已提交状态，且每轮至多接纳一次。
+\item \textbf{原子提交。}在最终检查 $\contract_t$ 与接纳操作之间，已提交历史和状态不发生变化。
+\end{enumerate}
+\end{assumption}
+
+\begin{proposition}[无损性]
+\label{prop:lossless}
+在 (A1)--(A4) 以及渲染局部性条件（\cref{app:proofs}）成立时，对任何满足 (P1)--(P3) 的锚点来源，\method 都是无损的。
+\end{proposition}
+
+\begin{proof}[证明概要]
+证明对窗口进行归纳。
+根据 (A1)，父轮次与参考轮次相同；根据 (A2) 以及底层机制的精确匹配规则，其提交的观测和状态也相同。
+若 $\contract_t=1$，后继轮次与参考执行第 $t{+}1$ 轮具有相同的起始输入、配置和状态，因此由 (A1) 和 (A2)，它产生相同输出和相同工具状态转移。
+接纳是其唯一生效方式 (A3)，且接纳时状态未发生变化 (A4)。
+若 $\contract_t=0$，后继轮次没有留下任何已提交影响 (A3)，第 $t{+}1$ 轮完全按照参考执行运行。
+\Cref{app:proofs} 给出完整证明。
+\end{proof}
+
+由此可得两点说明。
+第一，\cref{eq:history} 的历史策略不是无损性的前提。
+如果该策略不成立，则 $\hat X_{t+1}\neq\ctx{t+1}$，每个后继轮次都会被拒绝，\method 退化为底层机制；这一策略只决定 \method 能否获得收益。
+第二，正确性不依赖锚点是否正确：错误锚点只会损失时间，不会损害保真性。
+在随机解码下，不应对被拒绝的后继轮次重新采样，也不应按结果选择后继轮次，否则会改变已提交输出的分布（\cref{app:proofs}）。
+
+\begin{proposition}[窗口延迟]
+\label{prop:latency}
+考虑锚点正确的窗口，设 $d_t\le R_t$，并忽略资源争用与管理开销。
+令 $B_{t+1}$ 为底层机制下第 $t{+}1$ 轮的耗时，$\slack_t=(R_t-\tau_t)^+$ 为锚点就绪后的剩余时间。
+相对于底层机制，\method 节省
+\begin{equation}
+  \Delta T_t=\min\big(B_{t+1},\slack_t\big).
+  \label{eq:latency}
+\end{equation}
+相对于串行执行，底层机制节省 $\min(L_t,R_t-d_t)$，\method 节省 $\min(L_t+B_{t+1},R_t-d_t)$。
+\end{proposition}
+
+底层机制下，窗口耗时为 $\max(R_t,\tau_t)+B_{t+1}$。
+使用 \method 时，耗时为 $\max(R_t,\tau_t+B_{t+1})$，两者之差即\cref{eq:latency}。
+$\slack_t$ 是观测返回后仍在进行推理的时间；\citet{anon2026eta} 将其识别为推理智能体最大的可优化延迟预算。他们通过截断推理来缩短这段时间，而 \method 保留完整推理，并用下一轮的执行填充这段时间。
+由此有两个推论。
+第一，收益受限于锚点就绪后目标模型继续审议的时长，而非工具延迟，因此 \method 与工具重叠执行互为补充；工具越快，$\slack_t$ 甚至越大。
+第二，窗口无法早于其中耗时最长的组成部分结束，因此相对于底层机制，每个窗口的加速比至多为 $2\times$。
+资源争用和拒绝会降低实际收益。
+\Cref{app:proofs} 分解这些成本，\cref{sec:analysis:regime} 将用实测结果检验\cref{eq:latency}。
