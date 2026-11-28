@@ -1,39 +1,31 @@
-import os
+"""使用 ModelScope 下载模型到当前仓库的 Models 目录。"""
 
-# ============================================================
-# Qwen3 模型下载脚本
-# 推荐使用 ModelScope 下载，国内速度更快
-# 命令行：modelscope download --model google/gemma-4-31B-it --local_dir /mnt/data/zhangshuai/LLMs/Models/gemma-4-31B-it
+import argparse
+from pathlib import Path
+import subprocess
 
-# ============================================================
 
-# 模型保存基础目录
-BASE_DIR = "/mnt/data/zhangshuai/LLMs/Models"
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--model",
+        default="Qwen/Qwen3-4B",
+        help="ModelScope 模型 ID（默认：%(default)s）",
+    )
+    args = parser.parse_args()
 
-# 方式1：使用 ModelScope 下载（推荐，速度更快）
-# print("=" * 60)
-# print("使用 ModelScope 下载 Qwen3-4B")
-# print("=" * 60)
+    model_dir = Path(__file__).resolve().parents[1] / "Models" / args.model.rsplit("/", 1)[-1]
+    print(f"使用 ModelScope 下载 {args.model} 到 {model_dir}", flush=True)
+    subprocess.run(
+        ["modelscope", "download", "--model", args.model, "--local_dir", str(model_dir)],
+        check=True,
+    )
+    print("下载完成！")
 
-# 下载 Qwen3-4B
-# os.system(f'modelscope download --model Qwen/Qwen3-4B --local_dir {BASE_DIR}/Qwen3-4B')
 
-print("=" * 60)
-print("使用 ModelScope 下载 Qwen3.5-35B-A3B")
-print("=" * 60)
+# lab 原默认模型：--model Qwen/Qwen3.5-35B-A3B
+# 其他模型示例：--model Qwen/Qwen3.5-9B 或 --model google/gemma-4-31B-it
+# Hugging Face 镜像备选：HF_ENDPOINT=https://hf-mirror.com hf download MODEL_ID --local-dir MODEL_DIR
 
-# 下载 Qwen3-32B
-# os.system(f'modelscope download --model Qwen/Qwen3-32B --local_dir {BASE_DIR}/Qwen3-32B')
-
-# 下载 Qwen3.5-35B-A3B
-os.system(f'modelscope download --model Qwen/Qwen3.5-35B-A3B --local_dir {BASE_DIR}/Qwen3.5-35B-A3B')
-
-# ============================================================
-# 方式2：使用 HuggingFace 镜像下载（备选方案）
-# 如果 ModelScope 不可用，可以使用以下命令
-# ============================================================
-# os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
-# os.system(f'hf download --repo-type model Qwen/Qwen3-4B --local-dir {BASE_DIR}/Qwen3-4B')
-# os.system(f'hf download --repo-type model Qwen/Qwen3-32B --local-dir {BASE_DIR}/Qwen3-32B')
-
-print("\n下载完成！")
+if __name__ == "__main__":
+    main()

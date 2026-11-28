@@ -67,8 +67,19 @@ def _append_tool_messages(
     tool_result: str,
     *,
     tool_calls_structured: list[dict] | None = None,
+    canonical_call: dict | None = None,
 ) -> None:
     """Append history after a tool call, preserving OpenAI tool_calls when present."""
+    if canonical_call is not None:
+        if tool_calls_structured:
+            raise ValueError("Choose one tool-history representation")
+        # The completion API can omit </tool_call> or emit stray role markers.
+        # Serialize only the action actually executed; raw output stays in the
+        # turn record. Equivalent calls must give subsequent turns equal input.
+        arguments = json.loads(json.dumps(canonical_call.get("arguments") or {},
+                                          ensure_ascii=False, sort_keys=True))
+        call = {"name": canonical_call["name"], "arguments": arguments}
+        assistant_text = "<tool_call>\n" + json.dumps(call, ensure_ascii=False) + "\n</tool_call>"
     if assistant_text:
         assistant_text = re.sub(r"^\s*<think>.*?</think>\s*", "", assistant_text, count=1, flags=re.DOTALL)
     if not tool_calls_structured:
@@ -1073,6 +1084,11 @@ class RetryTurnConfig:
     launch_controller: Any = None
     controller_prefix_tokens: int = 32
     controller_wait_tokens: int = 64
+    # Actor-only sampling in the exact-token live runner; probes stay greedy.
+    # None preserves the existing evaluation configuration.
+    actor_sampling: dict | None = None
+    # Opt-in harness repair, applied equally to SPORK and early-exit methods.
+    canonical_tool_history: bool = False
 
 
 def _resolve_retry_main_stop(model_adapter: ModelAdapter, cfg: RetryTurnConfig) -> list[str]:

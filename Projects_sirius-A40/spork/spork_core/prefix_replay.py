@@ -58,10 +58,14 @@ class PrefixHttpClient:
         self.timeout_s = timeout_s
 
     def body(self, prompt_ids, *, max_tokens, seed, stop=(), stream=False,
-             request_id=None, logprobs=None):
+             request_id=None, logprobs=None, sampling=None):
         body = dict(model=self.model, prompt=prompt_ids, max_tokens=max_tokens,
                     temperature=0.0, seed=seed, stop=list(stop), stream=stream,
                     return_token_ids=True)
+        if sampling is not None:
+            if set(sampling) - {"temperature", "top_p", "top_k"}:
+                raise ValueError("Only explicit temperature/top_p/top_k overrides are allowed")
+            body.update(sampling)
         if request_id is not None:
             body["request_id"] = request_id
         if logprobs is not None:
@@ -140,13 +144,21 @@ class PrefixHttpClient:
             raise RuntimeError(f"D3 clear failed: {result}")
         return result
 
-    async def set_draft(self, session, request_id, prompt_len, call, tokenizer):
+    async def set_draft(self, session, request_id, prompt_len, call, tokenizer, *, reuse_mode="single"):
         body = "\n" + json.dumps(call, ensure_ascii=False)
         ids = tokenizer.encode(body, add_special_tokens=False)
         payload = dict(request_id=request_id, prompt_len=prompt_len, draft_tokens=ids)
+        if reuse_mode != "single":
+            from .draft_reuse import REUSE_MODES
+            if reuse_mode not in REUSE_MODES:
+                raise ValueError(f"Unknown D3 reuse mode: {reuse_mode}")
+            payload["reuse_mode"] = reuse_mode
         async with session.post(self.root + "/spork/set_tokens", json=payload, timeout=30) as r:
             r.raise_for_status()
-            return await r.json()
+            result = await r.json()
+        if result.get("status") == "ok" and reuse_mode != "single" and result.get("reuse_mode") != reuse_mode:
+            raise RuntimeError("D3 server did not acknowledge requested reuse mode")
+        return result
 
 
 def same_call(a: dict | None, b: dict | None) -> bool:
