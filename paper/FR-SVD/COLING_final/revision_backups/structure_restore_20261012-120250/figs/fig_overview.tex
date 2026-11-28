@@ -1,0 +1,33 @@
+% Editable framework diagram. Requires tikz with positioning, arrows.meta, and calc.
+\begin{figure*}[t]
+\centering
+\begin{tikzpicture}[
+  font=\small,
+  box/.style={draw=black!65,rounded corners=2pt,align=center,inner sep=5pt},
+  arrow/.style={-{Latex[length=2mm]},thick,draw=black!65},
+  stage/.style={box,text width=6.95cm,minimum height=2.85cm},
+  node distance=4mm and 5mm
+]
+\node[box,text width=3.65cm,fill=gray!7] (cal) {Calibration data\\$X^f,\ X,\ \{G_i\}$};
+\node[box,text width=5.6cm,fill=gray!7,right=of cal] (stats) {Shared statistics\\$H=XX^\top+\lambda_H I$, $\Delta=(X^f-X)X^\top$\\Damped Fisher factors $\Phi_d,\Psi_d$};
+\node[box,text width=3.0cm,fill=gray!7,right=of stats] (rank) {Rank budget\\$r_1+r_2=r$};
+\node[stage,fill=blue!6,below=6mm of cal.south west,anchor=north west] (s1) {\textbf{Stage 1: Fisher-guided truncation}\\[3pt]
+$G^F(\beta)=L_\Psi^\top W(H+\beta\Delta)H^{-1/2}L_\Phi$\\[3pt]
+Select $\widehat\beta$ by energy concentration;\\truncate $G^F(\widehat\beta)$ to rank $r_1$;\\map back to obtain $W^{(1)}$.};
+\node[stage,fill=orange!8,right=5mm of s1] (s2) {\textbf{Stage 2: Residual compensation}\\[3pt]
+$E=WX^f-W^{(1)}X$\\[2pt]
+$D=EX^\top H^{-1}$, $R=Q\Lambda^{1/2}$\\[2pt]
+$C=[DR]_{r_2}R^{-1}$\\[2pt]
+Rank-constrained ridge regression.};
+\node[box,text width=11.3cm,fill=green!7,below=6mm of $(s1.south)!0.5!(s2.south)$] (out) {\textbf{Compressed layer}\quad $W'=W^{(1)}+C$\\$W'x=B^{(1)}A^{(1)}x+B^{(2)}A^{(2)}x$};
+\draw[arrow] (cal) -- (stats);
+\draw[arrow] (stats) -- (rank);
+\draw[arrow] (stats.south) -- ++(0,-2mm) -| (s1.north);
+\draw[arrow] (rank.south) -- ++(0,-2mm) -| (s2.north);
+\draw[arrow] (s1.east) -- (s2.west);
+\draw[arrow] (s1.south) -- ++(0,-3mm) -| (out.north);
+\draw[arrow] (s2.south) -- ++(0,-3mm) -| (out.north);
+\end{tikzpicture}
+\caption{FR-SVD shares a rank budget between Fisher-guided cumulative-error-aware truncation and compensation of the remaining output alignment error. Both stages use the calibration statistics of the full-precision and compressed inputs.}
+\label{fig:overview}
+\end{figure*}

@@ -1,0 +1,356 @@
+% Anonymous COLING 2027 / ACL Rolling Review long-paper version.
+% Content source: TNNLS_submit_修改_10.7; original source is preserved.
+\documentclass[11pt]{article}
+\usepackage[review]{acl}
+\usepackage{times,latexsym}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{microtype,inconsolata}
+\usepackage{amsmath,amssymb,amsthm,mathtools,bm}
+\usepackage{graphicx,booktabs,multirow,array}
+\usepackage[table]{xcolor}
+\usepackage{subcaption}
+\usepackage{algorithm,algpseudocode}
+\usepackage{enumitem,pifont,placeins,textcomp}
+\algblockdefx{Stage}{EndStage}[1]{\textbf{#1}}{}
+\algtext*{EndStage}
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem*{theorem*}{Theorem}
+\newtheorem*{lemma*}{Lemma}
+\newtheorem*{corollary*}{Corollary}
+\newtheorem{rmk}{Remark}
+\hypersetup{pdftitle={FR-SVD: Fisher Guided Low-Rank Compression with Residual Compensation for Large Language Models},pdfauthor={Anonymous}}
+\title{FR-SVD: Fisher Guided Low-Rank Compression with Residual Compensation for Large Language Models}
+\author{Anonymous ACL submission}
+
+\begin{document}
+\raggedbottom
+\maketitle
+
+\begin{abstract}
+Low-rank compression reduces the storage and computation of large language models, but truncation can discard task-sensitive directions while upstream compression changes the inputs received by later layers. We propose FR-SVD, a two-stage method that addresses these effects under one rank budget. The first stage combines activation statistics, cumulative input alignment, and Kronecker-factored calibration-gradient statistics in a weighted truncation objective. The second stage corrects the remaining output deviation by solving a rank-constrained ridge-regression problem in the damped activation eigenspace. We establish exact optimality for the stated layer objectives and residual nonincrease for the second-stage solution on fixed calibration inputs. Experiments cover six decoder-only backbones without post-compression fine-tuning. On LLaMA-7B at 60\% compression, FR-SVD attains WikiText-2 perplexity of 19.36, compared with 22.01 for SAES-SVD, a 12.0\% reduction. The complete method improves on both stage-level variants, and gains extend to additional model families and larger backbones.
+\end{abstract}
+
+\section{Introduction}\label{sec:intro}
+
+Large language models (LLMs) support increasingly capable language understanding and generation, but their parameter storage and inference computation constrain deployment \citep{touvron2023llama,touvron2023llama2,dubey2024llama3}. Post-training compression reduces these requirements using a small calibration set rather than expensive retraining. Quantization lowers numerical precision, pruning removes parameters or channels, and low-rank factorization replaces a dense weight matrix with two smaller matrices \citep{frantar2023gptq,lin2023awq,frantar2023sparsegpt,ma2023llmpruner,ashkboos2024slicegpt}. Singular value decomposition (SVD) offers a direct way to construct such factors, making parameter reduction compatible with standard matrix multiplication and subsequent quantization.
+
+The central difficulty is retaining model quality as the rank budget decreases. Activation-aware scaling and whitening improve on direct weight truncation by accounting for the inputs on which a layer operates \citep{yuan2023asvd,wang2025svdllm,wang2025svdllmv2}. SAES-SVD further incorporates the difference between compressed-path and full-precision inputs into cumulative error-aware layer compression \citep{hu2026saessvd}. FR-SVD focuses on two connected questions: how to preserve task-sensitive directions during cumulative error-aware truncation, and how to correct the output deviation that remains after truncation.
+
+Two aspects of the layer objective matter. First, reconstruction quality depends on how errors are weighted. Directions with similar activation-space approximation errors can have different effects on calibration loss. Gradient-derived statistics provide a structured way to weight these directions \citep{hsu2022fwsvd,chekalina2025gfwsvd}. Incorporating them into cumulative error-aware truncation allows direction selection to use both the actual input distribution and calibration-loss information.
+
+Second, the output deviation of a compressed layer has two sources. Truncation changes its weight matrix, while upstream compression changes the input it receives. A correction based only on the current layer's weight residual leaves the upstream input deviation outside its target. Weight-residual truncation and current-layer activation-error compensation provide useful starting points \citep{bai2025ercsvd,liu2025eora}. Aligning the compressed layer with the full-precision output brings both sources of error into one compensation objective.
+
+Figure~\ref{fig:layerwise-dh} illustrates this input-shift problem on LLaMA-7B at 20\% compression on WikiText-2. The normalized input alignment shift $\eta_\ell$ measures the shift in input statistics between the compressed and full-precision paths, averaged over the compressed linear sublayers in each decoder block; lower values indicate closer alignment. Appendix~\ref{app:input-shift} gives the formal definition. A pronounced mid-block peak remains for SAES-SVD, motivating further correction of the output deviation left by cumulative error-aware truncation. The complete FR-SVD method yields a flatter profile and reduces the mean shift across blocks by about 28\%.
+
+\input{figs/fig_layerwise_dh.tex}
+
+We propose \textbf{FR-SVD}, which divides each layer's prescribed rank budget between two stages. \emph{Fisher-guided cumulative error-aware truncation} constructs an activation- and gradient-weighted target and uses rank $r_1$ for its main approximation. \emph{Eigenspace residual compensation} uses rank $r_2$ to fit the remaining output alignment error by ridge regression and truncated SVD. The stages operate sequentially under a shared rank budget: the first preserves important directions in the main approximation, and the second uses the remaining rank to improve output alignment. Their combined factors have the same parameter count as a direct factorization with the prescribed total rank.
+
+Our contributions are threefold:
+\begin{itemize}
+\item We formulate Fisher-guided cumulative error-aware truncation with explicitly defined calibration-gradient factors and prove optimality for its fixed weighted surrogate.
+\item We formulate compensation for the joint current-layer and upstream output deviation, and derive the exact rank-constrained ridge solution and its calibration-residual guarantee.
+\item We evaluate the combined method on LLaMA-7B at three compression ratios and on five additional backbones. At 60\% compression, the complete method improves on both stage-level variants and reduces WikiText-2 perplexity by 12.0\% relative to SAES-SVD.
+\end{itemize}
+
+\section{Related Work}\label{sec:related-work}
+
+\paragraph{Activation-aware and cumulative-error truncation.}
+ASVD uses activation magnitudes to scale the weight matrix \citep{yuan2023asvd}. SVD-LLM whitens activations so that truncated singular values correspond to output reconstruction error; SVD-LLM V2 improves numerical stability and allocates heterogeneous compression ratios \citep{wang2025svdllm,wang2025svdllmv2}. SAES-SVD combines local reconstruction with alignment to the full-precision path through an adaptive coefficient \citep{hu2026saessvd}. FR-SVD builds on this cumulative-error formulation and adds gradient-derived weighting to the truncation objective. Methods such as Dobi-SVD and AdaSVD optimize truncation or factor updates through differentiable or iterative procedures \citep{wang2025dobisvd,li2025adasvd}; our two layer objectives admit SVD-based closed-form solutions once their statistics and coefficient are fixed.
+
+\paragraph{Task-sensitive low-rank approximation.}
+FWSVD weights approximation errors using a diagonal Fisher estimate \citep{hsu2022fwsvd}. GFWSVD uses generalized Kronecker-factored Fisher weighting and establishes optimality in that metric \citep{chekalina2025gfwsvd}. SoCo learns the importance of singular components, while DipSVD and FLRC use sensitivity information for weighting or allocation \citep{li2025soco,ding2025dipsvd,lu2025flrc}. FR-SVD jointly fits Kronecker factors from calibration weight gradients, combines them with activation statistics, and applies this mixed metric to a cumulative-error target.
+
+\paragraph{Residual compensation and concurrent work.}
+ERC-SVD applies a secondary decomposition to the weight residual under a split rank budget \citep{bai2025ercsvd}. EoRA compensates current-layer compression error in the activation eigenspace \citep{liu2025eora}. FR-SVD fits the remaining deviation from the full-precision output, including the upstream-input contribution, through a damped rank-constrained regression. Concurrently, ZS-SVD uses signed first-order calibration-loss estimates in whitened coordinates for global singular-component selection \citep{abbasi2026zssvd}. AA-SVD anchors outputs on shifted inputs to full-precision outputs through low-rank regression and jointly refines blocks \citep{sinha2026aasvd}. FR-SVD uses a per-layer split between gradient-weighted cumulative-error truncation and a closed-form ridge correction. Appendix~\ref{app:related-work} discusses additional compression and rank-allocation approaches.
+
+\section{Preliminaries}\label{sec:preliminaries}
+
+\subsection{Low-Rank Compression and Input Statistics}
+
+Consider a linear weight $W\in\mathbb R^{m\times n}$. A rank-$r$ factorization $BA$, with $B\in\mathbb R^{m\times r}$ and $A\in\mathbb R^{r\times n}$, stores $(m+n)r$ parameters instead of $mn$. We write $[Z]_k$ for exact rank-$k$ truncated SVD and use column-wise vectorization. Direct SVD minimizes weight reconstruction error in the Frobenius norm \citep{eckart1936eym}; activation-aware compression instead measures the error on the inputs received by the layer.
+
+Let $X,X^f\in\mathbb R^{n\times p}$ contain calibration inputs from the compressed and full-precision paths, respectively, where $p$ is the number of valid input positions. Define
+\begin{equation}
+\begin{aligned}
+K&=XX^\top,\qquad H=K+\lambda_H I,\\
+\Delta&=(X^f-X)X^\top,
+\end{aligned}
+\label{eq:input-statistics}
+\end{equation}
+with $\lambda_H>0$. $K$ records the compressed-path input second moment, while $\Delta$ records its alignment shift relative to the full-precision reference. We use the symmetric positive-definite square root for $H^{1/2}$. As compression proceeds downstream, the compressed prefix changes $X$, while $X^f$ remains the reference input from the original model.
+
+\subsection{Cumulative Error-Aware Layer Compression}\label{sec:cealc}
+
+CEALC balances local reconstruction against alignment to the full-precision output \citep{hu2026saessvd}. For $\beta\in[0,1]$, the normalized, damped objective is
+\begin{equation}
+\begin{aligned}
+Q_{\beta,\lambda_H}(M)
+&=(1-\beta)\|(M-W)X\|_F^2\\
+&\quad+\beta\|MX-WX^f\|_F^2\\
+&\quad+\lambda_H\|M-W\|_F^2.
+\end{aligned}
+\label{eq:cealc-damped-objective}
+\end{equation}
+For $\beta<1$, the corresponding unnormalized alignment coefficient is $\alpha=\beta/(1-\beta)$. Completing the square gives the approximation target
+\begin{equation}
+G(\beta)=W(H+\beta\Delta)H^{-1/2}.
+\label{eq:cealc-target}
+\end{equation}
+The objective differs from $\|MH^{1/2}-G(\beta)\|_F^2$ by a constant independent of $M$. Hence, for a fixed coefficient, ordinary CEALC truncates $G(\beta)$ and maps the result back through $H^{-1/2}$. The centered regularizer in Eq.~\eqref{eq:cealc-damped-objective} produces the damped $H$ term in this target. Appendix~\ref{sup:cealc-identity} gives the derivation.
+
+\subsection{Calibration-Gradient Fisher Factors}\label{sec:fisher}
+
+Following the generalized fit of GFWSVD \citep{chekalina2025gfwsvd}, we estimate a structured empirical Fisher from calibration weight gradients. Before compressing the current layer, collect $G_i=\nabla_W\mathcal L_i$, where $\mathcal L_i$ is the mean next-token negative log-likelihood over valid prediction tokens in calibration batch $i$. Model weights are held fixed during collection, and upstream layers already use their compressed representations. For $N$ calibration batches and $g_i=\mathrm{vec}(G_i)$, define
+\begin{equation}
+\mathcal I_F=\frac1N\sum_{i=1}^{N}g_i g_i^\top.
+\label{eq:empirical-fisher}
+\end{equation}
+This statistic weights a perturbation by its squared first-order effects on the sampled calibration losses. To express it through matrix-sized factors, jointly fit
+\begin{equation}
+\min_{\substack{\Phi,\Psi\succeq0\\\|\Phi\|_F=1}}
+\|\mathcal I_F-\Phi\otimes\Psi\|_F^2,
+\label{eq:fisher-kron-fit}
+\end{equation}
+where $\Phi\in\mathbb R^{n\times n}$ and $\Psi\in\mathbb R^{m\times m}$. Both factors depend on the weight gradients: $\Phi$ weights input-index correlations and $\Psi$ weights output-index correlations. This joint fit differs from standard K-FAC's separate activation and output-gradient moments \citep{grosse2016kfac}.
+
+The normalization fixes the factors' reciprocal scaling before damping. We then form
+\begin{equation}
+\begin{aligned}
+\Phi_d&=\Phi+\lambda_\Phi I=L_\Phi L_\Phi^\top,\\
+\Psi_d&=\Psi+\lambda_\Psi I=L_\Psi L_\Psi^\top,
+\end{aligned}
+\label{eq:fisher-cholesky}
+\end{equation}
+with positive damping parameters. The factors remain fixed during the current layer's coefficient selection and truncation. Appendix~\ref{sup:fisher-estimation} derives the fit, its implicit computation, and the dependence of both factors on gradients.
+
+\section{Method: FR-SVD}\label{sec:method}
+
+\subsection{Overview}\label{sec:overview}
+
+FR-SVD combines task-sensitive truncation with residual output alignment. Figure~\ref{fig:overview} illustrates the procedure for one layer. Given its calibration statistics, \emph{Stage~1} constructs an activation- and gradient-weighted cumulative-error target and produces the main approximation $W^{(1)}$. \emph{Stage~2} then fits the output deviation that remains relative to the full-precision reference, producing a correction $W^{\mathrm{comp}}$.
+
+\input{figs/fig_overview.tex}
+
+The stages use ranks $r_1$ and $r_2$ with $r_1+r_2=r$. Their combined factor parameter count equals that of direct rank-$r$ compression. The first stage uses most of this budget to preserve important directions; the second uses the remaining rank to correct the resulting output residual. After installing both sets of factors, we update the inputs received by downstream layers and repeat the procedure. The following subsections specify the two objectives and their solutions.
+
+\subsection{Fisher-Guided CEALC}\label{sec:fisher-cealc}
+
+\paragraph{Motivation.}
+Ordinary CEALC incorporates upstream input alignment but truncates its target in the Frobenius norm. Directions with similar reconstruction errors may have different effects on calibration loss. FR-SVD therefore applies the gradient-derived factors to the cumulative-error target before selecting the alignment coefficient and the retained singular directions.
+
+\paragraph{Weighted objective.}
+We transform the target from Eq.~\eqref{eq:cealc-target} as
+\begin{equation}
+G^F(\beta)=L_\Psi^\top G(\beta)L_\Phi.
+\label{eq:fisher-target}
+\end{equation}
+Writing $\overline W_\beta=W(H+\beta\Delta)H^{-1}$, the actual weight-space objective is
+\begin{equation}
+\begin{aligned}
+\min_{\mathrm{rank}(M)\le r_1}\;J_1(M;\beta),\\
+J_1(M;\beta)=\|L_\Psi^\top(\overline W_\beta-M)
+H^{1/2}L_\Phi\|_F^2.
+\end{aligned}
+\label{eq:stage1-objective}
+\end{equation}
+The statistics play complementary roles: $\Delta$ shifts the approximation center toward reference-path alignment; $H$ represents the inputs actually received by the layer; and the Fisher factors weight approximation directions using calibration-loss gradients. The effective input metric is $H^{1/2}\Phi_dH^{1/2}$ and the output metric is $\Psi_d$. At $\beta=0$, the alignment shift is disabled, while the objective retains its mixed activation--Fisher weighting. Appendix~\ref{sup:surrogate-interpretation} gives the quadratic-form interpretation.
+
+\paragraph{Coefficient selection.}
+The transformed target is affine in $\beta$: $G^F(\beta)=S^F+\beta D^F$, with the two terms computed in Algorithm~\ref{alg:frsvd-layer}. We use the retained-energy criterion
+\begin{equation}
+\rho^F(\beta)=
+\frac{\sum_{i=1}^{r_1}\sigma_i^2(G^F(\beta))}
+{\|G^F(\beta)\|_F^2}
+\label{eq:fisher-rer}
+\end{equation}
+where the denominator is positive. We select $\widehat\beta$ by an energy-concentration heuristic based on this criterion. A ratio-of-quadratics expression is exact for a specified fixed-projection proxy; the leading singular subspace of the true criterion generally changes with $\beta$. Appendix~\ref{sup:beta-proxy} derives the conditional proxy, its stationary points, and admissible boundaries.
+
+\paragraph{Solution and guarantee.}
+Once the coefficient and statistics are fixed, the weighted rank-constrained problem has an exact SVD solution.
+\begin{theorem}[Weighted truncation]\label{thm:fisher}
+Fix $\beta$, $H\succ0$, positive-definite damped factors, and $0\le r_1\le\min(m,n)$. A global minimizer of Eq.~\eqref{eq:stage1-objective} is
+\begin{equation}
+W^{(1)}=L_\Psi^{-\top}[G^F(\beta)]_{r_1}
+L_\Phi^{-1}H^{-1/2}.
+\label{eq:stage1-output}
+\end{equation}
+For $M_0=[G(\beta)]_{r_1}H^{-1/2}$, we have $J_1(W^{(1)};\beta)\le J_1(M_0;\beta)$.
+\end{theorem}
+The proof appears in Appendix~\ref{sup:stage1-proof}. The inverse transformation maps the retained singular directions back to weight coordinates, yielding the first-stage factors used by the compressed layer.
+
+\subsection{Eigenspace Residual Compensation}\label{sec:eigenspace-comp}
+
+\paragraph{Motivation and alignment target.}
+The first stage leaves a residual because of its limited rank and the input shift produced by upstream compression. We align its output with the full-precision reference by defining
+\begin{equation}
+\begin{aligned}
+E&=WX^f-W^{(1)}X\\
+ &=W(X^f-X)+(W-W^{(1)})X.
+\end{aligned}
+\label{eq:global-alignment-error}
+\end{equation}
+The first term captures the effect of upstream input deviation; the second captures current-layer truncation error. A compensation target that includes both terms can correct their combined output effect. When the two input paths coincide, this reduces to current-layer activation-error compensation \citep{liu2025eora}.
+
+\paragraph{Rank-constrained ridge objective.}
+Holding $W^{(1)},E,X$ fixed, use the remaining rank to solve
+\begin{equation}
+\begin{aligned}
+\min_{\mathrm{rank}(C)\le r_2}\;J_{\lambda_H}(C),\\
+J_{\lambda_H}(C)=\|CX-E\|_F^2+\lambda_H\|C\|_F^2.
+\end{aligned}
+\label{eq:stage2-objective}
+\end{equation}
+The residual term aligns the corrected output with the reference, and the zero-centered ridge penalty controls the correction magnitude. Its damping is the same $\lambda_H$ used in $H$. The regression statistic satisfies $EX^\top=W\Delta+(W-W^{(1)})K$, so the upstream shift that informs Stage~1 also enters this correction.
+
+\paragraph{Eigenspace solution and guarantee.}
+The unconstrained ridge solution is $\Delta W^{\mathrm{LS}}=EX^\top H^{-1}$. Let $H=Q\Lambda Q^\top$ and $R=Q\Lambda^{1/2}$, so $H=RR^\top$. The rank-constrained correction is
+\begin{equation}
+W^{\mathrm{comp}}=[\Delta W^{\mathrm{LS}}R]_{r_2}R^{-1}.
+\label{eq:stage2-compensation}
+\end{equation}
+The eigenspace transform makes the regularized objective a low-rank approximation problem. Truncation selects its leading residual directions, and the inverse transform returns the correction to weight coordinates.
+
+\begin{theorem}[Rank-constrained ridge compensation]\label{thm:ridge-compensation}
+Fix $E,X$, $\lambda_H>0$, and $0\le r_2\le\min(m,n)$. Exact truncated SVD in Eq.~\eqref{eq:stage2-compensation} gives a global minimizer of Eq.~\eqref{eq:stage2-objective}. It satisfies
+\begin{equation}
+\begin{aligned}
+\|E-W^{\mathrm{comp}}X\|_F^2
+&\le\|E\|_F^2-\lambda_H\|W^{\mathrm{comp}}\|_F^2\\
+&\le\|E\|_F^2.
+\end{aligned}
+\label{eq:lemma-residual}
+\end{equation}
+\end{theorem}
+Thus compensation reduces or preserves the calibration residual of the fixed first-stage output. Appendices~\ref{sup:ridge-derivation}--\ref{sup:proof-lemma1} prove the solution and this guarantee. The comparison with naive weight compensation, finite-damping bounds, and approximate-SVD analysis appear in Appendices~\ref{sup:proof-corollary1} and~\ref{sup:two-step-approximation}.
+
+\subsection{Overall Algorithm}\label{sec:overall-algo}
+
+Algorithm~\ref{alg:frsvd-layer} gives the matrix-level computation. The \textsc{KronFisher} routine performs the fit and damped factorizations from Section~\ref{sec:fisher}; \textsc{SelectBeta} denotes the energy-concentration heuristic described in Section~\ref{sec:fisher-cealc}; and \textsc{TruncSVD} returns the retained singular triplets. The algorithm stores the two factor pairs directly.
+
+\begin{algorithm}[t]
+\caption{FR-SVD for one weight matrix}
+\label{alg:frsvd-layer}
+\small
+\begin{algorithmic}[1]
+\Require $W,X,X^f$, gradients $\{G_i\}_{i=1}^N$, ranks $r_1,r_2$, positive damping parameters
+\Ensure $B^{(1)},A^{(1)},B^{(2)},A^{(2)}$
+\State $H\gets XX^\top+\lambda_H I$
+\State $\Delta\gets(X^f-X)X^\top$
+\State $(L_\Phi,L_\Psi)\gets\Call{KronFisher}{\{G_i\},\lambda_\Phi,\lambda_\Psi}$
+\Stage{Stage 1: Fisher-guided CEALC}
+\State $S^F\gets L_\Psi^\top WH^{1/2}L_\Phi$
+\State $D^F\gets L_\Psi^\top W\Delta H^{-1/2}L_\Phi$
+\State $\widehat\beta\gets\Call{SelectBeta}{S^F,D^F,r_1}$
+\State $(\hat U,\hat\Sigma,\hat V)\gets\Call{TruncSVD}{S^F+\widehat\beta D^F,r_1}$
+\State $B^{(1)}\gets L_\Psi^{-\top}\hat U\hat\Sigma^{1/2}$
+\State $A^{(1)}\gets\hat\Sigma^{1/2}\hat V^\top L_\Phi^{-1}H^{-1/2}$
+\EndStage
+\Stage{Stage 2: Eigenspace compensation}
+\State $E\gets WX^f-B^{(1)}A^{(1)}X$
+\State $\Delta W^{\mathrm{LS}}\gets EX^\top H^{-1}$
+\State $(Q,\Lambda)\gets\Call{Eigh}{H}$
+\State $(\tilde U,\tilde\Sigma,\tilde V)\gets\Call{TruncSVD}{\Delta W^{\mathrm{LS}}Q\Lambda^{1/2},r_2}$
+\State $B^{(2)}\gets\tilde U\tilde\Sigma^{1/2}$
+\State $A^{(2)}\gets\tilde\Sigma^{1/2}\tilde V^\top\Lambda^{-1/2}Q^\top$
+\EndStage
+\State \Return $(B^{(1)},A^{(1)},B^{(2)},A^{(2)})$
+\end{algorithmic}
+\end{algorithm}
+
+Before processing each layer, the current model contains a compressed prefix and original current and downstream weights. We collect its calibration gradients and both input paths, hold these statistics fixed while applying Algorithm~\ref{alg:frsvd-layer}, and install the resulting factors before advancing downstream. Appendix~\ref{app:algorithms} gives the full-model scheduling algorithm.
+
+At inference, the compressed layer evaluates
+\begin{equation}
+W'x=B^{(1)}A^{(1)}x+B^{(2)}A^{(2)}x.
+\label{eq:deployment}
+\end{equation}
+The combined factors have inner dimension $r_1+r_2=r$ and store $(m+n)r$ parameters. Gradient collection and residual regression are performed during compression; inference uses the stored low-rank matrix products.
+
+\section{Experiments}\label{sec:experiments}
+
+\input{tables/table1_main.tex}
+
+\subsection{Experimental Setup}
+
+\paragraph{Models and baselines.}
+We evaluate LLaMA-7B at nominal compression ratios $c\in\{0.2,0.4,0.6\}$ and examine transfer at $c=0.2$ on LLaMA-2-7B, LLaMA-3-8B, Qwen2.5-7B, LLaMA-13B, and LLaMA-30B \citep{touvron2023llama,touvron2023llama2,dubey2024llama3,yang2024qwen25}. The comparisons use FWSVD, ASVD, SVD-LLM, and SAES-SVD. Our SAES-SVD reproduction builds on the third-party implementation in LowRankArena\footnote{\url{https://github.com/Zishan-Shao/lowrankarena/tree/main/compress/svd/SAES-SVD-reproduction}}, which we further adapt according to the method described in the original paper. The LLaMA-7B SAES-SVD WikiText-2 perplexity reference values in Tables~\ref{tab:main-results} and~\ref{tab:ablation-components} are taken from its original paper at the corresponding reported compression ratios.
+
+\paragraph{Calibration and evaluation.}
+We sample 256 WikiText-2 training sequences of length 2048 for calibration \citep{merity2017wikitext2}. Language modeling is evaluated by perplexity on WikiText-2, PTB, and C4 \citep{marcus1993ptb,raffel2020c4}. Zero-shot accuracy is measured on OpenBookQA, ARC-Easy, WinoGrande, HellaSwag, PIQA, and MathQA \citep{mihaylov2018openbook,clark2018think,sakaguchi2021winogrande,zellers2019hellaswag,bisk2020piqa,amini2019mathqa}. Tables~\ref{tab:main-results} and~\ref{tab:cross-model} report each task and their arithmetic mean (Avg.). Drop denotes the relative decrease in mean accuracy from the corresponding uncompressed model. The nominal compression ratio $c$ denotes parameter reduction in the compressed linear weights; their retained fraction is $1-c$.
+
+\paragraph{Implementation.}
+We allocate $r_1/r=0.92$, set $\lambda_H=10^{-3}$ and $\lambda_\Phi=\lambda_\Psi=10^{-4}$, and use the same calibration sequences for activation and mean next-token-loss gradient statistics. The Kronecker input factor is normalized to $\|\Phi\|_F=1$ before damping. Experiments use PyTorch in half precision on a server with eight NVIDIA A40 GPUs (48\,GB per GPU); FR-SVD uses no post-compression fine-tuning. We will publicly release the FR-SVD implementation, baseline reproduction code including our adapted SAES-SVD implementation, evaluation scripts, and calibration and evaluation configurations upon publication.
+
+
+\subsection{Main Results}\label{sec:main-results-llama7b}
+
+\input{tables/table2_cross_model.tex}
+
+\paragraph{LLaMA-7B across compression ratios.}
+
+Table~\ref{tab:main-results} compares language modeling and mean zero-shot accuracy under three rank budgets. Among the baselines in Table~\ref{tab:main-results}, FR-SVD attains the lowest perplexity on all three language-modeling datasets and the highest mean zero-shot accuracy at each tested compression ratio. Its advantage over the SAES-SVD reference becomes more pronounced at higher compression: WikiText-2 perplexity changes from 7.17 to 7.02 at 20\%, from 10.42 to 9.81 at 40\%, and from 22.01 to 19.36 at 60\%. The last reduction is 12.0\%, showing a larger benefit as the rank budget becomes more restrictive.
+
+The task averages follow the same ordering. Relative to the uncompressed LLaMA-7B, FR-SVD limits the average accuracy drop to 3.7\%, 17.6\%, and 31.6\% at the three ratios, compared with 5.0\%, 19.8\%, and 35.6\% for SAES-SVD. At 40\%, SVD-LLM's reported average drop is 27.9\%. The improvement therefore extends beyond the calibration corpus to the evaluated zero-shot tasks.
+
+\paragraph{Cross-model results.}
+
+Table~\ref{tab:cross-model} reports 20\% compression on three additional 7B--8B backbones. FR-SVD lowers WikiText-2 perplexity relative to SAES-SVD by 4.8\% on LLaMA-3-8B (10.06 to 9.58), 7.4\% on Qwen2.5-7B (11.76 to 10.89), and 4.2\% on LLaMA-2-7B (7.45 to 7.14). Mean zero-shot accuracy improves by one to two absolute percentage points. The same rank split and damping values are used across these experiments, and the gains persist across the evaluated model architectures and training backgrounds.
+
+
+\paragraph{Larger-model results.}
+FR-SVD attains WikiText-2 perplexities of 6.18 on LLaMA-13B and 5.28 on LLaMA-30B at 20\% compression, below the SAES-SVD results by 2.5\% and 3.8\%, respectively. Appendix~\ref{app:full-results} includes the full comparisons. Together these measurements support applying the same two-stage procedure beyond the primary LLaMA-7B configuration.
+
+\subsection{Ablation and Analysis}\label{sec:ablation}
+
+\paragraph{Stage-level contributions.}
+
+We compare the complete method with two reduced workflows at 60\% compression, fixing the same total rank budget. FR-SVD (F) retains Fisher-guided CEALC only and allocates the full budget to Stage~1. FR-SVD (R) replaces Fisher-guided truncation with ordinary activation-aware CEALC and retains eigenspace residual compensation. Table~\ref{tab:ablation-components} shows perplexities of 20.42 and 21.13 for the two variants, compared with the SAES-SVD reference of 22.01. The complete method attains 19.36, improving on both reduced workflows. These results support reserving rank for compensation while retaining the gradient-weighted main truncation.
+
+\input{tables/table3_component_ablation.tex}
+
+\paragraph{Local output reconstruction.}
+On LLaMA-7B at 20\% compression, the complete method gives lower local output reconstruction error than FR-SVD (F) in 34 of 35 sampled layer--submodule pairs. This diagnostic connects the stage-level quality improvement with reduced reconstruction error within the compressed network. Appendix~\ref{app:submodule-reconstruction} defines the metric and provides the submodule comparison.
+
+\paragraph{Rank allocation.}
+The rank-allocation sweep fixes total rank and varies $r_1/r$ from 0.50 to 1.00 at the three LLaMA-7B compression ratios. Perplexity decreases rapidly when the main-stage share rises through roughly 0.80--0.90, then reaches a low plateau around 0.92--0.95. Assigning all rank to Stage~1 gives a higher perplexity than the best split. These measurements motivate the default $r_1/r=0.92$: the main truncation receives most of the budget, while a smaller correction addresses its remaining residual. Appendix~\ref{app:rank-allocation} reports the full sweep.
+
+\paragraph{Calibration sensitivity.}
+\input{figs/fig_calibration_ablation.tex}
+
+Figure~\ref{fig:calibration-ablation} reports two calibration sweeps on LLaMA-7B at 20\% compression. Changing the WikiText-2 calibration set size from 128 to 2048 sequences gives perplexities between 7.02 and 7.11. With 256 sequences and five sampling seeds, the range is 7.02--7.08, with mean and sample standard deviation $7.052\pm0.024$. These measurements show limited sensitivity to the tested calibration choices.
+
+\subsection{Efficiency Analysis}\label{sec:efficiency}
+
+\paragraph{One-time compression cost.}
+Table~\ref{tab:compression-time} reports the wall-clock cost of compressing LLaMA-7B at 20\% on one A40 using 256 calibration sequences. FR-SVD takes 1\,h 35\,min 29\,s, compared with 1\,h 14\,min 06\,s for SAES-SVD, approximately 29\% additional time. Its two stage-level variants lie between these costs. Gradient estimation and residual regression contribute to this one-time preparation cost; the resulting model uses stored low-rank factors during inference.
+
+\input{tables/table4_compression_time.tex}
+
+\paragraph{Weight size and inference speed.}
+Figure~\ref{fig:weight-speedup} shows the measured weight size and token-generation speedup on a single A40, with batch size 4, prefill length 1024, and decoding length 256. Increasing the nominal compression ratio from 20\% to 80\% reduces model weight size from 10.48 to 3.63\,GiB, compared with the uncompressed 12.55\,GiB, and increases speedup from $1.17\times$ to $3.28\times$. At the 60\% configuration used for the component ablation, weight size is 5.73\,GiB and speedup is $2.10\times$. The measurements show how the smaller factor representation translates into deployment savings under this inference setup. Appendix~\ref{app:efficiency} provides additional measurement details.
+
+\input{figs/fig_weight_speedup.tex}
+
+Complementary results on combining compression with quantization and qualitative language and image-captioning examples appear in Appendices~\ref{app:quantization} and~\ref{app:qualitative}.
+
+\section{Conclusion}\label{sec:conclusion}
+
+FR-SVD combines gradient-weighted cumulative-error truncation with eigenspace residual compensation. The first stage preserves important approximation directions using activation and calibration-gradient statistics; the second aligns the remaining output deviation with the full-precision reference under the same total rank budget. The analysis establishes optimality for the fixed weighted surrogate and the rank-constrained ridge objective, together with calibration-residual nonincrease after compensation. Compared with the evaluated baselines, FR-SVD achieves lower perplexity and higher mean zero-shot accuracy across the tested compression budgets, including a 12.0\% WikiText-2 perplexity reduction relative to SAES-SVD at 60\% compression on LLaMA-7B. The stage-level comparisons support the combined design, and gains extend to additional model families and larger backbones without post-compression fine-tuning.
+\FloatBarrier
+\label{main:end}
+
+\section*{Limitations}
+
+Kronecker-factored gradient estimation adds a one-time compression cost: approximately 29\% over SAES-SVD in the reported LLaMA-7B configuration. More efficient approximations could reduce this cost. The framework uses a fixed rank split, while allocation based on residual spectra or layer sensitivity could improve budget use. Factors are estimated independently for each layer; joint cross-layer optimization is a further direction.
+
+FR-SVD targets deployment where users need to preserve the capabilities of a particular pretrained model, cannot retrain or distill it, and seek weight compression beyond quantization alone. Low-rank factors are compatible with quantization and standard dense matrix multiplications.
+
+\bibliography{frsvd_refs}
+\clearpage
+\appendix
+\input{sections/appendix.tex}
+\end{document}

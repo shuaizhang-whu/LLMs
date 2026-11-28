@@ -14,6 +14,14 @@ if [[ "$stage" == serve ]]; then
         exit 2
     fi
     export SPORK_SERVE_DEVICES="$gpu" SPORK_SERVE_TP=1
+    compat="$SPORK_CODEX_ENV/.cuda-compat/usr/local/cuda-13.0/compat"
+    if [[ -f "$compat/libcuda.so.1" ]]; then
+        export LD_LIBRARY_PATH="$compat${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+        export LIBRARY_PATH="$compat${LIBRARY_PATH:+:$LIBRARY_PATH}"
+        # The A40 launcher's GDB trace implicated Arrow's jemalloc background thread.
+        export JE_ARROW_MALLOC_CONF=background_thread:false
+    fi
+    export PYTHONFAULTHANDLER=1
     export SPORK_EXPERIMENT_PROFILE=qwen3_4b SPORK_TOOL_CALL_OPEN_TOKEN_ID=151657
     exec bash scripts/serve_qwen32_eval.sh invariant
 fi
@@ -44,7 +52,9 @@ if [[ "$stage" == smoke ]]; then
 else
     selection=(--scope all --max-turns 8)
 fi
-output="$SPORK_CODEX_ROOT/results/e3_qwen3_4b_${stage}_invariant_v1"
+eval_results="${SPORK_E3_EVAL_RESULTS:-$SPORK_CODEX_ROOT/results}"
+mkdir -p "$eval_results"
+output="$eval_results/e3_qwen3_4b_${stage}_invariant_v1"
 if [[ "$mode" == --run ]]; then
     "$python" scripts/check_codex_runtime.py --server --serving-mode invariant
 fi

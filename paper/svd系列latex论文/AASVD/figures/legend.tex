@@ -1,0 +1,77 @@
+% legend_block.tex
+% Standalone modular block: diagram legend (two-column layout)
+% Usage: \input{legend_block.tex}
+% Requires in preamble:
+%   \usepackage{tikz}
+%   \usetikzlibrary{positioning, calc, arrows.meta, shadows}
+%   \usepackage{amsmath, amssymb, bm}
+
+\begin{tikzpicture}[
+    >=Stealth,
+]
+
+\definecolor{compbrown}{RGB}{180,145,110}
+
+\def\lrow{0.6}    % vertical spacing between rows
+\def\llen{0.6}    % length of sample arrows
+\def\ltxt{0.1}    % text offset from arrow end
+\def\colsep{4.2}  % horizontal offset for right column
+
+% Background box
+\node[draw, rounded corners=5pt, thick, fill=white,
+      minimum width=8.5cm, minimum height=2.5cm,
+      anchor=north] (legendbox) at (0,0) {};
+
+% Title
+% \node[above=2pt of legendbox.north, font=\bfseries] {Legend};
+
+% Left column anchor
+\coordinate (L0) at ([xshift=0.3cm, yshift=-0.35cm]legendbox.north west);
+
+%% ── Left column: arrow styles ──
+\begin{scope}[shift={(L0)}]
+    % Row 1: Solid arrow black
+    \draw[thick, ->] (0, 0) -- +(\llen, 0);
+    \node[font=\small, anchor=west] at (\llen+\ltxt, 0) {Original data flow};
+
+    % Row 2: Solid arrow purple
+    \draw[thick, ->, draw=purple!70] (0, -\lrow) -- +(\llen, 0);
+    \node[font=\small, anchor=west] at (\llen+\ltxt, -\lrow) {Compressed data flow};
+
+    % Row 3: Dashed arrow gray
+    \draw[thick, ->, draw=gray!60, dashed] (0, -2*\lrow) -- +(\llen, 0);
+    \node[font=\small, anchor=west] at (\llen+\ltxt, -2*\lrow) {Not yet constructed};
+
+    % Row 4: Dashed arrow black
+    \draw[thick, ->, dashed] (0, -3*\lrow) -- +(\llen, 0);
+    \node[font=\small, anchor=west] at (\llen+\ltxt, -3*\lrow) {Auxiliary data flow};
+\end{scope}
+
+%% ── Right column: weight box styles ──
+\begin{scope}[shift={($(L0)+(\colsep,0)$)}]
+    % Row 1: Green
+    \node[draw, rectangle, fill=green!15, minimum width=0.6cm, minimum height=0.38cm,
+          drop shadow={shadow xshift=0.3ex, shadow yshift=-0.3ex, opacity=0.25}]
+        at (0.3, 0) {};
+    \node[font=\small, anchor=west] at (\llen+\ltxt, 0) {Original weight};
+
+    % Row 2: Blue
+    \node[draw, rectangle, fill=blue!12, minimum width=0.6cm, minimum height=0.38cm,
+          drop shadow={shadow xshift=0.3ex, shadow yshift=-0.3ex, opacity=0.25}]
+        at (0.3, -\lrow) {};
+    \node[font=\small, anchor=west] at (\llen+\ltxt, -\lrow) {Compressed weight};
+
+    % Row 3: Yellow
+    \node[draw, rectangle, fill=yellow!30, minimum width=0.6cm, minimum height=0.38cm,
+          drop shadow={shadow xshift=0.3ex, shadow yshift=-0.3ex, opacity=0.25}]
+        at (0.3, -2*\lrow) {};
+    \node[font=\small, anchor=west] at (\llen+\ltxt, -2*\lrow) {Target weight};
+
+    % Row 4: Brown
+    \node[draw, rectangle, fill=compbrown!40, minimum width=0.6cm, minimum height=0.38cm,
+          drop shadow={shadow xshift=0.3ex, shadow yshift=-0.3ex, opacity=0.25}]
+        at (0.3, -3*\lrow) {};
+    \node[font=\small, anchor=west] at (\llen+\ltxt, -3*\lrow) {Retuned weight};
+\end{scope}
+
+\end{tikzpicture}

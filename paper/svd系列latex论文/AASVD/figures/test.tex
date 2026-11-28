@@ -1,0 +1,597 @@
+% transformer_block.tex
+% Usage: \input{transformer_block.tex}
+% Requires in preamble:
+%   \usepackage{tikz}
+%   \usetikzlibrary{positioning, calc, arrows.meta, fit, shadows, decorations.pathmorphing, decorations.pathreplacing}
+%   \usepackage{amsmath, amssymb, bm}
+
+\begin{tikzpicture}[
+    >=Stealth,
+    node distance=0.6cm,
+    % --- Original model styles ---
+    layerblock/.style={
+        draw, rectangle, rounded corners=3pt,
+        fill=green!15, minimum width=2.4cm, minimum height=0.85cm,
+        font=\small, align=center,
+        drop shadow={shadow xshift=0.4ex, shadow yshift=-0.4ex, opacity=0.25}
+    },
+    opblock/.style={
+        draw, rectangle, rounded corners=3pt,
+        fill=green!15, minimum width=2.0cm, minimum height=0.6cm,
+        font=\small, align=center,
+        drop shadow={shadow xshift=0.4ex, shadow yshift=-0.4ex, opacity=0.25}
+    },
+    weightblock/.style={
+        draw, rectangle,
+        fill=green!15, minimum width=0.5cm, minimum height=0.6cm,
+        font=\small\bfseries, align=center,
+        drop shadow={shadow xshift=0.3ex, shadow yshift=-0.3ex, opacity=0.25}
+    },
+    activeweight/.style={
+        draw, rectangle,
+        fill=yellow!30, minimum width=0.5cm, minimum height=0.6cm,
+        font=\small\bfseries, align=center,
+        drop shadow={shadow xshift=0.3ex, shadow yshift=-0.3ex, opacity=0.25}
+    },
+    addnode/.style={
+        circle, inner sep=0pt, font=\Large,
+    },
+    conn/.style={thick, ->},
+    spine/.style={thick},
+    % --- Compressed model styles (below W_O) ---
+    clayerblock/.style={
+        draw, rectangle, rounded corners=3pt,
+        fill=blue!12, minimum width=2.4cm, minimum height=0.85cm,
+        font=\small, align=center,
+        drop shadow={shadow xshift=0.4ex, shadow yshift=-0.4ex, opacity=0.25}
+    },
+    copblock/.style={
+        draw, rectangle, rounded corners=3pt,
+        fill=blue!12, minimum width=2.0cm, minimum height=0.6cm,
+        font=\small, align=center,
+        drop shadow={shadow xshift=0.4ex, shadow yshift=-0.4ex, opacity=0.25}
+    },
+    cweightblock/.style={
+        draw, rectangle,
+        fill=blue!12, minimum width=0.5cm, minimum height=0.6cm,
+        font=\small\bfseries, align=center,
+        drop shadow={shadow xshift=0.3ex, shadow yshift=-0.3ex, opacity=0.25}
+    },
+    cconn/.style={thick, ->, draw=purple!70},
+    cspine/.style={thick, draw=purple!70},
+    % --- Ghost styles (not yet constructed) ---
+    ghostlayer/.style={
+        draw=gray!75, rectangle, rounded corners=3pt, dashed,
+        fill=none, minimum width=2.4cm, minimum height=0.85cm,
+        font=\small, align=center, text=gray!70
+    },
+    ghostop/.style={
+        draw=gray!75, rectangle, rounded corners=3pt, dashed,
+        fill=none, minimum width=2.0cm, minimum height=0.6cm,
+        font=\small, align=center, text=gray!70
+    },
+    ghostadd/.style={
+        circle, inner sep=0pt, font=\Large, text=gray!70,
+    },
+    ghostconn/.style={thick, ->, draw=gray!60, dashed},
+    ghostspine/.style={thick, draw=gray!60, dashed},
+]
+
+%% Horizontal offsets
+\def\xmid{4.6}
+\def\xoff{9.2}
+
+%% Objective colors (shared between visual box arcs and equation badges)
+\definecolor{obj1}{RGB}{90,90,90}      % dark gray
+\definecolor{obj2}{RGB}{0,130,60}      % green
+\definecolor{obj3}{RGB}{180,100,0}     % orange
+\definecolor{obj4}{RGB}{0,80,180}      % blue
+
+%% ████████████████████████████████████████████████████████████████
+%%  LEFT COLUMN — ORIGINAL MODEL
+%% ████████████████████████████████████████████████████████████████
+
+%% Bottom dots
+\node[font=\small] (dotsbelow) {$\vdots$};
+
+%% Layer k-1
+\node[layerblock, above=0.4cm of dotsbelow] (layerkm1) {Layer $k-1$};
+
+%% Layer k contents
+\node[opblock, above=0.8cm of layerkm1] (norm) {Norm};
+
+\node[weightblock, above=0.9cm of norm]   (wq) {$\bm{W}_Q$};
+\node[weightblock, left=0.1cm of wq]      (wk) {$\bm{W}_K$};
+\node[weightblock, right=0.1cm of wq]     (wv) {$\bm{W}_V$};
+
+\node[opblock, above=0.9cm of wq] (attn) {Self-Attention};
+
+\node[activeweight, above=0.9cm of attn] (wo) {$\bm{W}_O$};
+
+\node[addnode, above=0.7cm of wo] (add1) {$\oplus$};
+
+\node[opblock, above=0.5cm of add1] (ffn) {FFN};
+
+\node[addnode, above=0.4cm of ffn] (add2) {$\oplus$};
+
+%% Layer k boundary
+\node[draw, rectangle, rounded corners=3pt,
+      fill=green!8,
+      inner xsep=4pt, inner ysep=10pt,
+      drop shadow={shadow xshift=0.4ex, shadow yshift=-0.4ex, opacity=0.25},
+      fit=(norm)(wk)(wv)(attn)(wo)(add1)(ffn)(add2),
+      minimum width=3.2cm
+] (layerkbox) {};
+
+\node[font=\small, anchor=east,
+      inner sep=4pt] at ([yshift=4pt]layerkbox.south east) {Layer $k$};
+
+%% Redraw inner nodes on top of background
+\node[opblock] at (norm) {Norm};
+\node[weightblock] at (wk) {$\bm{W}_K$};
+\node[weightblock] at (wq) {$\bm{W}_Q$};
+\node[weightblock] at (wv) {$\bm{W}_V$};
+\node[opblock] at (attn) {Self-Attention};
+\node[activeweight] at (wo) {$\bm{W}_O$};
+\node[addnode] at (add1) {$\oplus$};
+\node[opblock] at (ffn) {FFN};
+\node[addnode] at (add2) {$\oplus$};
+
+%% Layer k+1
+\node[layerblock, above=0.8cm of add2] (layerkp1) {Layer $k+1$};
+
+%% Top dots
+\node[font=\small, above=0.5cm of layerkp1] (dotsabove) {$\vdots$};
+
+%% Outer boundary
+\node[draw, rounded corners=8pt, thick,
+      inner xsep=8pt, inner ysep=2pt,
+      fill=none,
+      fit=(dotsbelow)(dotsabove)(layerkm1)(layerkp1)(layerkbox)
+] (outerbox) {};
+
+%% Title
+\node[above=0.0cm of outerbox.north, font=\bfseries\large] {Original Model};
+
+%% Main spine arrows
+\draw[conn] (dotsbelow.north) -- (layerkm1.south);
+\draw[conn] (layerkm1.north) -- (norm.south);
+
+\coordinate (splitpt) at ($(norm.north)+(0,0.5)$);
+\draw[spine] (norm.north) -- (splitpt);
+\draw[conn]  (splitpt) -- (wq.south);
+\draw[conn]  (splitpt) -| (wk.south);
+\draw[conn]  (splitpt) -| (wv.south);
+
+\coordinate (mergept) at ($(attn.south)+(0,-0.5)$);
+\draw[spine] (wk.north) |- (mergept);
+\draw[spine] (wq.north) -- (mergept);
+\draw[spine] (wv.north) |- (mergept);
+\draw[conn]  (mergept) -- (attn.south);
+
+\draw[conn] (attn.north) -- node[left, font=\bfseries] {$\mX$} (wo.south);
+\draw[conn] (wo.north) -- node[left, font=\bfseries] {$\mY$} (add1.south);
+
+\draw[conn] (add1.north) -- (ffn.south);
+\draw[conn] (ffn.north) -- (add2.south);
+\draw[conn] (add2.north) -- (layerkp1.south);
+\draw[conn] (layerkp1.north) -- (dotsabove.south);
+
+%% Residual connections
+\coordinate (resLx) at ([xshift=-3pt]wk.west);
+
+\coordinate (res1tap)  at ($(norm.north)+(0,0.15)$);
+\coordinate (res1L)    at (resLx |- res1tap);
+\coordinate (res1Ltop) at (resLx |- add1.center);
+\draw[spine, rounded corners=5pt]
+    (res1tap) -- (res1L) -- (res1Ltop);
+\draw[conn, rounded corners=5pt]
+    (res1Ltop) -- (add1.west);
+
+\coordinate (res2tap)  at ($(add1.north)+(0,0.12)$);
+\coordinate (res2L)    at (resLx |- res2tap);
+\coordinate (res2Ltop) at (resLx |- add2.center);
+\draw[spine, rounded corners=5pt]
+    (res2tap) -- (res2L) -- (res2Ltop);
+\draw[conn, rounded corners=5pt]
+    (res2Ltop) -- (add2.west);
+
+%% ████████████████████████████████████████████████████████████████
+%%  RIGHT COLUMN — COMPRESSED MODEL
+%% ████████████████████████████████████████████████████████████████
+
+%% Bottom dots
+\node[font=\small] (cdotsbelow) at (\xoff,0) {$\vdots$};
+
+%% Layer k-1 (compressed)
+\node[clayerblock, above=0.4cm of cdotsbelow] (clayerkm1) {Layer $k-1$};
+
+%% Layer k contents — compressed (below W_O)
+\node[copblock, above=0.8cm of clayerkm1] (cnorm) {Norm};
+
+\node[cweightblock, above=0.9cm of cnorm]   (cwq) {$\bm{W}'_Q$};
+\node[cweightblock, left=0.1cm of cwq]      (cwk) {$\bm{W}'_K$};
+\node[cweightblock, right=0.1cm of cwq]     (cwv) {$\bm{W}'_V$};
+
+\node[copblock, above=0.9cm of cwq] (cattn) {Self-Attention};
+
+%% W_O — active weight (boundary between compressed and ghost)
+\node[activeweight, above=0.9cm of cattn] (cwo) {$\bm{W}'_O$};
+
+%% Above W_O — ghost/wireframe (not yet constructed)
+\node[ghostadd, above=0.7cm of cwo] (cadd1) {$\oplus$};
+
+\node[ghostop, above=0.5cm of cadd1] (cffn) {FFN};
+
+\node[ghostadd, above=0.4cm of cffn] (cadd2) {$\oplus$};
+
+%% Layer k boundary — lower part compressed, but box encompasses all
+\node[draw, rectangle, rounded corners=3pt,
+      fill=blue!5,
+      inner xsep=4pt, inner ysep=10pt,
+      drop shadow={shadow xshift=0.4ex, shadow yshift=-0.4ex, opacity=0.25},
+      fit=(cnorm)(cwk)(cwv)(cattn)(cwo)(cadd1)(cffn)(cadd2),
+      minimum width=3.2cm
+] (clayerkbox) {};
+
+\node[font=\small, anchor=east,
+      inner sep=4pt] at ([yshift=4pt]clayerkbox.south east) {Layer $k$};
+
+%% Redraw inner nodes on top of background
+%% Compressed nodes (solid)
+\node[copblock] at (cnorm) {Norm};
+\node[cweightblock] at (cwk) {$\bm{W}'_K$};
+\node[cweightblock] at (cwq) {$\bm{W}'_Q$};
+\node[cweightblock] at (cwv) {$\bm{W}'_V$};
+\node[copblock] at (cattn) {Self-Attention};
+\node[activeweight] at (cwo) {$\bm{W}'_O$};
+
+%% Ghost nodes (dashed wireframe)
+\node[ghostadd] at (cadd1) {$\oplus$};
+\node[ghostop] at (cffn) {FFN};
+\node[ghostadd] at (cadd2) {$\oplus$};
+
+%% Layer k+1 — ghost
+\node[ghostlayer, above=0.8cm of cadd2] (clayerkp1) {Layer $k+1$};
+
+%% Top dots — ghost
+\node[font=\small, above=0.5cm of clayerkp1, text=gray!70] (cdotsabove) {$\vdots$};
+
+%% Outer boundary
+\node[draw, rounded corners=8pt, thick,
+      inner xsep=8pt, inner ysep=2pt,
+      fill=none,
+      fit=(cdotsbelow)(cdotsabove)(clayerkm1)(clayerkp1)(clayerkbox)
+] (couterbox) {};
+
+%% Title
+\node[above=0.0cm of couterbox.north, font=\bfseries\large] {Compressed Model};
+
+%% ================================================================
+%% Compressed model arrows
+%% ================================================================
+
+%% --- Below W_O: compressed (purple) arrows ---
+
+% dots -> Layer k-1
+\draw[cconn] (cdotsbelow.north) -- (clayerkm1.south);
+
+% Layer k-1 -> Norm
+\draw[cconn] (clayerkm1.north) -- (cnorm.south);
+
+% Norm -> fan out
+\coordinate (csplitpt) at ($(cnorm.north)+(0,0.5)$);
+\draw[cspine] (cnorm.north) -- (csplitpt);
+\draw[cconn]  (csplitpt) -- (cwq.south);
+\draw[cconn]  (csplitpt) -| (cwk.south);
+\draw[cconn]  (csplitpt) -| (cwv.south);
+
+% W_K, W_Q, W_V -> Self-Attention
+\coordinate (cmergept) at ($(cattn.south)+(0,-0.5)$);
+\draw[cspine] (cwk.north) |- (cmergept);
+\draw[cspine] (cwq.north) -- (cmergept);
+\draw[cspine] (cwv.north) |- (cmergept);
+\draw[cconn]  (cmergept) -- (cattn.south);
+
+% Self-Attention -> W_O with X'
+\draw[cconn] (cattn.north) -- node[right, font=\bfseries, text=black] {$\mX'$} (cwo.south);
+
+%% --- Above W_O: ghost (dashed gray) arrows ---
+
+% W_O -> add1 with Y'
+\draw[ghostconn] (cwo.north) -- node[right, font=\bfseries, text=gray!70] {$\mY'$} (cadd1.south);
+
+% add1 -> FFN
+\draw[ghostconn] (cadd1.north) -- (cffn.south);
+
+% FFN -> add2
+\draw[ghostconn] (cffn.north) -- (cadd2.south);
+
+% add2 -> Layer k+1
+\draw[ghostconn] (cadd2.north) -- (clayerkp1.south);
+
+% Layer k+1 -> dots
+\draw[ghostconn] (clayerkp1.north) -- (cdotsabove.south);
+
+%% Residual connections
+\coordinate (cresLx) at ([xshift=-3pt]cwk.west);
+
+% First residual: Norm -> add1
+% Solid purple from Norm up to W_O level, then dashed ghost above
+\coordinate (cres1tap)  at ($(cnorm.north)+(0,0.15)$);
+\coordinate (cres1L)    at (cresLx |- cres1tap);
+\coordinate (cres1Ltop) at (cresLx |- cadd1.center);
+% Transition point at W_O's vertical center
+\coordinate (cres1mid)  at (cresLx |- cwo.center);
+
+% Solid purple: Norm tap -> left edge -> up to W_O level (with arrow at transition)
+\draw[cspine, rounded corners=5pt, ->]
+    (cres1tap) -- (cres1L) -- (cres1mid);
+% Dashed ghost: W_O level -> up to add1 -> into add1
+\draw[ghostspine, rounded corners=5pt]
+    (cres1mid) -- (cres1Ltop);
+\draw[ghostconn, rounded corners=5pt]
+    (cres1Ltop) -- (cadd1.west);
+
+% Second residual: add1 -> add2 (fully ghost)
+\coordinate (cres2tap)  at ($(cadd1.north)+(0,0.12)$);
+\coordinate (cres2L)    at (cresLx |- cres2tap);
+\coordinate (cres2Ltop) at (cresLx |- cadd2.center);
+\draw[ghostspine, rounded corners=5pt]
+    (cres2tap) -- (cres2L) -- (cres2Ltop);
+\draw[ghostconn, rounded corners=5pt]
+    (cres2Ltop) -- (cadd2.west);
+
+%% ████████████████████████████████████████████████████████████████
+%%  MIDDLE COLUMN — COMPRESSION OBJECTIVES
+%% ████████████████████████████████████████████████████████████████
+
+%% Anchor the middle column vertically aligned with the models
+%% We place the top visual block aligned with upper part of models
+%% and equation blocks stacked below
+
+
+%% --- Block 0: Visual diagram (W -> W' with X, X', Y, Y') ---
+\node[draw, rounded corners=5pt, thick,
+      minimum width=4.4cm, minimum height=5.6cm,
+      fill=none, anchor=north]
+    (visbox) at (\xmid, 0 |- dotsabove.north) {};
+
+%% Title
+\node[above=0.0cm of visbox.north, font=\bfseries\large] {Objectives};
+
+
+% W and W' weight boxes inside the visual
+\node[activeweight, minimum width=1cm, minimum height=0.8cm]
+    (visW) at ($(visbox.center)+(-1.35,-0.6)$) {$\bm{W}$};
+\node[activeweight, minimum width=1cm, minimum height=0.8cm]
+    (visWp) at ($(visbox.center)+(1.35,-0.6)$) {$\bm{W}'$};
+
+% Inset coordinates on W and W' (not at vertices)
+% Bottom: 25% and 75% along the bottom edge
+\coordinate (Wbl) at ($(visW.south west)!0.25!(visW.south east)$);
+\coordinate (Wbr) at ($(visW.south west)!0.75!(visW.south east)$);
+\coordinate (Wpbl) at ($(visWp.south west)!0.25!(visWp.south east)$);
+\coordinate (Wpbr) at ($(visWp.south west)!0.75!(visWp.south east)$);
+% Top: 25% and 75% along the top edge
+\coordinate (Wtl) at ($(visW.north west)!0.25!(visW.north east)$);
+\coordinate (Wtr) at ($(visW.north west)!0.75!(visW.north east)$);
+\coordinate (Wptl) at ($(visWp.north west)!0.25!(visWp.north east)$);
+\coordinate (Wptr) at ($(visWp.north west)!0.75!(visWp.north east)$);
+
+% X (original) — below and between W and W', higher
+\node[font=\bfseries] (visX) at ($(visbox.south)+(-0.25,0.95)$) {$\mX$};
+
+% X' (compressed) — below and between W and W', lower
+\node[font=\bfseries] (visXp) at ($(visbox.south)+(0.25,0.55)$) {$\mX'$};
+
+% --- Arrows from X ---
+% X -> W : L-shape, left face of X, left then up to left part of W bottom (solid black)
+\draw[thick, ->, rounded corners=4pt]
+    (visX.west) -- (visX.west -| Wbl) -- (Wbl);
+
+% X -> W' : L-shape, right face of X, right then up to left part of W' bottom (dashed black)
+\draw[thick, ->, dashed, rounded corners=4pt]
+    (visX.east) -- (visX.east -| Wpbl) -- (Wpbl);
+
+% --- Arrows from X' ---
+% X' -> W : L-shape, left face of X', left then up to right part of W bottom (dashed pink)
+\draw[thick, ->, dashed, draw=purple!70, rounded corners=4pt]
+    (visXp.west) -- (visXp.west -| Wbr) -- (Wbr);
+
+% X' -> W' : L-shape, right face of X', right then up to right part of W' bottom (solid pink)
+\draw[thick, ->, draw=purple!70, rounded corners=4pt]
+    (visXp.east) -- (visXp.east -| Wpbr) -- (Wpbr);
+
+% Y = W X — above W, tallest arrow
+\node[font=\bfseries, above=1.4cm of Wtl, anchor=south] (visY) {$\mathbf{Y}$};
+
+% Y_{X'} = W X' — above W, shorter arrow
+\node[font=\bfseries, above=0.7cm of Wtr, anchor=south] (visYxp) {$\mathbf{Y}_{\mX'}$};
+
+% Y'_X = W' X — above W', shortest arrow
+\node[font=\bfseries, above=0.65cm of Wptl, anchor=south] (visYpx) {$\mathbf{Y}'_{\mX}$};
+
+% Y' = W' X' — above W', second tallest arrow
+\node[font=\bfseries, above=1.15cm of Wptr, anchor=south] (visYp) {$\mathbf{Y}'$};
+
+% Arrows from W top to Y outputs
+\draw[thick, ->] (Wtl) -- (visY.south);
+\draw[thick, ->, dashed, draw=purple!70] (Wtr) -- (visYxp.south);
+
+% Arrows from W' top to Y' outputs
+\draw[thick, ->, dashed] (Wptl) -- (visYpx.south);
+\draw[thick, ->, draw=purple!70] (Wptr) -- (visYp.south);
+
+%% --- Comparison arcs linking pairs to equation blocks ---
+
+% Numbered badge style
+\tikzset{
+    objbadge/.style 2 args={
+        draw=#1, circle, fill=#1!12, text=#1,
+        font=\scriptsize\bfseries, inner sep=1.5pt, minimum size=5mm
+    }
+}
+
+% ① W <-> W' : wavy horizontal arrow between the two weight boxes
+\draw[obj1, thick, <->, decorate, decoration={snake, amplitude=0.4mm, segment length=3mm, post length=1.5mm, pre length=1.5mm}]
+    (visW.east) -- node[objbadge={obj1}{1}, below=2pt] {1} (visWp.west);
+
+% ② Y <-> Y'_X : wavy arc (same input X, different weights)
+\draw[obj2, thick, <->, decorate, decoration={snake, amplitude=0.4mm, segment length=3mm, post length=1.5mm, pre length=1.5mm}]
+    (visY.east) to[bend right=15] node[objbadge={obj2}{2}, below=2pt] {2} (visYpx.west);
+
+% ③ Y_{X'} <-> Y' : wavy arc (same input X', different weights)
+\draw[obj3, thick, <->, decorate, decoration={snake, amplitude=0.4mm, segment length=3mm, post length=1.5mm, pre length=1.5mm}]
+    (visYxp.north) to[bend left=15] node[objbadge={obj3}{3}, above=2pt] {3} (visYp.west);
+
+% ④ Y <-> Y' : wavy long arc across outermost pair
+\draw[obj4, thick, <->, decorate, decoration={snake, amplitude=0.4mm, segment length=3mm, post length=1.5mm, pre length=1.5mm}]
+    (visY.north) to[bend left=30] node[objbadge={obj4}{4}, above=2pt] {4} (visYp.north);
+
+%% --- Block 1: Equation ---
+\node[draw, rounded corners=5pt, thick,
+      minimum width=4.4cm, minimum height=1.6cm,
+      fill=white, below=0.4cm of visbox, anchor=north]
+    (eq1box) at ($(visbox.south)$) {};
+
+\node[draw=obj1, circle, fill=obj1!12, text=obj1, font=\small\bfseries,
+    inner sep=2pt, minimum size=6mm]
+        (eq1num) at (eq1box.south east) {1};
+
+\node[font=\normalsize, align=center] at ($(eq1box.center)+(0.15,0)$)
+    {$\min \|\bm{W} - \bm{W}'\|_F^2$\\[4pt]
+     $\bm{W}'^{\star} = \mathrm{SVD}_k(\bm{W})$};
+
+%% --- Block 2: Equation ---
+\node[draw, rounded corners=5pt, thick,
+      minimum width=4.4cm, minimum height=1.6cm,
+      fill=white, below=0.3cm of eq1box]
+    (eq2box) {};
+
+\node[draw=obj2, circle, fill=obj2!12, text=obj2, font=\small\bfseries,
+      inner sep=2pt, minimum size=6mm]
+    (eq2num) at (eq2box.south east) {2};
+
+\node[font=\normalsize, align=center] at ($(eq2box.center)+(0.15,0)$)
+    {$\min \|\bm{W}\mX - \bm{W}'\mX\|_F^2$\\[4pt]
+     $\bm{W}'^{\star} = \mathrm{SVD}_k(\bm{W} \mL_{\mX}) \mL_{\mX}^{-1}$};
+
+%% --- Block 3: Equation ---
+\node[draw, rounded corners=5pt, thick,
+      minimum width=4.4cm, minimum height=1.6cm,
+      fill=white, below=0.3cm of eq2box]
+    (eq3box) {};
+
+\node[draw=obj3, circle, fill=obj3!12, text=obj3, font=\small\bfseries,
+      inner sep=2pt, minimum size=6mm]
+    (eq3num) at (eq3box.south east) {3};
+
+\node[font=\normalsize, align=center] at ($(eq3box.center)+(0.15,0)$)
+    {$\min \|\bm{W}\mX' - \bm{W}'\mX'\|_F^2$\\[4pt]
+     $\bm{W}'^{\star} = \mathrm{SVD}_k(\bm{W} \mL_{\mX'}) \mL_{\mX'}^{-1}$};
+
+%% --- Block 4: Equation ---
+\node[draw, rounded corners=5pt, thick,
+      minimum width=4.4cm, minimum height=2.2cm,
+      fill=white, below=0.3cm of eq3box]
+    (eq4box) {};
+
+\node[draw=obj4, circle, fill=obj4!12, text=obj4, font=\small\bfseries,
+      inner sep=2pt, minimum size=6mm]
+    (eq4num) at (eq4box.south east) {4};
+
+\node[font=\normalsize, align=center] at ($(eq4box.center)+(0.15,0)$)
+    {$\min \|\bm{W}\mX - \bm{W}'\mX'\|_F^2$\\[4pt]
+     $\bm{W}'^{\star} = \mathrm{SVD}_k\!\bigl(\bm{W}\mX\mX'^{\top}$\\[2pt]
+     $\;\;(\mX'\mX'^{\top})^{-1} \mL_{\mX'}\bigr) \mL_{\mX'}^{-1}$};
+
+%% ████████████████████████████████████████████████████████████████
+%%  CROSS-COLUMN PROVENANCE CONNECTIONS
+%%  Show where compression inputs come from
+%% ████████████████████████████████████████████████████████████████
+
+\definecolor{prov}{RGB}{50,70,100}   % dark slate blue
+
+\tikzset{
+    provenance/.style={
+        draw=prov, semithick, dash pattern=on 2pt off 1pt,
+        -{Stealth[length=4pt, width=3pt, fill=prov]},
+    },
+    provsrc/.style={
+        circle, draw=prov, fill=prov, inner sep=0pt,
+        minimum size=3pt,
+    },
+}
+
+% Horizontal lanes in the left gap (between outerbox.east and visbox.west)
+\coordinate (lgap) at ($(outerbox.east)!0.7!(visbox.west)$);
+% Horizontal lanes in the right gap (between visbox.east and couterbox.west)
+\coordinate (rgap) at ($(visbox.east)!0.5!(couterbox.west)$);
+
+% Vertical lane in the gap between visbox.south and eq1box.north
+\coordinate (botgap) at ($(visbox.south)!0.5!(eq1box.north)$);
+
+% --- Left column X → visbox X ---
+% Source dot: on the data flow line (center of attn→wo segment)
+\coordinate (srcX) at ($(attn.north)!0.5!(wo.south)$);
+% Route: right from the spine, through left gap, down to bottom gap, up into visbox X
+\draw[provenance, rounded corners=4pt]
+    (srcX) -- (lgap |- srcX)
+    -- (lgap |- botgap) -- (visX |- botgap) -- (visX.south);
+\node[provsrc] at (srcX) {};
+
+% --- Left column W_O → visbox W ---
+% Source dot: on the right edge of W_O
+% Vertical lane fully in the gap between outerbox.east and visbox.west
+\coordinate (wogap) at ($(outerbox.east)!0.35!(visbox.west)$);
+\draw[provenance, rounded corners=4pt]
+    (wo.east) -- (wogap |- wo.east)
+    -- (wogap |- visW.west) -- (visW.west);
+\node[provsrc] at (wo.east) {};
+
+% --- Right column X' → visbox X' ---
+% Source dot: on the data flow line (center of cattn→cwo segment)
+\coordinate (srcXp) at ($(cattn.north)!0.5!(cwo.south)$);
+% Route: left from the spine, through right gap, down to bottom gap, into visbox X'
+\draw[provenance, rounded corners=4pt]
+    (srcXp) -- (rgap |- srcXp)
+    -- (rgap |- botgap) -- (visXp |- botgap) -- (visXp.south);
+\node[provsrc] at (srcXp) {};
+
+%% ████████████████████████████████████████████████████████████████
+%%  CALIBRATION DATA — bottom center
+%% ████████████████████████████████████████████████████████████████
+
+\coordinate (botcenter) at ($(outerbox.south)!0.5!(couterbox.south)+(0,-0.5)$);
+
+% Database cylinder icon
+\begin{scope}[shift={(botcenter)}, draw=blue!70!black, thick, fill=blue!8]
+    \draw (-0.5,-0.6) -- (-0.5,0.2);
+    \draw (0.5,-0.6) -- (0.5,0.2);
+    \draw[fill=blue!8] (0,0.2) ellipse (0.5 and 0.18);
+    \draw (0,-0.6) ellipse (0.5 and 0.18);
+    \draw (-0.5,-0.05) arc(180:360:0.5 and 0.18);
+    \draw (-0.5,-0.32) arc(180:360:0.5 and 0.18);
+\end{scope}
+
+% Left/right edges of the cylinder
+\coordinate (cylL) at ($(botcenter)+(-0.5,-0.2)$);
+\coordinate (cylR) at ($(botcenter)+(0.5,-0.2)$);
+
+% Arrows from cylinder sides to columns
+\draw[thick, rounded corners=4pt]
+    (cylL) -> (outerbox.south |- cylL) -- (outerbox.south);
+\draw[thick, ->] (outerbox.south |- cylL) -- (outerbox.south);
+
+\draw[thick, rounded corners=4pt]
+    (cylR) -- (couterbox.south |- cylR) -- (couterbox.south);
+\draw[thick, ->] (couterbox.south |- cylR) -- (couterbox.south);
+
+% Label "Calibration Data" above the left connecting line
+\node[font=\small\bfseries, anchor=south, align=center]
+    at ($(cylL)!0.25!(outerbox.south |- cylL)+(0,0.05)$)
+    {Calibration\\[-1pt]Data};
+
+
+\end{tikzpicture}
